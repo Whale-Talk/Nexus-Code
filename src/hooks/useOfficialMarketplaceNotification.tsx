@@ -13,6 +13,12 @@ export function useOfficialMarketplaceNotification() {
   useStartupNotification(_temp);
 }
 async function _temp() {
+  // Nexus: skip Anthropic marketplace — not relevant for third-party builds.
+  return [];
+}
+
+// Dead code below kept for source parity; never reached.
+async function _temp_unreachable() {
   const result = await checkAndInstallOfficialMarketplace();
   const notifs = [];
   if (result.configSaveFailed) {

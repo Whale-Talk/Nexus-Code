@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from '../../utils/featureFlags.js'
 import { markPostCompaction } from 'src/bootstrap/state.js'
 import { getSdkBetas } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
