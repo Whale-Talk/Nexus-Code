@@ -1,5 +1,5 @@
 {
-  "name": "@nexusair-technologies/nexus",
+  "name": "@nexusair-technologies/nexus-code",
   "version": "0.1.0",
   "private": false,
   "description": "Nexus — Claude Code restored with multi-agent capabilities and configurable backend.",
