@@ -216,6 +216,21 @@ export function getAnthropicApiKey(): null | string {
   return key
 }
 
+/**
+ * Nexus: true when ANTHROPIC_BASE_URL points at a custom relay (any host
+ * other than api.anthropic.com). Used to prefer env API keys in interactive
+ * sessions where official OAuth would otherwise take over.
+ */
+function isCustomAnthropicBaseUrl(): boolean {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL
+  if (!baseUrl) return false
+  try {
+    return new URL(baseUrl).host !== 'api.anthropic.com'
+  } catch {
+    return false
+  }
+}
+
 export function hasAnthropicApiKeyAuth(): boolean {
   const { key, source } = getAnthropicApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
@@ -255,7 +270,7 @@ export function getAnthropicApiKeyWithSource(
 
   // Always check for direct environment variable when the user ran claude --print.
   // This is useful for CI, etc.
-  if (preferThirdPartyAuthentication() && apiKeyEnv) {
+  if ((preferThirdPartyAuthentication() || isCustomAnthropicBaseUrl()) && apiKeyEnv) {
     return {
       key: apiKeyEnv,
       source: 'ANTHROPIC_API_KEY',

@@ -614,5 +614,8 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
 }
 
 export function normalizeModelStringForAPI(model: string): string {
+  // Nexus: for DeepSeek models, [1m] is part of the actual model ID on the
+  // relay — NOT a context-window marker. Preserve it.
+  if (model.includes('deepseek')) return model
   return model.replace(/\[(1|2)m\]/gi, '')
 }
