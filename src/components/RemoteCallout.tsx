@@ -34,7 +34,7 @@ export function RemoteCallout({
   }, []);
   const options: OptionWithDescription<RemoteCalloutSelection>[] = [{
     label: 'Enable Remote Control for this session',
-    description: 'Opens a secure connection to claude.ai.',
+    description: 'Opens a secure connection to a remote session.',
     value: 'enable'
   }, {
     label: 'Never mind',

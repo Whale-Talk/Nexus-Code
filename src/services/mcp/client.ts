@@ -480,7 +480,7 @@ const MCP_STREAMABLE_HTTP_ACCEPT = 'application/json, text/event-stream'
  * present on POSTs. The MCP SDK sets this inside StreamableHTTPClientTransport.send(),
  * but it is attached to a Headers instance that passes through an object spread here,
  * and some runtimes/agents have been observed dropping it before it reaches the wire.
- * See https://github.com/anthropics/claude-agent-sdk-typescript/issues/202.
+ * See https://github.com/Whale-Talk/Nexus-Code.
  * Normalizing here (the last wrapper before fetch()) guarantees it is sent.
  *
  * GET requests are excluded from the timeout since, for MCP transports, they are
@@ -987,7 +987,7 @@ export const connectToServer = memoize(
           name: 'claude-code',
           title: 'Nexus Code',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "Nexus Code agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -3282,7 +3282,7 @@ export async function setupSdkMcpClients(
           name: 'claude-code',
           title: 'Nexus Code',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "Nexus Code agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {

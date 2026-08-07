@@ -102,8 +102,8 @@ export async function runExtraUsage(): Promise<ExtraUsageResult> {
   }
 
   const url = isTeamOrEnterprise
-    ? 'https://claude.ai/admin-settings/usage'
-    : 'https://claude.ai/settings/usage'
+    ? 'https://github.com/Whale-Talk/Nexus-Code'
+    : 'https://github.com/Whale-Talk/Nexus-Code'
 
   try {
     const opened = await openBrowser(url)

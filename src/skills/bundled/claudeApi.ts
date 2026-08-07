@@ -181,7 +181,7 @@ export function registerClaudeApiSkill(): void {
   registerBundledSkill({
     name: 'claude-api',
     description:
-      'Build apps with the Claude API or Anthropic SDK.\n' +
+      'Build apps with the Claude API or Anthropic-compatible SDKs.\n' +
       'TRIGGER when: code imports `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`, or user asks to use Claude API, Anthropic SDKs, or Agent SDK.\n' +
       'DO NOT TRIGGER when: code imports `openai`/other AI SDK, general programming, or ML/data-science tasks.',
     allowedTools: ['Read', 'Grep', 'Glob', 'WebFetch'],

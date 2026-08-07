@@ -72,7 +72,7 @@ export function Feed(t0) {
   const maxTimestampWidth = t1;
   let t2;
   if ($[2] !== title) {
-    t2 = <Text bold={true} color="claude">{title}</Text>;
+    t2 = <Text bold={true} color="white">{title}</Text>;
     $[2] = title;
     $[3] = t2;
   } else {
@@ -80,10 +80,10 @@ export function Feed(t0) {
   }
   let t3;
   if ($[4] !== actualWidth || $[5] !== customContent || $[6] !== emptyMessage || $[7] !== footer || $[8] !== lines || $[9] !== maxTimestampWidth) {
-    t3 = customContent ? <>{customContent.content}{footer && <Text dimColor={true} italic={true}>{truncate(footer, actualWidth)}</Text>}</> : lines.length === 0 && emptyMessage ? <Text dimColor={true}>{truncate(emptyMessage, actualWidth)}</Text> : <>{lines.map((line_0, index) => {
+    t3 = customContent ? <>{customContent.content}{footer && <Text dimColor={true} italic={true} color="white">{truncate(footer, actualWidth)}</Text>}</> : lines.length === 0 && emptyMessage ? <Text dimColor={true} color="white">{truncate(emptyMessage, actualWidth)}</Text> : <>{lines.map((line_0, index) => {
         const textWidth = Math.max(10, actualWidth - (maxTimestampWidth > 0 ? maxTimestampWidth + 2 : 0));
-        return <Text key={index}>{maxTimestampWidth > 0 && <><Text dimColor={true}>{(line_0.timestamp || "").padEnd(maxTimestampWidth)}</Text>{"  "}</>}<Text>{truncate(line_0.text, textWidth)}</Text></Text>;
-      })}{footer && <Text dimColor={true} italic={true}>{truncate(footer, actualWidth)}</Text>}</>;
+        return <Text key={index}>{maxTimestampWidth > 0 && <><Text dimColor={true} color="white">{(line_0.timestamp || "").padEnd(maxTimestampWidth)}</Text>{"  "}</>}<Text>{truncate(line_0.text, textWidth)}</Text></Text>;
+      })}{footer && <Text dimColor={true} italic={true} color="white">{truncate(footer, actualWidth)}</Text>}</>;
     $[4] = actualWidth;
     $[5] = customContent;
     $[6] = emptyMessage;

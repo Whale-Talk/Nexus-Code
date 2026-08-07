@@ -18,9 +18,9 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "bun run ./src/dev-entry.ts",
-    "start": "bun run ./src/dev-entry.ts",
-    "version": "bun run ./src/dev-entry.ts --version"
+    "dev": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
+    "start": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
+    "version": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts --version"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "*",

@@ -355,6 +355,67 @@ function getCustomHeaders(): Record<string, string> {
 
 export const CLIENT_REQUEST_ID_HEADER = 'x-client-request-id'
 
+// --- Conversation/message tracking headers (Nexus) ---
+// Explicit IDs replace hash-based matching so the relay's capture layer can
+// group conversations by user. X-Conversation-ID is stable per CLI session,
+// X-Message-ID unique per request, X-Parent-Message-ID links to the previous
+// assistant message.
+
+let lastAssistantMessageId = ''
+
+/**
+ * Extract the assistant message id from a response without disrupting the
+ * caller's consumption. For SSE: scan the first chunks for message_start.
+ * For JSON: read the top-level id.
+ */
+async function extractAssistantMessageId(response: Response): Promise<void> {
+  try {
+    const contentType = response.headers.get('content-type') || ''
+
+    if (contentType.includes('text/event-stream')) {
+      const clone = response.clone()
+      const reader = clone.body?.getReader()
+      if (!reader) return
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let bytesRead = 0
+      const MAX_SSE_SCAN = 16_384 // don't consume the entire stream
+      try {
+        while (bytesRead < MAX_SSE_SCAN) {
+          const { done, value } = await reader.read()
+          if (done) break
+          bytesRead += value?.length ?? 0
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.type === 'message_start' && data.message?.id) {
+                  lastAssistantMessageId = data.message.id
+                  await reader.cancel()
+                  return
+                }
+              } catch {
+                // skip unparseable SSE data lines
+              }
+            }
+          }
+        }
+      } finally {
+        try { reader.cancel() } catch {}
+      }
+    } else {
+      const clone = response.clone()
+      const data = (await clone.json()) as { id?: string }
+      if (data?.id) lastAssistantMessageId = data.id
+    }
+  } catch {
+    // never let header tracking crash the fetch
+  }
+}
+
 function buildFetch(
   fetchOverride: ClientOptions['fetch'],
   source: string | undefined,
@@ -374,6 +435,28 @@ function buildFetch(
     if (injectClientRequestId && !headers.has(CLIENT_REQUEST_ID_HEADER)) {
       headers.set(CLIENT_REQUEST_ID_HEADER, randomUUID())
     }
+
+    // Inject conversation tracking headers (Nexus capture).
+    // Only send to custom relays — never leak session IDs to api.anthropic.com.
+    const conversationId =
+      process.env.CLAUDE_CONVERSATION_ID || process.env.X_CONVERSATION_ID
+    if (conversationId) {
+      try {
+        const url = input instanceof Request ? input.url : String(input)
+        const isCustomRelay = new URL(url).host !== 'api.anthropic.com'
+        if (isCustomRelay) {
+          const messageId = randomUUID()
+          headers.set('X-Conversation-ID', conversationId)
+          headers.set('X-Message-ID', messageId)
+          if (lastAssistantMessageId) {
+            headers.set('X-Parent-Message-ID', lastAssistantMessageId)
+          }
+        }
+      } catch {
+        // URL parse failed — safer to skip than to leak
+      }
+    }
+
     try {
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
       const url = input instanceof Request ? input.url : String(input)
@@ -384,6 +467,17 @@ function buildFetch(
     } catch {
       // never let logging crash the fetch
     }
-    return inner(input, { ...init, headers })
+
+    const response = inner(input, { ...init, headers })
+
+    // Fire-and-forget: extract assistant message id for the next request's
+    // X-Parent-Message-ID. Must not block the caller.
+    if (conversationId && response instanceof Promise) {
+      response.then(extractAssistantMessageId).catch(() => {})
+    } else if (conversationId && response instanceof Response) {
+      void extractAssistantMessageId(response)
+    }
+
+    return response
   }
 }

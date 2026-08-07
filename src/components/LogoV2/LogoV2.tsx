@@ -250,7 +250,7 @@ export function LogoV2() {
   }
   const layoutMode = getLayoutMode(columns);
   const userTheme = resolveThemeSetting(getGlobalConfig().theme);
-  const borderTitle = ` ${color("claude", userTheme)("Nexus Code")} ${color("inactive", userTheme)(`v${version}`)} `;
+  const borderTitle = ` ${color("white", userTheme)("Nexus Code")} ${color("inactive", userTheme)(`v${version}`)} `;
   const compactBorderTitle = color("claude", userTheme)(" Nexus Code ");
   if (layoutMode === "compact") {
     let welcomeMessage = formatWelcomeMessage(username);
@@ -328,7 +328,7 @@ export function LogoV2() {
       t18 = $[42];
       t19 = $[43];
     }
-    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="claude" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
+    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="white" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true} color="white">{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
   const modelLine = !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
@@ -344,7 +344,7 @@ export function LogoV2() {
   const T1 = Box;
   const t11 = "column";
   const t12 = "round";
-  const t13 = "claude";
+  const t13 = "white";
   let t14;
   if ($[44] !== borderTitle) {
     t14 = {
@@ -380,7 +380,7 @@ export function LogoV2() {
   }
   let t20;
   if ($[49] !== modelLine) {
-    t20 = <Text dimColor={true}>{modelLine}</Text>;
+    t20 = <Text dimColor={true} color="white">{modelLine}</Text>;
     $[49] = modelLine;
     $[50] = t20;
   } else {
@@ -388,7 +388,7 @@ export function LogoV2() {
   }
   let t21;
   if ($[51] !== cwdLine) {
-    t21 = <Text dimColor={true}>{cwdLine}</Text>;
+    t21 = <Text dimColor={true} color="white">{cwdLine}</Text>;
     $[51] = cwdLine;
     $[52] = t21;
   } else {

@@ -115,11 +115,11 @@ export type ThemeSetting = (typeof THEME_SETTINGS)[number]
 const lightTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(255,0,135)', // Vibrant pink
-  claude: 'rgb(215,119,87)', // Claude orange
-  claudeShimmer: 'rgb(245,149,117)', // Lighter claude orange for shimmer effect
-  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(87,105,247)', // Medium blue for system spinner
-  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(117,135,255)', // Lighter blue for system spinner shimmer
-  permission: 'rgb(87,105,247)', // Medium blue
+  claude: 'rgb(37,99,235)', // Nexus blue (pure blue)
+  claudeShimmer: 'rgb(96,165,250)', // Lighter nexus blue for shimmer effect
+  claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(37,99,235)', // Medium blue for system spinner
+  claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(96,165,250)', // Lighter blue for system spinner shimmer
+  permission: 'rgb(37,99,235)', // Medium blue
   permissionShimmer: 'rgb(137,155,255)', // Lighter blue for shimmer effect
   planMode: 'rgb(0,102,102)', // Muted teal
   ide: 'rgb(71,130,200)', // Muted blue
@@ -130,7 +130,7 @@ const lightTheme: Theme = {
   inactive: 'rgb(102,102,102)', // Dark gray
   inactiveShimmer: 'rgb(142,142,142)', // Lighter gray for shimmer effect
   subtle: 'rgb(175,175,175)', // Light gray
-  suggestion: 'rgb(87,105,247)', // Medium blue
+  suggestion: 'rgb(37,99,235)', // Medium blue
   remember: 'rgb(0,0,255)', // Blue
   background: 'rgb(0,153,153)', // Cyan
   success: 'rgb(44,122,57)', // Green
@@ -167,7 +167,7 @@ const lightTheme: Theme = {
   bashMessageBackgroundColor: 'rgb(250, 245, 250)',
 
   memoryBackgroundColor: 'rgb(230, 245, 250)',
-  rate_limit_fill: 'rgb(87,105,247)', // Medium blue
+  rate_limit_fill: 'rgb(37,99,235)', // Medium blue
   rate_limit_empty: 'rgb(39,47,111)', // Dark blue
   fastMode: 'rgb(255,106,0)', // Electric orange
   fastModeShimmer: 'rgb(255,150,50)', // Lighter orange for shimmer
@@ -197,8 +197,8 @@ const lightTheme: Theme = {
 const lightAnsiTheme: Theme = {
   autoAccept: 'ansi:magenta',
   bashBorder: 'ansi:magenta',
-  claude: 'ansi:redBright',
-  claudeShimmer: 'ansi:yellowBright',
+  claude: 'ansi:blueBright',
+  claudeShimmer: 'ansi:cyanBright',
   claudeBlue_FOR_SYSTEM_SPINNER: 'ansi:blue',
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
   permission: 'ansi:blue',
@@ -278,8 +278,8 @@ const lightAnsiTheme: Theme = {
 const darkAnsiTheme: Theme = {
   autoAccept: 'ansi:magentaBright',
   bashBorder: 'ansi:magentaBright',
-  claude: 'ansi:redBright',
-  claudeShimmer: 'ansi:yellowBright',
+  claude: 'ansi:blueBright',
+  claudeShimmer: 'ansi:cyanBright',
   claudeBlue_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'ansi:blueBright',
   permission: 'ansi:blueBright',
@@ -359,8 +359,8 @@ const darkAnsiTheme: Theme = {
 const lightDaltonizedTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(0,102,204)', // Blue instead of pink
-  claude: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
-  claudeShimmer: 'rgb(255,183,101)', // Lighter orange for shimmer effect
+  claude: 'rgb(37,99,235)', // Nexus blue (pure blue) (deuteranopia-adjusted)
+  claudeShimmer: 'rgb(96,165,250)', // Lighter nexus blue for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(51,102,255)', // Bright blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(101,152,255)', // Lighter bright blue for system spinner shimmer
   permission: 'rgb(51,102,255)', // Bright blue
@@ -440,8 +440,8 @@ const lightDaltonizedTheme: Theme = {
 const darkTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(253,93,177)', // Bright pink
-  claude: 'rgb(215,119,87)', // Claude orange
-  claudeShimmer: 'rgb(235,159,127)', // Lighter claude orange for shimmer effect
+  claude: 'rgb(37,99,235)', // Nexus blue (pure blue)
+  claudeShimmer: 'rgb(96,165,250)', // Lighter nexus blue for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(147,165,255)', // Blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(177,195,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(177,185,249)', // Light blue-purple
@@ -521,8 +521,8 @@ const darkTheme: Theme = {
 const darkDaltonizedTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(51,153,255)', // Bright blue
-  claude: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
-  claudeShimmer: 'rgb(255,183,101)', // Lighter orange for shimmer effect
+  claude: 'rgb(37,99,235)', // Nexus blue (pure blue) (deuteranopia-adjusted)
+  claudeShimmer: 'rgb(96,165,250)', // Lighter nexus blue for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(153,204,255)', // Light blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(183,224,255)', // Lighter blue for system spinner shimmer
   permission: 'rgb(153,204,255)', // Light blue

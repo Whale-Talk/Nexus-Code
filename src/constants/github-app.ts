@@ -1,7 +1,7 @@
 export const PR_TITLE = 'Add Nexus Code GitHub Workflow'
 
 export const GITHUB_ACTION_SETUP_DOCS_URL =
-  'https://github.com/anthropics/claude-code-action/blob/main/docs/setup.md'
+  'https://github.com/Whale-Talk/Nexus-Code'
 
 export const WORKFLOW_CONTENT = `name: Nexus Code
 
@@ -49,8 +49,8 @@ jobs:
           # prompt: 'Update the pull request description to include a summary of changes.'
 
           # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          # See https://github.com/Whale-Talk/Nexus-Code
+          # or https://github.com/Whale-Talk/Nexus-Code for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
 `
@@ -61,7 +61,7 @@ This PR adds a GitHub Actions workflow that enables Nexus Code integration in ou
 
 ### What is Nexus Code?
 
-[Nexus Code](https://claude.com/claude-code) is an AI coding agent that can help with:
+[Nexus Code](https://github.com/Whale-Talk/Nexus-Code) is an AI coding agent that can help with:
 - Bug fixes and improvements  
 - Documentation updates
 - Implementing new features
@@ -83,7 +83,7 @@ Once the workflow is triggered, Claude will analyze the comment and surrounding 
 
 ### Security
 
-- Our Anthropic API key is securely stored as a GitHub Actions secret
+- Our API key is securely stored as a GitHub Actions secret
 - Only users with write access to the repository can trigger the workflow
 - All Claude runs are stored in the GitHub Actions run history
 - Claude's default tools are limited to reading/writing files and interacting with our repo by creating comments, branches, and commits.
@@ -93,7 +93,7 @@ Once the workflow is triggered, Claude will analyze the comment and surrounding 
 allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
 \`\`\`
 
-There's more information in the [Nexus Code action repo](https://github.com/anthropics/claude-code-action).
+There's more information in the [Nexus Code action repo](https://github.com/Whale-Talk/Nexus-Code).
 
 After merging this PR, let's try mentioning @claude in a comment on any PR to get started!`
 
@@ -135,10 +135,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugin_marketplaces: 'https://github.com/Whale-Talk/Nexus-Code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review \${{ github.repository }}/pull/\${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          # See https://github.com/Whale-Talk/Nexus-Code
+          # or https://github.com/Whale-Talk/Nexus-Code for available options
 
 `

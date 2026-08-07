@@ -105,7 +105,7 @@ async function getDesktopVersion(): Promise<string | null> {
     if (!localAppData) {
       return null
     }
-    const installDir = join(localAppData, 'AnthropicClaude')
+    const installDir = join(localAppData, 'NexusCode')
     try {
       const entries = await readdir(installDir)
       const versions = entries
@@ -216,7 +216,7 @@ export async function openCurrentSessionInDesktop(): Promise<{
     return {
       success: false,
       error:
-        'Claude Desktop is not installed. Install it from https://claude.ai/download',
+        'Claude Desktop is not installed. Install it from https://github.com/Whale-Talk/Nexus-Code',
     }
   }
 

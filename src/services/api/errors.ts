@@ -1192,8 +1192,8 @@ export function getErrorMessageIfRefusal(
   logEvent('tengu_refusal_api_response', {})
 
   const baseMessage = getIsNonInteractiveSession()
-    ? `${API_ERROR_MESSAGE_PREFIX}: Nexus Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach.`
-    : `${API_ERROR_MESSAGE_PREFIX}: Nexus Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Nexus Code to assist with a different task.`
+    ? `${API_ERROR_MESSAGE_PREFIX}: Nexus Code is unable to respond to this request, which appears to violate our Usage Policy (https://github.com/Whale-Talk/Nexus-Code). Try rephrasing the request or attempting a different approach.`
+    : `${API_ERROR_MESSAGE_PREFIX}: Nexus Code is unable to respond to this request, which appears to violate our Usage Policy (https://github.com/Whale-Talk/Nexus-Code). Please double press esc to edit your last message or start a new session for Nexus Code to assist with a different task.`
 
   const modelSuggestion =
     model !== 'claude-sonnet-4-20250514'
