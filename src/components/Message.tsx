@@ -109,7 +109,7 @@ function MessageImpl(t0) {
         if ($[5] !== addMargin || $[6] !== commands || $[7] !== inProgressToolUseIDs || $[8] !== isTranscriptMode || $[9] !== lastThinkingBlockId || $[10] !== lookups || $[11] !== message.advisorModel || $[12] !== message.message.content || $[13] !== message.uuid || $[14] !== onOpenRateLimitOptions || $[15] !== progressMessagesForMessage || $[16] !== shouldAnimate || $[17] !== shouldShowDot || $[18] !== tools || $[19] !== verbose || $[20] !== width) {
           let t4;
           if ($[22] !== addMargin || $[23] !== commands || $[24] !== inProgressToolUseIDs || $[25] !== isTranscriptMode || $[26] !== lastThinkingBlockId || $[27] !== lookups || $[28] !== message.advisorModel || $[29] !== message.uuid || $[30] !== onOpenRateLimitOptions || $[31] !== progressMessagesForMessage || $[32] !== shouldAnimate || $[33] !== shouldShowDot || $[34] !== tools || $[35] !== verbose || $[36] !== width) {
-            t4 = (_, index_0) => <AssistantMessageBlock key={index_0} param={_} addMargin={addMargin} tools={tools} commands={commands} verbose={verbose} inProgressToolUseIDs={inProgressToolUseIDs} progressMessagesForMessage={progressMessagesForMessage} shouldAnimate={shouldAnimate} shouldShowDot={shouldShowDot} width={width} inProgressToolCallCount={inProgressToolUseIDs.size} isTranscriptMode={isTranscriptMode} lookups={lookups} onOpenRateLimitOptions={onOpenRateLimitOptions} thinkingBlockId={`${message.uuid}:${index_0}`} lastThinkingBlockId={lastThinkingBlockId} advisorModel={message.advisorModel} />;
+            t4 = (_, index_0) => <AssistantMessageBlock key={index_0} param={_} addMargin={addMargin} tools={tools} commands={commands} verbose={verbose} inProgressToolUseIDs={inProgressToolUseIDs} progressMessagesForMessage={progressMessagesForMessage} shouldAnimate={shouldAnimate} shouldShowDot={shouldShowDot} width={width} inProgressToolCallCount={inProgressToolUseIDs.size} isTranscriptMode={isTranscriptMode} lookups={lookups} onOpenRateLimitOptions={onOpenRateLimitOptions} thinkingBlockId={`${message.uuid}:${index_0}`} lastThinkingBlockId={lastThinkingBlockId} advisorModel={message.advisorModel} contentLength={message.message.content.length} />;
             $[22] = addMargin;
             $[23] = commands;
             $[24] = inProgressToolUseIDs;
@@ -456,7 +456,8 @@ function AssistantMessageBlock(t0) {
     onOpenRateLimitOptions,
     thinkingBlockId,
     lastThinkingBlockId,
-    advisorModel
+    advisorModel,
+    contentLength
   } = t0;
   if (feature("CONNECTOR_TEXT")) {
     if (isConnectorTextBlock(param)) {
@@ -545,16 +546,18 @@ function AssistantMessageBlock(t0) {
       }
     case "thinking":
       {
-        // Nexus: always render thinking — AssistantThinkingMessage decides
-        // between full content (verbose/transcript) and the folded
-        // "∴ Thinking (ctrl+o to expand)" line in normal mode.
+        // Nexus: thinking block is "last" only if it's the last block in the
+        // entire content array — collapses when text/tool content appears after it.
+        const thinkIdx = parseInt(thinkingBlockId?.split(':').pop() ?? '0');
+        const isLastBlock = contentLength != null && thinkIdx === contentLength - 1;
+        // original transcript logic: hide non-last thinking in transcript mode
         const isLastThinking = !lastThinkingBlockId || thinkingBlockId === lastThinkingBlockId;
         const t1 = isTranscriptMode && !isLastThinking;
         let t2;
-        if ($[31] !== addMargin || $[32] !== isLastThinking || $[33] !== isTranscriptMode || $[34] !== param || $[35] !== t1 || $[36] !== verbose) {
-          t2 = <AssistantThinkingMessage addMargin={addMargin} param={param} isTranscriptMode={isTranscriptMode} verbose={verbose} hideInTranscript={t1} isLastThinking={isLastThinking} />;
+        if ($[31] !== addMargin || $[32] !== isLastBlock || $[33] !== isTranscriptMode || $[34] !== param || $[35] !== t1 || $[36] !== verbose) {
+          t2 = <AssistantThinkingMessage addMargin={addMargin} param={param} isTranscriptMode={isTranscriptMode} verbose={verbose} hideInTranscript={t1} isLastThinking={isLastBlock} />;
           $[31] = addMargin;
-          $[32] = isLastThinking;
+          $[32] = isLastBlock;
           $[33] = isTranscriptMode;
           $[34] = param;
           $[35] = t1;

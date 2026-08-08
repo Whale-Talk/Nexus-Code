@@ -57,6 +57,8 @@ export function AssistantThinkingMessage(t0) {
     }
     return t6;
   }
+  // Highlight backtick terms in blue (ANSI 34)
+  const highlighted = thinking.replace(/`([^`]+)`/g, '[34m`$1`[0m')
   const t4 = addMargin ? 1 : 0;
   let t5;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
@@ -66,9 +68,9 @@ export function AssistantThinkingMessage(t0) {
     t5 = $[3];
   }
   let t6;
-  if ($[4] !== thinking) {
-    t6 = <Box paddingLeft={2}><Markdown dimColor={true}>{thinking}</Markdown></Box>;
-    $[4] = thinking;
+  if ($[4] !== highlighted) {
+    t6 = <Box paddingLeft={2}><Markdown dimColor={true}>{highlighted}</Markdown></Box>;
+    $[4] = highlighted;
     $[5] = t6;
   } else {
     t6 = $[5];
