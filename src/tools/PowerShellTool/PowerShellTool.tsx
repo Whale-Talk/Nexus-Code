@@ -391,7 +391,7 @@ export const PowerShellTool = buildTool({
     backgroundedByUser,
     assistantAutoBackgrounded
   }: Out, toolUseID: string): ToolResultBlockParam {
-    // For image data, format as image content block for Claude
+    // For image data, format as image content block for Nexus
     if (isImage) {
       const block = buildImageToolResult(stdout, toolUseID);
       if (block) return block;
@@ -839,7 +839,7 @@ async function* runPowerShellCommand({
     }, ASSISTANT_BLOCKING_BUDGET_MS).unref();
   }
 
-  // Handle Claude asking to run it in the background explicitly
+  // Handle Nexus asking to run it in the background explicitly
   // When explicitly requested via run_in_background, always honor the request
   // regardless of the command type (isAutobackgroundingAllowed only applies to automatic backgrounding)
   if (run_in_background === true && !isBackgroundTasksDisabled) {

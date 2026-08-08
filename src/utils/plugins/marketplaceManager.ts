@@ -1273,7 +1273,7 @@ async function cacheMarketplaceFromUrl(
   const headers = {
     ...customHeaders,
     // User-Agent must come last to prevent override (for consistency with WebFetch)
-    'User-Agent': 'Claude-Code-Plugin-Manager',
+    'User-Agent': 'Nexus-Code-Plugin-Manager',
   }
 
   let response

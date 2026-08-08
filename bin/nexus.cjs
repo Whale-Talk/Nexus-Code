@@ -7,6 +7,7 @@ const { spawn } = require('child_process')
 const { randomUUID } = require('crypto')
 
 const projectDir = resolve(dirname(__dirname))
+const originalCwd = process.cwd() // user's launch directory
 const configDir = join(homedir(), '.nexus')
 const settingsPath = join(configDir, 'settings.json')
 
@@ -147,7 +148,9 @@ const args = [
   ...userArgs,
 ]
 const child = spawn(bun, args, {
-  cwd: projectDir,
+  // Run in the user's launch directory, not projectDir — session history
+  // and project context must follow where the user started Nexus.
+  cwd: originalCwd,
   env: process.env,
   stdio: 'inherit',
 })

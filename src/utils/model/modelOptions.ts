@@ -297,7 +297,7 @@ function getOpusPlanOption(): ModelOption {
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
   // Nexus: custom relay → only show configured DeepSeek models.
-  // Claude model names (Sonnet/Opus/Haiku) don't exist on the relay.
+  // Nexus model names (Sonnet/Opus/Haiku) don't exist on the relay.
   // Check against env URL + settings model (provider-managed filtering may
   // strip ANTHROPIC_BASE_URL from process.env at runtime, but settings persist).
   const baseUrl = process.env.ANTHROPIC_BASE_URL

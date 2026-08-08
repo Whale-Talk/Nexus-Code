@@ -1940,10 +1940,10 @@ ${serverOptions}
 DESCRIPTION
   Remote Control allows you to control sessions on your local device from
   claude.ai/code (https://github.com/Whale-Talk/Nexus-Code). Run this command in the
-  directory you want to work in, then connect from the Claude app or web.
+  directory you want to work in, then connect from the Nexus app or web.
 ${serverDescription}
 NOTES
-  - You must be logged in with a Claude account that has a subscription
+  - You must be logged in with a Nexus account that has a subscription
   - Run \`claude\` first in the directory to accept the workspace trust dialog
 ${serverNote}`
   // biome-ignore lint/suspicious/noConsole: intentional help output

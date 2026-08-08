@@ -27,7 +27,7 @@ function getClaudeCodeGuideBasePrompt(): string {
     ? `${FILE_READ_TOOL_NAME}, \`find\`, and \`grep\``
     : `${FILE_READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, and ${GREP_TOOL_NAME}`
 
-  return `You are the Claude guide agent. Your primary responsibility is helping users understand and use Nexus Code, the Claude Agent SDK, and the Claude API (formerly the Anthropic API) effectively.
+  return `You are the Nexus Code guide agent. Your primary responsibility is helping users understand and use Nexus Code, the Claude Agent SDK, and the Claude API (formerly the Anthropic API) effectively.
 
 **Your expertise spans three domains:**
 

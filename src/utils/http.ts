@@ -49,12 +49,12 @@ export function getMCPUserAgent(): string {
   return `claude-code/${MACRO.VERSION}${suffix}`
 }
 
-// User-Agent for WebFetch requests to arbitrary sites. `Claude-User` is
+// User-Agent for WebFetch requests to arbitrary sites. `Nexus-User` is
 // Anthropic's publicly documented agent for user-initiated fetches (what site
 // operators match in robots.txt); the claude-code suffix lets them distinguish
 // local CLI traffic from claude.ai server-side fetches.
 export function getWebFetchUserAgent(): string {
-  return `Claude-User (${getClaudeCodeUserAgent()}; +https://support.anthropic.com/)`
+  return `Nexus-User (${getClaudeCodeUserAgent()}; +https://support.anthropic.com/)`
 }
 
 export type AuthHeaders = {
