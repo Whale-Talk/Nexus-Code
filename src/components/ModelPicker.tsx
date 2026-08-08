@@ -132,7 +132,7 @@ export function ModelPicker(t0) {
     t6 = $[16];
   }
   const initialFocusValue = t6;
-  const visibleCount = Math.min(10, selectOptions.length);
+  const visibleCount = selectOptions.length;
   const hiddenCount = Math.max(0, selectOptions.length - visibleCount);
   let t7;
   if ($[17] !== focusedValue || $[18] !== selectOptions) {

@@ -104,21 +104,30 @@ function getSonnet46Option(): ModelOption {
   }
 }
 
-function getDeepSeekV4ProOption(): ModelOption {
+function getQuarkOption(): ModelOption {
   return {
     value: 'deepseek-v4-pro[1m]',
-    label: 'DeepSeek V4 Pro (1M context)',
-    description: 'DeepSeek V4 Pro · stronger reasoning for complex tasks with 1M context window',
-    descriptionForModel: 'DeepSeek V4 Pro - stronger reasoning for complex tasks with 1M context window',
+    label: 'Nexus Quark (1M context)',
+    description: 'Nexus Quark · deep reasoning engine for complex analysis with 1M context window',
+    descriptionForModel: 'Nexus Quark - deep reasoning engine for the most challenging tasks',
   }
 }
 
-function getDeepSeekV4FlashOption(): ModelOption {
+function getAtomOption(): ModelOption {
   return {
     value: 'deepseek-v4-flash[1m]',
-    label: 'DeepSeek V4 Flash (1M context)',
-    description: 'DeepSeek V4 Flash · faster default for everyday coding tasks with 1M context window',
-    descriptionForModel: 'DeepSeek V4 Flash - faster default for everyday coding tasks with 1M context window',
+    label: 'Nexus Atom (1M context)',
+    description: 'Nexus Atom · balanced daily engine for everyday coding with 1M context window',
+    descriptionForModel: 'Nexus Atom - balanced daily engine for everyday coding tasks',
+  }
+}
+
+function getElectronOption(): ModelOption {
+  return {
+    value: 'deepseek-v4-flash[1m]',
+    label: 'Nexus Electron (1M context)',
+    description: 'Nexus Electron · fastest response engine for sub-agents and quick tasks',
+    descriptionForModel: 'Nexus Electron - fastest response engine for sub-agents and quick tasks',
   }
 }
 
@@ -299,8 +308,8 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   if (getAPIProvider() === 'firstParty' && isDeepSeekRelay) {
     return [
       getDefaultOptionForUser(fastMode),
-      getDeepSeekV4ProOption(),
-      getDeepSeekV4FlashOption(),
+      getQuarkOption(),
+      getAtomOption(),
     ]
   }
 

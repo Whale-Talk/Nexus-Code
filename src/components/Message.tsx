@@ -538,9 +538,9 @@ function AssistantMessageBlock(t0) {
       }
     case "thinking":
       {
-        if (!isTranscriptMode && !verbose) {
-          return null;
-        }
+        // Nexus: always render thinking — AssistantThinkingMessage decides
+        // between full content (verbose/transcript) and the folded
+        // "∴ Thinking (ctrl+o to expand)" line in normal mode.
         const isLastThinking = !lastThinkingBlockId || thinkingBlockId === lastThinkingBlockId;
         const t1 = isTranscriptMode && !isLastThinking;
         let t2;

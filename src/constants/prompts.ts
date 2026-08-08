@@ -114,14 +114,14 @@ export const CLAUDE_CODE_DOCS_MAP_URL =
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
   '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
 
-// @[MODEL LAUNCH]: Update the latest frontier model.
-const FRONTIER_MODEL_NAME = 'Claude Opus 4.6'
+	const FRONTIER_MODEL_NAME = 'Nexus Prime'
 
-// @[MODEL LAUNCH]: Update the model family IDs below to the latest in each tier.
-const CLAUDE_4_5_OR_4_6_MODEL_IDS = {
-  opus: 'claude-opus-4-6',
-  sonnet: 'claude-sonnet-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
+// Nexus model roles: Prime (primary reasoning) and Swift (fast tasks).
+// Nexus model roles: Quark (deep reasoning) / Atom (daily) / Electron (fast).
+const NEXUS_MODEL_ROLE_IDS = {
+  quark: 'deepseek-v4-pro[1m]',    // Nexus Quark
+  atom: 'deepseek-v4-flash[1m]',    // Nexus Atom
+  electron: 'deepseek-v4-flash[1m]',// Nexus Electron
 }
 
 function getHooksSection(): string {
@@ -693,7 +693,7 @@ export async function computeSimpleEnvInfo(
     knowledgeCutoffMessage,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `The most recent Claude model family is Claude 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable Claude models.`,
+      : `Nexus Code runs three model roles — Nexus Quark: deep reasoning engine for the most challenging analysis, Nexus Atom: balanced daily engine for everyday coding tasks, and Nexus Electron: fastest engine for sub-agents and quick work. All support 1M token context windows. Default to Quark for complex work, Atom for daily coding, and Electron for sub-agents.`,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
       : `Nexus Code is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).`,

@@ -116,6 +116,11 @@ process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL =
 process.env.CLAUDE_CODE_SUBAGENT_MODEL =
   settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash[1m]'
 
+// Effort: map deepseek.effort → CLAUDE_CODE_EFFORT_LEVEL (max/medium/low)
+const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
+const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || 'medium'
+process.env.CLAUDE_CODE_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
+
 // General env defaults
 process.env.DISABLE_TELEMETRY ||= '1'
 process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'

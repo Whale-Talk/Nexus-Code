@@ -2348,6 +2348,11 @@ async function* queryModel(
       // on turn 1, then on turn 2 responds with end_turn and no content blocks.
       // That's a legitimate empty response, not an incomplete stream.
       if (!partialMessage || (newMessages.length === 0 && !stopReason)) {
+        // User pressed ESC: the relay closed the stream cleanly after our
+        // abort — this is a user interrupt, not a stream error.
+        if (signal.aborted) {
+          throw new APIUserAbortError()
+        }
         logForDebugging(
           !partialMessage
             ? 'Stream completed without receiving message_start event - triggering non-streaming fallback'

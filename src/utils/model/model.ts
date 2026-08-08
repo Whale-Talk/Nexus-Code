@@ -378,6 +378,16 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
       return 'Haiku 4.5'
     case getModelStrings().haiku35:
       return 'Haiku 3.5'
+    case 'deepseek-v4-pro':
+    case 'deepseek-reasoner':
+      return 'Nexus Quark'
+    case 'deepseek-v4-pro[1m]':
+      return 'Nexus Quark (1M context)'
+    case 'deepseek-v4-flash':
+    case 'deepseek-chat':
+      return 'Nexus Atom'
+    case 'deepseek-v4-flash[1m]':
+      return 'Nexus Atom (1M context)'
     default:
       return null
   }
@@ -455,12 +465,16 @@ export function parseUserSpecifiedModel(
 
   if (isModelAlias(modelString)) {
     switch (modelString) {
+      case 'quarkplan':
       case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
+        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+      case 'atom':
       case 'sonnet':
         return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+      case 'electron':
       case 'haiku':
         return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
+      case 'quark':
       case 'opus':
         return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
       case 'best':
