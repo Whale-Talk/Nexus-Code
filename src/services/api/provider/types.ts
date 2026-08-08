@@ -1,6 +1,6 @@
 // Provider 抽象层类型定义 — 内部模型请求/流事件/错误契约。
 //
-// 49 符号 (P0 实测: 45 直接导入 + 4 命名空间限定) × 3 语义组:
+// 50 符号 (P0 实测: 45 直接导入 + 4 命名空间限定 + 1 FetchLike) × 3 语义组:
 //   请求参数 / 流事件 / 错误语义
 //
 // 设计原则:
@@ -320,6 +320,12 @@ export interface ProviderAdapter {
   /** 非流式请求 — 返回完整消息 + 请求级元数据 */
   generateText(request: ModelRequest, signal?: AbortSignal): Promise<WithResponse<AssistantMessage>>
 }
+
+/** SDK ClientOptions['fetch'] 等价 — fetch 覆盖 (Phase 4 移除) */
+export type FetchLike = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>
 
 // ============================================================================
 // 错误语义 — 见 ./errors.ts (6 类: 4 实 + 2 占位)

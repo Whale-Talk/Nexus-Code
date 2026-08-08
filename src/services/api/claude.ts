@@ -1,24 +1,3 @@
-import type {
-  BetaContentBlock,
-  BetaContentBlockParam,
-  BetaImageBlockParam,
-  BetaJSONOutputFormat,
-  BetaMessage,
-  BetaMessageDeltaUsage,
-  BetaMessageStreamParams,
-  BetaOutputConfig,
-  BetaRawMessageStreamEvent,
-  BetaRequestDocumentBlock,
-  BetaStopReason,
-  BetaToolChoiceAuto,
-  BetaToolChoiceTool,
-  BetaToolResultBlockParam,
-  BetaToolUnion,
-  BetaUsage,
-  BetaMessageParam as MessageParam,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
@@ -104,7 +83,6 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
   : null
 
 import { feature } from 'bun:bundle'
-import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
   APIConnectionTimeoutError,
   APIError,
@@ -229,8 +207,21 @@ import { getAnthropicClient } from './client.js'
 import { adapter as anthropicProviderAdapter } from './provider/implementations/anthropic.js'
 import type {
   AssistantMessage as ProviderAssistantMessage,
+  ContentBlock,
+  ContentBlockParam,
+  DocumentContentBlock,
+  FetchLike,
+  ImageContentBlock,
+  JSONOutputFormat,
+  MessageParam,
   ModelRequest,
   StreamResponse,
+  TextContentBlock,
+  ThinkingConfigParam,
+  ToolChoice,
+  ToolResultContentBlock,
+  ToolUnion,
+  Usage,
 } from './provider/types.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
@@ -265,6 +256,38 @@ type JsonObject = { [key: string]: JsonValue }
 type JsonArray = JsonValue[]
 
 // ============================================================================
+// SDK 类型本地别名 — Phase 4 (SDK 零导入) 之前, 桥接与 SDK client 消费面
+// (对应 SDK BetaThinkingConfigParam / BetaOutputConfig / BetaMessageStreamParams)
+// ============================================================================
+
+/** thinking 配置 — provider 基础 + SDK adaptive 变体 (SDK 路径透传) */
+type WireThinkingConfig = ThinkingConfigParam | { type: 'adaptive' }
+
+/** output_config 线格式 — SDK BetaOutputConfig 本地别名 (含本地 task_budget 扩展) */
+interface OutputConfig {
+  effort?: 'low' | 'medium' | 'high' | 'max' | null
+  format?: JSONOutputFormat | null
+  task_budget?: TaskBudgetParam
+}
+
+/** 线格式 stop_reason — SDK BetaStopReason 本地别名 (provider 仅覆盖 4 类) */
+type WireStopReason =
+  | ProviderAssistantMessage['stop_reason']
+  | 'refusal'
+  | 'pause_turn'
+  | 'compaction'
+  | 'model_context_window_exceeded'
+
+/** 请求参数面 — 桥接与 SDK client 共用 (SDK BetaMessageStreamParams 语义) */
+interface RequestParams
+  extends Omit<ModelRequest, 'system' | 'thinking'> {
+  /** system 块 — provider 文本块 (可直接进 SDK BetaTextBlockParam) */
+  system?: TextContentBlock[]
+  speed?: 'standard' | 'fast' | null
+  thinking?: WireThinkingConfig
+}
+
+// ============================================================================
 // Provider 桥接 — firstParty (直连/relay) 路径经 provider 适配器发起请求
 // (Phase 3)。Bedrock/Foundry/Vertex 云路径保留 SDK client (getAnthropicClient)。
 // ============================================================================
@@ -286,7 +309,7 @@ interface ProviderStreamMetadata {
  * 1P 专属字段由 provider 层按需扩展, 此处不映射); 可选字段未定义时
  * 适配器按缺省处理 (buildCallOptions 逐项判空)。
  */
-function buildModelRequest(params: BetaMessageStreamParams): ModelRequest {
+function buildModelRequest(params: RequestParams): ModelRequest {
   const system: ModelRequest['system'] = Array.isArray(params.system)
     ? (params.system as unknown as ModelRequest['system'])
     : typeof params.system === 'string'
@@ -312,7 +335,7 @@ function buildModelRequest(params: BetaMessageStreamParams): ModelRequest {
  * 已随响应头 resolve — 模拟 SDK .withResponse() 在返回流之前等待响应头的语义。
  */
 async function createProviderStream(
-  params: BetaMessageStreamParams,
+  params: RequestParams,
   opts: { signal?: AbortSignal },
 ): Promise<ProviderStreamResult> {
   const stream = await anthropicProviderAdapter.streamText(
@@ -364,11 +387,11 @@ async function createProviderStream(
 
 /** 流式请求桥接 — 云路径 (Bedrock/Foundry/Vertex) 保留 SDK client */
 async function createSdkStream(
-  params: BetaMessageStreamParams,
+  params: RequestParams,
   opts: {
     signal: AbortSignal
     model: string
-    fetchOverride?: ClientOptions['fetch']
+    fetchOverride?: FetchLike
     source?: string
   },
 ): Promise<ProviderStreamResult> {
@@ -382,8 +405,12 @@ async function createSdkStream(
   // BetaMessageStream calls partialParse() on every input_json_delta, which we don't need
   // since we handle tool input accumulation ourselves
   // biome-ignore lint/plugin: main conversation loop handles attribution separately
+  // SDK 边界: provider RequestParams → SDK create 请求体 (Phase 4 移除)
+  type SdkCreateBody = Parameters<typeof anthropic.beta.messages.create>[0]
   const result = await anthropic.beta.messages
-    .create({ ...params, stream: true }, { signal: opts.signal })
+    .create({ ...params, stream: true } as unknown as SdkCreateBody, {
+      signal: opts.signal,
+    })
     .withResponse()
   const stream = result.data as unknown as StreamResponse
   return {
@@ -396,7 +423,7 @@ async function createSdkStream(
 
 /** 非流式请求桥接 — provider 适配器 generateText */
 async function createProviderRequest(
-  params: BetaMessageStreamParams,
+  params: RequestParams,
   opts: { signal: AbortSignal },
 ): Promise<ProviderAssistantMessage> {
   const result = await anthropicProviderAdapter.generateText(
@@ -411,15 +438,15 @@ async function createProviderRequest(
 
 /** 非流式请求桥接 — 云路径保留 SDK client */
 async function createSdkRequest(
-  params: BetaMessageStreamParams,
+  params: RequestParams,
   opts: {
     signal: AbortSignal
     timeout: number
     model: string
-    fetchOverride?: ClientOptions['fetch']
+    fetchOverride?: FetchLike
     source?: string
   },
-): Promise<BetaMessage> {
+): Promise<ProviderAssistantMessage> {
   const anthropic = await getAnthropicClient({
     maxRetries: 0,
     model: opts.model,
@@ -427,14 +454,15 @@ async function createSdkRequest(
     source: opts.source,
   })
   // biome-ignore lint/plugin: non-streaming API call
-  // params 为流/非流联合类型, 强制窄化到非流重载 (运行时不含 stream 字段)
+  // SDK 边界: provider RequestParams → SDK create 请求体 (Phase 4 移除)
+  type SdkCreateBody = Parameters<typeof anthropic.beta.messages.create>[0]
   return (await anthropic.beta.messages.create(
     {
       ...params,
       model: normalizeModelStringForAPI(params.model),
-    },
+    } as unknown as SdkCreateBody,
     { signal: opts.signal, timeout: opts.timeout },
-  )) as BetaMessage
+  )) as ProviderAssistantMessage
 }
 
 /**
@@ -615,7 +643,7 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
  */
 function configureEffortParams(
   effortValue: EffortValue | undefined,
-  outputConfig: BetaOutputConfig,
+  outputConfig: OutputConfig,
   extraBodyParams: Record<string, unknown>,
   betas: string[],
   model: string,
@@ -654,7 +682,7 @@ type TaskBudgetParam = {
 
 export function configureTaskBudgetParams(
   taskBudget: Options['taskBudget'],
-  outputConfig: BetaOutputConfig & { task_budget?: TaskBudgetParam },
+  outputConfig: OutputConfig,
   betas: string[],
 ): void {
   if (
@@ -852,9 +880,9 @@ export function assistantMessageToMessageParam(
 export type Options = {
   getToolPermissionContext: () => Promise<ToolPermissionContext>
   model: string
-  toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
+  toolChoice?: ToolChoice | undefined
   isNonInteractiveSession: boolean
-  extraToolSchemas?: BetaToolUnion[]
+  extraToolSchemas?: ToolUnion[]
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
@@ -862,7 +890,7 @@ export type Options = {
   agents: AgentDefinition[]
   allowedAgentTypes?: string[]
   hasAppendSystemPrompt: boolean
-  fetchOverride?: ClientOptions['fetch']
+  fetchOverride?: FetchLike
   enablePromptCaching?: boolean
   skipCacheWrite?: boolean
   temperatureOverride?: number
@@ -871,7 +899,7 @@ export type Options = {
   hasPendingMcpServers?: boolean
   queryTracking?: QueryChainTracking
   agentId?: AgentId // Only set for subagents
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: JSONOutputFormat
   fastMode?: boolean
   advisorModel?: string
   addNotification?: (notif: Notification) => void
@@ -989,7 +1017,7 @@ function getNonstreamingFallbackTimeoutMs(): number {
 /**
  * Helper generator for non-streaming API requests.
  * Encapsulates the common pattern of creating a withRetry generator,
- * iterating to yield system messages, and returning the final BetaMessage.
+ * iterating to yield system messages, and returning the final assistant message.
  */
 export async function* executeNonStreamingRequest(
   clientOptions: {
@@ -1006,7 +1034,7 @@ export async function* executeNonStreamingRequest(
     initialConsecutive529Errors?: number
     querySource?: QuerySource
   },
-  paramsFromContext: (context: RetryContext) => BetaMessageStreamParams,
+  paramsFromContext: (context: RetryContext) => RequestParams,
   onAttempt: (attempt: number, start: number, maxOutputTokens: number) => void,
   captureRequest: (params: ModelRequest) => void,
   /**
@@ -1014,7 +1042,7 @@ export async function* executeNonStreamingRequest(
    * from. Emitted in tengu_nonstreaming_fallback_error for funnel correlation.
    */
   originatingRequestId?: string | null,
-): AsyncGenerator<SystemAPIErrorMessage, BetaMessage> {
+): AsyncGenerator<SystemAPIErrorMessage, ProviderAssistantMessage> {
   const fallbackTimeoutMs = getNonstreamingFallbackTimeoutMs()
   const generator = withRetry(
     async () => anthropicProviderAdapter,
@@ -1089,7 +1117,7 @@ export async function* executeNonStreamingRequest(
     }
   } while (!e.done)
 
-  return e.value as BetaMessage
+  return e.value as ProviderAssistantMessage
 }
 
 /**
@@ -1114,14 +1142,14 @@ function getPreviousRequestIdFromMessages(
 }
 
 function isMedia(
-  block: BetaContentBlockParam,
-): block is BetaImageBlockParam | BetaRequestDocumentBlock {
+  block: ContentBlockParam,
+): block is ImageContentBlock | DocumentContentBlock {
   return block.type === 'image' || block.type === 'document'
 }
 
 function isToolResult(
-  block: BetaContentBlockParam,
-): block is BetaToolResultBlockParam {
+  block: ContentBlockParam,
+): block is ToolResultContentBlock {
   return block.type === 'tool_result'
 }
 
@@ -1567,7 +1595,7 @@ async function* queryModel(
       type: 'advisor_20260301',
       name: 'advisor',
       model: advisorModel,
-    } as unknown as BetaToolUnion)
+    } as unknown as ToolUnion)
   }
   const allTools = [...toolSchemas, ...extraToolSchemas]
 
@@ -1682,7 +1710,7 @@ async function* queryModel(
   let start = Date.now()
   let attemptNumber = 0
   const attemptStartTimes: number[] = []
-  let stream: Stream<BetaRawMessageStreamEvent> | undefined = undefined
+  let stream: StreamResponse | undefined = undefined
   let streamRequestId: string | null | undefined = undefined
   // provider 路径不再发送 x-client-request-id 头 (适配器层), 保留字段仅为 logAPIError 遥测
   let clientRequestId: string | undefined = undefined
@@ -1738,8 +1766,8 @@ async function* queryModel(
         : []
     const extraBodyParams = getExtraBodyParams(bedrockBetas)
 
-    const outputConfig: BetaOutputConfig = {
-      ...((extraBodyParams.output_config as BetaOutputConfig) ?? {}),
+    const outputConfig: OutputConfig = {
+      ...((extraBodyParams.output_config as OutputConfig) ?? {}),
     }
 
     configureEffortParams(
@@ -1752,14 +1780,14 @@ async function* queryModel(
 
     configureTaskBudgetParams(
       options.taskBudget,
-      outputConfig as BetaOutputConfig & { task_budget?: TaskBudgetParam },
+      outputConfig as OutputConfig,
       betasParams,
     )
 
     // Merge outputFormat into extraBodyParams.output_config alongside effort
     // Requires structured-outputs beta header per SDK (see parse() in messages.mjs)
     if (options.outputFormat && !('format' in outputConfig)) {
-      outputConfig.format = options.outputFormat as BetaJSONOutputFormat
+      outputConfig.format = options.outputFormat as JSONOutputFormat
       // Add beta header if not already present and provider supports it
       if (
         modelSupportsStructuredOutputs(options.model) &&
@@ -1778,7 +1806,7 @@ async function* queryModel(
     const hasThinking =
       thinkingConfig.type !== 'disabled' &&
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING)
-    let thinking: BetaMessageStreamParams['thinking'] | undefined = undefined
+    let thinking: WireThinkingConfig | undefined = undefined
 
     // IMPORTANT: Do not change the adaptive-vs-budget thinking selection below
     // without notifying the model launch DRI and research. This is a sensitive
@@ -1792,7 +1820,7 @@ async function* queryModel(
         // thinking without a budget.
         thinking = {
           type: 'adaptive',
-        } satisfies BetaMessageStreamParams['thinking']
+        } satisfies WireThinkingConfig
       } else {
         // For models that do not support adaptive thinking, use the default
         // thinking budget unless explicitly specified.
@@ -1807,7 +1835,7 @@ async function* queryModel(
         thinking = {
           budget_tokens: thinkingBudget,
           type: 'enabled',
-        } satisfies BetaMessageStreamParams['thinking']
+        } satisfies WireThinkingConfig
       }
     }
 
@@ -1824,7 +1852,7 @@ async function* queryModel(
     // Fast mode: header is latched session-stable (cache-safe), but
     // `speed='fast'` stays dynamic so cooldown still suppresses the actual
     // fast-mode request without changing the cache key.
-    let speed: BetaMessageStreamParams['speed']
+    let speed: RequestParams['speed']
     const isFastModeForRetry =
       isFastModeEnabled() &&
       isFastModeAvailable() &&
@@ -1942,11 +1970,11 @@ async function* queryModel(
 
   const newMessages: AssistantMessage[] = []
   let ttftMs = 0
-  let partialMessage: BetaMessage | undefined = undefined
-  const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
+  let partialMessage: ProviderAssistantMessage | undefined = undefined
+  const contentBlocks: (ContentBlock | ConnectorTextBlock)[] = []
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
-  let stopReason: BetaStopReason | null = null
+  let stopReason: WireStopReason = null
   let didFallBackToNonStreaming = false
   let fallbackMessage: AssistantMessage | undefined
   let maxOutputTokens = 0
@@ -2021,7 +2049,7 @@ async function* queryModel(
         yield e.value
       }
     } while (!e.done)
-    stream = e.value as unknown as Stream<BetaRawMessageStreamEvent>
+    stream = e.value as unknown as StreamResponse
 
     // reset state
     newMessages.length = 0
@@ -2360,7 +2388,7 @@ async function* queryModel(
               message: {
                 ...partialMessage,
                 content: normalizeContentFromAPI(
-                  [contentBlock] as BetaContentBlock[],
+                  [contentBlock] as ContentBlock[],
                   tools,
                   options.agentId,
                 ),
@@ -2406,7 +2434,8 @@ async function* queryModel(
             // replacement ({ ...lastMsg.message, usage }) would disconnect
             // the queued reference; direct mutation ensures the transcript
             // captures the final values.
-            stopReason = part.delta.stop_reason
+            // provider 事件仅覆盖 4 类 stop_reason — 拓宽回线格式联合 (SDK 语义)
+            stopReason = part.delta.stop_reason as WireStopReason
 
             const lastMsg = newMessages.at(-1)
             if (lastMsg) {
@@ -2989,9 +3018,11 @@ async function* queryModel(
     // message_delta handler before any yield. Fallback pushes to newMessages
     // then yields, so tracking must be here to survive .return() at the yield.
     if (fallbackMessage) {
-      const fallbackUsage = fallbackMessage.message.usage
+      // message.js 松散类型下 usage/stop_reason 为 unknown — 实际为 provider 线格式
+      const fallbackUsage = fallbackMessage.message.usage as Usage
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
-      stopReason = fallbackMessage.message.stop_reason
+      stopReason =
+        fallbackMessage.message.stop_reason as ProviderAssistantMessage['stop_reason']
       const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage)
       costUSD += addToTotalSessionCost(
         fallbackCost,
@@ -3067,7 +3098,7 @@ async function* queryModel(
  * @internal Exported for testing
  */
 export function cleanupStream(
-  stream: Stream<BetaRawMessageStreamEvent> | undefined,
+  stream: StreamResponse | undefined,
 ): void {
   if (!stream) {
     return
@@ -3094,7 +3125,7 @@ export function cleanupStream(
  */
 export function updateUsage(
   usage: Readonly<NonNullableUsage>,
-  partUsage: BetaMessageDeltaUsage | undefined,
+  partUsage: Usage | undefined,
 ): NonNullableUsage {
   if (!partUsage) {
     return { ...usage }
@@ -3125,12 +3156,12 @@ export function updateUsage(
     },
     service_tier: usage.service_tier,
     cache_creation: {
-      // SDK type BetaMessageDeltaUsage is missing cache_creation, but it's real!
+      // 旧 SDK BetaMessageDeltaUsage 缺 cache_creation, provider Usage 已覆盖
       ephemeral_1h_input_tokens:
-        (partUsage as BetaUsage).cache_creation?.ephemeral_1h_input_tokens ??
+        partUsage.cache_creation?.ephemeral_1h_input_tokens ??
         usage.cache_creation.ephemeral_1h_input_tokens,
       ephemeral_5m_input_tokens:
-        (partUsage as BetaUsage).cache_creation?.ephemeral_5m_input_tokens ??
+        partUsage.cache_creation?.ephemeral_5m_input_tokens ??
         usage.cache_creation.ephemeral_5m_input_tokens,
     },
     // cache_deleted_input_tokens: returned by the API when cache editing
@@ -3153,7 +3184,7 @@ export function updateUsage(
       : {}),
     inference_geo: usage.inference_geo,
     iterations: partUsage.iterations ?? usage.iterations,
-    speed: (partUsage as BetaUsage).speed ?? usage.speed,
+    speed: partUsage.speed ?? usage.speed,
   }
 }
 
@@ -3388,7 +3419,7 @@ export function buildSystemPromptBlocks(
     skipGlobalCacheForSystemPrompt?: boolean
     querySource?: QuerySource
   },
-): TextBlockParam[] {
+): TextContentBlock[] {
   // IMPORTANT: Do not add any more blocks for caching or you will get a 400
   return splitSysPromptPrefix(systemPrompt, {
     skipGlobalCacheForSystemPrompt: options?.skipGlobalCacheForSystemPrompt,
@@ -3418,7 +3449,7 @@ export async function queryHaiku({
 }: {
   systemPrompt: SystemPrompt
   userPrompt: string
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: JSONOutputFormat
   signal: AbortSignal
   options: HaikuOptions
 }): Promise<AssistantMessage> {
@@ -3477,7 +3508,7 @@ export async function queryWithModel({
 }: {
   systemPrompt: SystemPrompt
   userPrompt: string
-  outputFormat?: BetaJSONOutputFormat
+  outputFormat?: JSONOutputFormat
   signal: AbortSignal
   options: QueryWithModelOptions
 }): Promise<AssistantMessage> {
@@ -3535,7 +3566,7 @@ export const MAX_NON_STREAMING_TOKENS = 64_000
 export function adjustParamsForNonStreaming<
   T extends {
     max_tokens: number
-    thinking?: BetaMessageStreamParams['thinking']
+    thinking?: WireThinkingConfig
   },
 >(params: T, maxTokensCap: number): T {
   const cappedMaxTokens = Math.min(params.max_tokens, maxTokensCap)
