@@ -36,7 +36,8 @@ export function AssistantThinkingMessage(t0) {
   if (hideInTranscript) {
     return null;
   }
-  const shouldShowFullThinking = isTranscriptMode || verbose;
+  // Nexus: show full thinking while streaming (isLastThinking), collapse when done
+  const shouldShowFullThinking = isTranscriptMode || verbose || t0.isLastThinking;
   if (!shouldShowFullThinking) {
     const t4 = addMargin ? 1 : 0;
     let t5;
