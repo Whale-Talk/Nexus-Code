@@ -9,10 +9,9 @@ import type {
   ThinkingBlockParam,
   ToolResultContentBlock,
   ToolUseContentBlock,
+  ContentBlock,
   AssistantMessage as BetaMessage,
 } from '../services/api/provider/types.js'
-import type { ContentBlock } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { APIError } from '../services/api/provider/errors.js'
 
 import { randomUUID, type UUID } from 'crypto'
@@ -370,7 +369,7 @@ function baseCreateAssistantMessage({
     speed: null,
   },
 }: {
-  content: BetaContentBlock[]
+  content: ContentBlock[]
   isApiErrorMessage?: boolean
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError
@@ -408,7 +407,7 @@ export function createAssistantMessage({
   usage,
   isVirtual,
 }: {
-  content: string | BetaContentBlock[]
+  content: string | ContentBlock[]
   usage?: Usage
   isVirtual?: true
 }): AssistantMessage {
@@ -419,7 +418,7 @@ export function createAssistantMessage({
             {
               type: 'text' as const,
               text: content === '' ? NO_CONTENT_MESSAGE : content,
-            } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
+            } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
           ]
         : content,
     usage,
@@ -443,7 +442,7 @@ export function createAssistantAPIErrorMessage({
       {
         type: 'text' as const,
         text: content === '' ? NO_CONTENT_MESSAGE : content,
-      } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
+      } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
     ],
     isApiErrorMessage: true,
     apiError,
@@ -2644,10 +2643,10 @@ export function mergeUserContentBlocks(
 // Sometimes the API returns empty messages (eg. "\n\n"). We need to filter these out,
 // otherwise they will give an API error when we send them to the API next time we call query().
 export function normalizeContentFromAPI(
-  contentBlocks: BetaContentBlock[],
+  contentBlocks: ContentBlock[],
   tools: Tools,
   agentId?: AgentId,
-): BetaContentBlock[] {
+): ContentBlock[] {
   if (!contentBlocks) {
     return []
   }
@@ -4763,7 +4762,7 @@ type ThinkingBlockType =
   | RedactedThinkingBlock
 
 function isThinkingBlock(
-  block: ContentBlockParam | ContentBlock | BetaContentBlock,
+  block: ContentBlockParam | ContentBlock,
 ): block is ThinkingBlockType {
   return block.type === 'thinking' || block.type === 'redacted_thinking'
 }

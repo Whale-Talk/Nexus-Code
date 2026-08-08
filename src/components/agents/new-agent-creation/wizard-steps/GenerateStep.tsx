@@ -1,4 +1,4 @@
-import { APIUserAbortError } from '@anthropic-ai/sdk';
+import { APIUserAbortError } from '../../../../services/api/provider/errors.js';
 import React, { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useMainLoopModel } from '../../../../hooks/useMainLoopModel.js';
 import { Box, Text } from '../../../../ink.js';

@@ -1,7 +1,4 @@
-import type {
-  BetaContentBlock,
-  BetaWebSearchTool20250305,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { TextContentBlock } from '../../services/api/provider/types.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
@@ -73,7 +70,29 @@ export type { WebSearchProgress } from '../../types/tools.js'
 
 import type { WebSearchProgress } from '../../types/tools.js'
 
-function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
+// P4 边界: SDK BetaWebSearchTool20250305 / BetaContentBlock 的搜索响应消费面 —
+// provider ContentBlock 的 web_search_tool_result 仅声明 type 判别, 完整字段面
+// (tool_use_id / content hits) 在本工具消费侧收敛为本地类型。
+type WebSearchToolSchema20250305 = {
+  type: 'web_search_20250305'
+  name: 'web_search'
+  allowed_domains?: string[]
+  blocked_domains?: string[]
+  max_uses?: number
+}
+
+type WebSearchResponseBlock =
+  | TextContentBlock
+  | { type: 'server_tool_use' }
+  | {
+      type: 'web_search_tool_result'
+      tool_use_id: string
+      content:
+        | Array<{ title: string; url: string }>
+        | { error_code: string }
+    }
+
+function makeToolSchema(input: Input): WebSearchToolSchema20250305 {
   return {
     type: 'web_search_20250305',
     name: 'web_search',
@@ -84,7 +103,7 @@ function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
 }
 
 function makeOutputFromSearchResponse(
-  result: BetaContentBlock[],
+  result: WebSearchResponseBlock[],
   query: string,
   durationSeconds: number,
 ): Output {
@@ -281,7 +300,7 @@ export const WebSearchTool = buildTool({
         toolChoice: useHaiku ? { type: 'tool', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-        extraToolSchemas: [toolSchema],
+        extraToolSchemas: [toolSchema] as any,
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],
@@ -290,7 +309,7 @@ export const WebSearchTool = buildTool({
       },
     })
 
-    const allContentBlocks: BetaContentBlock[] = []
+    const allContentBlocks: WebSearchResponseBlock[] = []
     let currentToolUseId = null
     let currentToolUseJson = ''
     let progressCounter = 0

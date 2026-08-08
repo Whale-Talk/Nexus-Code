@@ -1,5 +1,5 @@
 import { APIError } from '@anthropic-ai/sdk'
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { MessageParam } from './api/provider/types.js'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { isClaudeAISubscriber } from '../utils/auth.js'
@@ -210,7 +210,10 @@ async function makeTestQuery() {
     .create({
       model,
       max_tokens: 1,
-      messages,
+      // provider MessageParam → SDK BetaMessageParam 仅差 document source 面, 收敛断言 (Phase 3/4 移除)
+      messages: messages as unknown as Parameters<
+        typeof anthropic.beta.messages.create
+      >[0]['messages'],
       metadata: getAPIMetadata(),
       ...(betas.length > 0 ? { betas } : {}),
     })

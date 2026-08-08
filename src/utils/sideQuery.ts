@@ -184,7 +184,10 @@ export async function sideQuery(opts: SideQueryOptions): Promise<AssistantMessag
       model: normalizedModel,
       max_tokens,
       system: systemBlocks,
-      messages,
+      // provider MessageParam → SDK BetaMessageParam 仅差 document source 面, 收敛断言 (Phase 3/4 移除)
+      messages: messages as unknown as Parameters<
+        typeof client.beta.messages.create
+      >[0]['messages'],
       ...(tools && { tools }),
       ...(tool_choice && { tool_choice }),
       ...(output_format && { output_config: { format: output_format } }),

@@ -1,8 +1,7 @@
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   ContentBlock,
   ContentBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../services/api/provider/types.js'
 import { roughTokenCountEstimation as countTokens } from '../services/tokenEstimation.js'
 import type {
   AssistantMessage,
@@ -97,7 +96,7 @@ export function analyzeContext(messages: Message[]): TokenStats {
 }
 
 function processBlock(
-  block: ContentBlockParam | ContentBlock | BetaContentBlock,
+  block: ContentBlockParam | ContentBlock,
   message: UserMessage | AssistantMessage,
   stats: TokenStats,
   toolIds: Map<string, string>,
@@ -169,8 +168,6 @@ function processBlock(
     case 'image':
     case 'server_tool_use':
     case 'web_search_tool_result':
-    case 'search_result':
-    case 'document':
     case 'thinking':
     case 'redacted_thinking':
     case 'code_execution_tool_result':
@@ -182,6 +179,9 @@ function processBlock(
     case 'text_editor_code_execution_tool_result':
     case 'tool_search_tool_result':
     case 'compaction':
+    // provider ContentBlock 联合不含的 SDK 语义块 (document/search_result 等)
+    // 云路径响应仍可能携带 — default 兜底保持计入 other
+    default:
       // Don't care about these for now..
       stats['other'] += tokens
       break
