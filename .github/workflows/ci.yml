@@ -28,8 +28,9 @@ jobs:
           fetch-depth: 0
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v3.0.0
-        with:
-          fail: true
+        env:
+          # v3 breaking change: PR 扫描需要显式 token；默认发现泄露即失败
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # L1 — 安装健康 + 导入图冒烟 + 锁文件漂移
   install:
