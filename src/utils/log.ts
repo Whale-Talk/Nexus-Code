@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ModelRequest } from '../services/api/provider/types.js'
 import { readdir, readFile, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
@@ -329,7 +329,7 @@ export function logMCPDebug(serverName: string, message: string): void {
  * Captures the last API request for inclusion in bug reports.
  */
 export function captureAPIRequest(
-  params: BetaMessageStreamParams,
+  params: ModelRequest,
   querySource?: QuerySource,
 ): void {
   // startsWith, not exact match — users with non-default output styles get

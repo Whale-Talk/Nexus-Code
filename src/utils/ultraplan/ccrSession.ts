@@ -4,10 +4,8 @@
 // Plan mode is set via set_permission_mode control_request in
 // teleportToRemote's CreateSession events array.
 
-import type {
-  ToolResultBlockParam,
-  ToolUseBlock,
-} from '@anthropic-ai/sdk/resources'
+import type { ToolResultContentBlock, ToolUseContentBlock } from '../../services/api/provider/types.js'
+
 import type { SDKMessage } from '../../entrypoints/agentSdkTypes.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../../tools/ExitPlanModeTool/constants.js'
 import { logForDebugging } from '../debug.js'
@@ -79,7 +77,7 @@ export type UltraplanPhase = 'running' | 'needs_input' | 'plan_ready'
  */
 export class ExitPlanModeScanner {
   private exitPlanCalls: string[] = []
-  private results = new Map<string, ToolResultBlockParam>()
+  private results = new Map<string, ToolResultContentBlock>()
   private rejectedIds = new Set<string>()
   private terminated: { subtype: string } | null = null
   private rescanAfterRejection = false
@@ -103,7 +101,7 @@ export class ExitPlanModeScanner {
       if (m.type === 'assistant') {
         for (const block of m.message.content) {
           if (block.type !== 'tool_use') continue
-          const tu = block as ToolUseBlock
+          const tu = block as ToolUseContentBlock
           if (tu.name === EXIT_PLAN_MODE_V2_TOOL_NAME) {
             this.exitPlanCalls.push(tu.id)
           }
@@ -307,7 +305,7 @@ export async function pollForApprovedExitPlanMode(
 
 // tool_result content may be string or [{type:'text',text}] depending on
 // threadstore encoding.
-function contentToText(content: ToolResultBlockParam['content']): string {
+function contentToText(content: ToolResultContentBlock['content']): string {
   return typeof content === 'string'
     ? content
     : Array.isArray(content)
@@ -319,7 +317,7 @@ function contentToText(content: ToolResultBlockParam['content']): string {
 // Returns null when the sentinel is absent — callers treat null as a normal
 // user rejection (scanner falls through to { kind: 'rejected' }).
 function extractTeleportPlan(
-  content: ToolResultBlockParam['content'],
+  content: ToolResultContentBlock['content'],
 ): string | null {
   const text = contentToText(content)
   const marker = `${ULTRAPLAN_TELEPORT_SENTINEL}\n`
@@ -330,7 +328,7 @@ function extractTeleportPlan(
 
 // Plan is echoed in tool_result content as "## Approved Plan:\n<text>" or
 // "## Approved Plan (edited by user):\n<text>" (ExitPlanModeV2Tool).
-function extractApprovedPlan(content: ToolResultBlockParam['content']): string {
+function extractApprovedPlan(content: ToolResultContentBlock['content']): string {
   const text = contentToText(content)
   // Try both markers — edited plans use a different label.
   const markers = [

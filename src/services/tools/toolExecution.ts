@@ -1,9 +1,6 @@
 import { feature } from 'bun:bundle'
-import type {
-  ContentBlockParam,
-  ToolResultBlockParam,
-  ToolUseBlock,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ContentBlockParam, ToolResultContentBlock, ToolUseContentBlock } from '../api/provider/types.js'
+
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -335,7 +332,7 @@ function getMcpServerBaseUrlFromToolName(
 }
 
 export async function* runToolUse(
-  toolUse: ToolUseBlock,
+  toolUse: ToolUseContentBlock,
   assistantMessage: AssistantMessage,
   canUseTool: CanUseToolFn,
   toolUseContext: ToolUseContext,
@@ -1402,7 +1399,7 @@ async function checkPermissionsAndCallTool(
 
     async function addToolResult(
       toolUseResult: unknown,
-      preMappedBlock?: ToolResultBlockParam,
+      preMappedBlock?: ToolResultContentBlock,
     ) {
       // Use the pre-mapped block when available (non-MCP tools where hooks
       // don't modify the output), otherwise map from scratch.

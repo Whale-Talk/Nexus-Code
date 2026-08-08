@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
+import type { ToolResultContentBlock } from '../services/api/provider/types.js';
 import * as React from 'react';
 import { stripUnderlineAnsi } from 'src/components/shell/OutputLine.js';
 import { extractTag } from 'src/utils/messages.js';
@@ -10,7 +10,7 @@ import { countCharInString } from '../utils/stringUtils.js';
 import { MessageResponse } from './MessageResponse.js';
 const MAX_RENDERED_LINES = 10;
 type Props = {
-  result: ToolResultBlockParam['content'];
+  result: ToolResultContentBlock['content'];
   verbose: boolean;
 };
 export function FallbackToolUseErrorMessage(t0) {

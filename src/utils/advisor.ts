@@ -1,4 +1,4 @@
-import type { BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { Usage } from '../services/api/provider/types.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -113,8 +113,8 @@ export function getInitialAdvisorSetting(): string | undefined {
 }
 
 export function getAdvisorUsage(
-  usage: BetaUsage,
-): Array<BetaUsage & { model: string }> {
+  usage: Usage,
+): Array<Usage & { model: string }> {
   const iterations = usage.iterations as
     | Array<{ type: string }>
     | null
@@ -124,7 +124,7 @@ export function getAdvisorUsage(
   }
   return iterations.filter(
     it => it.type === 'advisor_message',
-  ) as unknown as Array<BetaUsage & { model: string }>
+  ) as unknown as Array<Usage & { model: string }>
 }
 
 export const ADVISOR_TOOL_INSTRUCTIONS = `# Advisor Tool

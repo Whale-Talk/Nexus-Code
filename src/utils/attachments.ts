@@ -67,9 +67,10 @@ import { getSettings_DEPRECATED } from './settings/settings.js'
 import { getSnippetForTwoFileDiff } from 'src/tools/FileEditTool/utils.js'
 import type {
   ContentBlockParam,
-  ImageBlockParam,
+  ImageContentBlock,
   Base64ImageSource,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+} from '../services/api/provider/types.js'
+
 import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
@@ -1102,7 +1103,7 @@ export function getAgentPendingMessageAttachments(
 
 async function buildImageContentBlocks(
   pastedContents: Record<number, PastedContent> | undefined,
-): Promise<ImageBlockParam[]> {
+): Promise<ImageContentBlock[]> {
   if (!pastedContents) {
     return []
   }
@@ -1112,7 +1113,7 @@ async function buildImageContentBlocks(
   }
   const results = await Promise.all(
     imageContents.map(async img => {
-      const imageBlock: ImageBlockParam = {
+      const imageBlock: ImageContentBlock = {
         type: 'image',
         source: {
           type: 'base64',
@@ -1748,7 +1749,6 @@ export function memoryFilesToAttachments(
         limit: undefined,
         isPartialView: memoryFile.contentDiffersFromDisk,
       })
-
 
       // Fire InstructionsLoaded hook for audit/observability (fire-and-forget)
       if (shouldFireHook && isInstructionsMemoryType(memoryFile.type)) {
@@ -2501,7 +2501,6 @@ export function collectRecentSuccessfulTools(
   }
   return [...succeeded].filter(t => !failed.has(t))
 }
-
 
 /**
  * Filters prefetched memory attachments to exclude memories the model already
@@ -3981,7 +3980,6 @@ export function getContextEfficiencyAttachment(
 
   return [{ type: 'context_efficiency' }]
 }
-
 
 function isFileReadDenied(
   filePath: string,

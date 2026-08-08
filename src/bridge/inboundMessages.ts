@@ -1,8 +1,9 @@
 import type {
   Base64ImageSource,
   ContentBlockParam,
-  ImageBlockParam,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+  ImageContentBlock,
+} from '../services/api/provider/types.js'
+
 import type { UUID } from 'crypto'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import { detectImageFormatFromBase64 } from '../utils/imageResizer.js'
@@ -74,7 +75,7 @@ export function normalizeImageBlocks(
 
 function isMalformedBase64Image(
   block: ContentBlockParam,
-): block is ImageBlockParam & { source: Base64ImageSource } {
+): block is ImageContentBlock & { source: Base64ImageSource } {
   if (block.type !== 'image' || block.source?.type !== 'base64') return false
   return !(block.source as unknown as Record<string, unknown>).media_type
 }

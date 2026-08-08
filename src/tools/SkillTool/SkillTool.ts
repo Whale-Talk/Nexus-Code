@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { dirname } from 'path'
 import { getProjectRoot } from 'src/bootstrap/state.js'
@@ -843,7 +843,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
   mapToolResultToToolResultBlockParam(
     result: Output,
     toolUseID: string,
-  ): ToolResultBlockParam {
+  ): ToolResultContentBlock {
     // Handle forked skill result
     if ('status' in result && result.status === 'forked') {
       return {

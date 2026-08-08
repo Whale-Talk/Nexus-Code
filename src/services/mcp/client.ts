@@ -2083,7 +2083,7 @@ export const fetchCommandsForClient = memoizeWithLRU(
                   transformResultContent(message.content, connectedClient.name),
                 ),
               )
-              return transformed.flat()
+              return transformed.flat() as unknown as import('../../services/api/provider/types.js').ContentBlockParam[]
             } catch (error) {
               logMCPError(
                 client.name,

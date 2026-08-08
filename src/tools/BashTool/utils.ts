@@ -1,8 +1,9 @@
 import type {
   Base64ImageSource,
   ContentBlockParam,
-  ToolResultBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+  ToolResultContentBlock,
+} from '../../services/api/provider/types.js'
+
 import { readFile, stat } from 'fs/promises'
 import { getOriginalCwd } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
@@ -71,7 +72,7 @@ export function parseDataUri(
 export function buildImageToolResult(
   stdout: string,
   toolUseID: string,
-): ToolResultBlockParam | null {
+): ToolResultContentBlock | null {
   const parsed = parseDataUri(stdout)
   if (!parsed) return null
   return {

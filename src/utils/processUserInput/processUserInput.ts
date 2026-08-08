@@ -2,8 +2,9 @@ import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
   ContentBlockParam,
-  ImageBlockParam,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+  ImageContentBlock,
+} from '../../services/api/provider/types.js'
+
 import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
 import { logEvent } from 'src/services/analytics/index.js'
@@ -365,7 +366,7 @@ async function processUserInputBase(
   queryCheckpoint('query_pasted_image_processing_start')
   const imageProcessingResults = await Promise.all(
     imageContents.map(async pastedImage => {
-      const imageBlock: ImageBlockParam = {
+      const imageBlock: ImageContentBlock = {
         type: 'image',
         source: {
           type: 'base64',

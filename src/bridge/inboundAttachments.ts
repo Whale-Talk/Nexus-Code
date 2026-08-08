@@ -10,7 +10,7 @@
  * skips that attachment. The message still reaches Nexus, just without @path.
  */
 
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '../services/api/provider/types.js'
 import axios from 'axios'
 import { randomUUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'

@@ -1,7 +1,5 @@
-import type {
-  Base64ImageSource,
-  ImageBlockParam,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { Base64ImageSource, ImageContentBlock } from '../services/api/provider/types.js'
+
 import {
   API_IMAGE_MAX_BASE64_SIZE,
   IMAGE_MAX_HEIGHT,
@@ -433,17 +431,17 @@ export async function maybeResizeAndDownsampleImageBuffer(
 }
 
 export interface ImageBlockWithDimensions {
-  block: ImageBlockParam
+  block: ImageContentBlock
   dimensions?: ImageDimensions
 }
 
 /**
  * Resizes an image content block if needed
- * Takes an image ImageBlockParam and returns a resized version if necessary
+ * Takes an image ImageContentBlock and returns a resized version if necessary
  * Also returns dimension information for coordinate mapping
  */
 export async function maybeResizeAndDownsampleImageBlock(
-  imageBlock: ImageBlockParam,
+  imageBlock: ImageContentBlock,
 ): Promise<ImageBlockWithDimensions> {
   // Only process base64 images
   if (imageBlock.source.type !== 'base64') {
@@ -595,12 +593,12 @@ export async function compressImageBufferWithTokenLimit(
 
 /**
  * Compresses an image block to fit within a maximum byte size.
- * Wrapper around compressImageBuffer for ImageBlockParam.
+ * Wrapper around compressImageBuffer for ImageContentBlock.
  */
 export async function compressImageBlock(
-  imageBlock: ImageBlockParam,
+  imageBlock: ImageContentBlock,
   maxBytes: number = IMAGE_TARGET_RAW_SIZE,
-): Promise<ImageBlockParam> {
+): Promise<ImageContentBlock> {
   // Only process base64 images
   if (imageBlock.source.type !== 'base64') {
     return imageBlock

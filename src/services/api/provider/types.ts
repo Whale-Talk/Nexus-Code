@@ -22,7 +22,7 @@ export interface TextContentBlock {
 /** 图片来源 (Base64 image source) */
 export interface Base64ImageSource {
   type: 'base64'
-  media_type: string
+  media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
   data: string
 }
 
@@ -30,6 +30,13 @@ export interface Base64ImageSource {
 export interface URLImageSource {
   type: 'url'
   url: string
+}
+
+/** PDF 图片来源 (Base64PDFSource 语义 — FileReadTool 文档块消费) */
+export interface Base64PDFSource {
+  type: 'base64'
+  media_type: 'application/pdf'
+  data: string
 }
 
 export type ImageSource = Base64ImageSource | URLImageSource
@@ -53,7 +60,7 @@ export interface ToolResultContentBlock {
 /** 文档块 */
 export interface DocumentContentBlock {
   type: 'document'
-  source: ImageSource
+  source: ImageSource | Base64PDFSource
   cache_control?: { type: 'ephemeral' } | null
 }
 
@@ -69,11 +76,12 @@ export interface MessageParam {
   content: string | ContentBlockParam[]
 }
 
-/** 工具定义 — 输入 schema */
+/** 工具定义 — 输入 schema (镜像 SDK Tool.InputSchema: 宽松 properties + 索引签名) */
 export interface ToolInputSchema {
   type: 'object'
-  properties: Record<string, unknown>
-  required?: string[]
+  properties?: unknown | null
+  required?: string[] | null
+  [k: string]: unknown
 }
 
 /** 工具定义 (Anthropic.Tool 命名空间限定, 4 文件消费) */
@@ -135,6 +143,21 @@ export interface Usage {
   output_tokens: number
   cache_creation_input_tokens?: number | null
   cache_read_input_tokens?: number | null
+  /** 服务端工具调用计数 (BetaServerToolUsage 语义) */
+  server_tool_use?: { web_search_requests?: number; web_fetch_requests?: number } | null
+  /** 计费 tier (BetaUsage.service_tier 语义) */
+  service_tier?: 'standard' | 'priority' | 'batch' | null
+  /** 推理地域 (BetaUsage.inference_geo 语义) */
+  inference_geo?: string | null
+  /** 按迭代拆分用量 (BetaIterationsUsage 语义, 消费端仅 cast 读取) */
+  iterations?: unknown[] | null
+  /** 推理速度模式 (BetaUsage.speed 语义) */
+  speed?: 'standard' | 'fast' | null
+  /** 缓存 TTL 拆分 (BetaCacheCreation 语义) */
+  cache_creation?: {
+    ephemeral_1h_input_tokens?: number
+    ephemeral_5m_input_tokens?: number
+  } | null
 }
 
 /** 文本增量 */
@@ -156,12 +179,39 @@ export interface ThinkingDelta {
   signature?: string
 }
 
+/** thinking 块 (SDK ThinkingBlock 语义, 消费: messages.ts / AssistantThinkingMessage) */
+export interface ThinkingBlock {
+  type: 'thinking'
+  thinking: string
+  signature: string
+}
+
+/** thinking 块参数 (SDK ThinkingBlockParam 语义) */
+export interface ThinkingBlockParam {
+  type: 'thinking'
+  thinking: string
+  signature: string
+}
+
+/** 脱敏 thinking 块 (SDK RedactedThinkingBlock 语义) */
+export interface RedactedThinkingBlock {
+  type: 'redacted_thinking'
+  data: string
+}
+
+/** 脱敏 thinking 块参数 (SDK RedactedThinkingBlockParam 语义) */
+export interface RedactedThinkingBlockParam {
+  type: 'redacted_thinking'
+  data: string
+}
+
 /** 内容块 (BetaContentBlock 联合类型, 8 文件) */
 export type ContentBlock =
   | TextContentBlock
   | ImageContentBlock
   | ToolUseContentBlock
-  | { type: 'thinking'; thinking: string; signature: string }
+  | ThinkingBlock
+  | RedactedThinkingBlock
 
 /** 消息 (BetaMessage, 6 文件) */
 export interface AssistantMessage {

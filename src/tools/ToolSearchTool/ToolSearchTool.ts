@@ -1,4 +1,4 @@
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js'
 import memoize from 'lodash-es/memoize.js'
 import { z } from 'zod/v4'
 import {
@@ -444,7 +444,7 @@ export const ToolSearchTool = buildTool({
   mapToolResultToToolResultBlockParam(
     content: Output,
     toolUseID: string,
-  ): ToolResultBlockParam {
+  ): ToolResultContentBlock {
     if (content.matches.length === 0) {
       let text = 'No matching deferred tools found'
       if (
@@ -466,6 +466,6 @@ export const ToolSearchTool = buildTool({
         type: 'tool_reference' as const,
         tool_name: name,
       })),
-    } as unknown as ToolResultBlockParam
+    } as unknown as ToolResultContentBlock
   },
 } satisfies ToolDef<InputSchema, Output>)

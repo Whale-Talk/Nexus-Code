@@ -1,8 +1,9 @@
 import type {
-  ImageBlockParam,
-  TextBlockParam,
-  ToolResultBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+  ImageContentBlock,
+  TextContentBlock,
+  ToolResultContentBlock,
+} from '../services/api/provider/types.js'
+
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
 import { formatOutput } from '../tools/BashTool/utils.js'
 import type {
@@ -116,7 +117,7 @@ function processCell(
   return cellData
 }
 
-function cellContentToToolResult(cell: NotebookCellSource): TextBlockParam {
+function cellContentToToolResult(cell: NotebookCellSource): TextContentBlock {
   const metadata = []
   if (cell.cellType !== 'code') {
     metadata.push(`<cell_type>${cell.cellType}</cell_type>`)
@@ -132,7 +133,7 @@ function cellContentToToolResult(cell: NotebookCellSource): TextBlockParam {
 }
 
 function cellOutputToToolResult(output: NotebookCellSourceOutput) {
-  const outputs: (TextBlockParam | ImageBlockParam)[] = []
+  const outputs: (TextContentBlock | ImageContentBlock)[] = []
   if (output.text) {
     outputs.push({
       text: `\n${output.text}`,
@@ -188,14 +189,14 @@ export async function readNotebook(
 export function mapNotebookCellsToToolResult(
   data: NotebookCellSource[],
   toolUseID: string,
-): ToolResultBlockParam {
+): ToolResultContentBlock {
   const allResults = data.flatMap(getToolResultFromCell)
 
   // Merge adjacent text blocks
   return {
     tool_use_id: toolUseID,
     type: 'tool_result' as const,
-    content: allResults.reduce<(TextBlockParam | ImageBlockParam)[]>(
+    content: allResults.reduce<(TextContentBlock | ImageContentBlock)[]>(
       (acc, curr) => {
         if (acc.length === 0) return [curr]
 

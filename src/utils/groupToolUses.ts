@@ -1,5 +1,5 @@
-import type { BetaToolUseBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs'
+import type { ToolUseContentBlock, ToolResultContentBlock } from '../services/api/provider/types.js'
+
 import type { Tools } from '../Tool.js'
 import type {
   GroupedToolUseMessage,
@@ -67,7 +67,7 @@ export function applyGrouping(
   // First pass: group tool uses by message.id + tool name
   const groups = new Map<
     string,
-    NormalizedAssistantMessage<BetaToolUseBlock>[]
+    NormalizedAssistantMessage<ToolUseContentBlock>[]
   >()
 
   for (const msg of messages) {
@@ -75,7 +75,7 @@ export function applyGrouping(
     if (info && toolsWithGrouping.has(info.toolName)) {
       const key = `${info.messageId}:${info.toolName}`
       const group = groups.get(key) ?? []
-      group.push(msg as NormalizedAssistantMessage<BetaToolUseBlock>)
+      group.push(msg as NormalizedAssistantMessage<ToolUseContentBlock>)
       groups.set(key, group)
     }
   }
@@ -83,7 +83,7 @@ export function applyGrouping(
   // Identify valid groups (2+ items) and collect their tool use IDs
   const validGroups = new Map<
     string,
-    NormalizedAssistantMessage<BetaToolUseBlock>[]
+    NormalizedAssistantMessage<ToolUseContentBlock>[]
   >()
   const groupedToolUseIds = new Set<string>()
 
@@ -163,7 +163,7 @@ export function applyGrouping(
     // Skip user messages whose tool_results are all grouped
     if (msg.type === 'user') {
       const toolResults = msg.message.content.filter(
-        (c): c is ToolResultBlockParam => c.type === 'tool_result',
+        (c): c is ToolResultContentBlock => c.type === 'tool_result',
       )
       if (toolResults.length > 0) {
         const allGrouped = toolResults.every(tr =>

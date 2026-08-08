@@ -1,4 +1,4 @@
-import type { ToolResultBlockParam, ToolUseBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs';
+import type { ToolResultContentBlock, ToolUseContentBlock } from '../../services/api/provider/types.js';
 import * as React from 'react';
 import { filterToolProgressMessages, findToolByName, type Tools } from '../../Tool.js';
 import type { GroupedToolUseMessage } from '../../types/message.js';
@@ -24,7 +24,7 @@ export function GroupedToolUseContent({
 
   // Build a map from tool_use_id to result data
   const resultsByToolUseId = new Map<string, {
-    param: ToolResultBlockParam;
+    param: ToolResultContentBlock;
     output: unknown;
   }>();
   for (const resultMsg of message.results) {
@@ -41,7 +41,7 @@ export function GroupedToolUseContent({
     const content = msg.message.content[0];
     const result = resultsByToolUseId.get(content.id);
     return {
-      param: content as ToolUseBlockParam,
+      param: content as ToolUseContentBlock,
       isResolved: lookups.resolvedToolUseIDs.has(content.id),
       isError: lookups.erroredToolUseIDs.has(content.id),
       isInProgress: inProgressToolUseIDs.has(content.id),

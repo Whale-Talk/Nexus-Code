@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolUseContentBlock } from '../../services/api/provider/types.js';
 import React, { useMemo } from 'react';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
 import type { ThemeName } from 'src/utils/theme.js';
@@ -19,7 +19,7 @@ import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { ToolUseLoader } from '../ToolUseLoader.js';
 import { HookProgressMessage } from './HookProgressMessage.js';
 type Props = {
-  param: ToolUseBlockParam;
+  param: ToolUseContentBlock;
   addMargin: boolean;
   tools: Tools;
   commands: Command[];

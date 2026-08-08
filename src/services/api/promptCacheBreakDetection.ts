@@ -1,5 +1,5 @@
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolDefinition, TextContentBlock } from './provider/types.js'
+
 import { createPatch } from 'diff'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -195,7 +195,7 @@ function computePerToolHashes(
   return hashes
 }
 
-function getSystemCharCount(system: TextBlockParam[]): number {
+function getSystemCharCount(system: TextContentBlock[]): number {
   let total = 0
   for (const block of system) {
     total += block.text.length
@@ -204,8 +204,8 @@ function getSystemCharCount(system: TextBlockParam[]): number {
 }
 
 function buildDiffableContent(
-  system: TextBlockParam[],
-  tools: BetaToolUnion[],
+  system: TextContentBlock[],
+  tools: ToolDefinition[],
   model: string,
 ): string {
   const systemText = system.map(b => b.text).join('\n\n')
@@ -225,8 +225,8 @@ function buildDiffableContent(
  *  cache key that we can observe from the client. All fields are optional so
  *  the call site can add incrementally; undefined fields compare as stable. */
 export type PromptStateSnapshot = {
-  system: TextBlockParam[]
-  toolSchemas: BetaToolUnion[]
+  system: TextContentBlock[]
+  toolSchemas: ToolDefinition[]
   querySource: QuerySource
   model: string
   agentId?: AgentId

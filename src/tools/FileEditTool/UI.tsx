@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import type { StructuredPatchHunk } from 'diff';
 import * as React from 'react';
 import { Suspense, use, useState } from 'react';
@@ -125,7 +125,7 @@ export function renderToolUseRejectedMessage(input: {
   }
   return <EditRejectionDiff filePath={filePath} oldString={oldString} newString={newString} replaceAll={replaceAll} style={style} verbose={verbose} />;
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], options: {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], options: {
   progressMessagesForMessage: ProgressMessage[];
   tools: Tools;
   verbose: boolean;

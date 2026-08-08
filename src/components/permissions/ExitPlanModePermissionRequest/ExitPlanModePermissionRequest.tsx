@@ -41,7 +41,7 @@ import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('../../../utils/permissions/autoModeState.js') as typeof import('../../../utils/permissions/autoModeState.js') : null;
-import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
+import type { Base64ImageSource, ImageContentBlock } from '../../../services/api/provider/types.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { PastedContent } from '../../../utils/config.js';
 import type { ImageDimensions } from '../../../utils/imageResizer.js';
@@ -485,11 +485,11 @@ export function ExitPlanModePermissionRequest({
         planStructureVariant
       });
 
-      // Convert pasted images to ImageBlockParam[] with resizing
-      let imageBlocks: ImageBlockParam[] | undefined;
+      // Convert pasted images to ImageContentBlock[] with resizing
+      let imageBlocks: ImageContentBlock[] | undefined;
       if (hasImages) {
         imageBlocks = await Promise.all(imageAttachments.map(async img => {
-          const block: ImageBlockParam = {
+          const block: ImageContentBlock = {
             type: 'image',
             source: {
               type: 'base64',

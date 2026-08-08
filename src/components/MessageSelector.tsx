@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ContentBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ContentBlockParam, TextContentBlock } from '../services/api/provider/types.js';
 import { randomUUID, type UUID } from 'crypto';
 import figures from 'figures';
 import * as React from 'react';
@@ -16,7 +16,7 @@ import { stripDisplayTags } from '../utils/displayTags.js';
 import { createUserMessage, extractTag, isEmptyMessageText, isSyntheticMessage, isToolUseResultMessage } from '../utils/messages.js';
 import { type OptionWithDescription, Select } from './CustomSelect/select.js';
 import { Spinner } from './Spinner.js';
-function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
+function isTextBlock(block: ContentBlockParam): block is TextContentBlock {
   return block.type === 'text';
 }
 import * as path from 'path';

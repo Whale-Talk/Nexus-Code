@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle';
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { TextContentBlock } from '../../services/api/provider/types.js';
 import React, { useContext, useMemo } from 'react';
 import { getKairosActive, getUserMsgOptIn } from '../../bootstrap/state.js';
 import { Box } from '../../ink.js';
@@ -12,7 +12,7 @@ import { MessageActionsSelectedContext } from '../messageActions.js';
 import { HighlightedThinkingText } from './HighlightedThinkingText.js';
 type Props = {
   addMargin: boolean;
-  param: TextBlockParam;
+  param: TextContentBlock;
   isTranscriptMode?: boolean;
   timestamp?: string;
 };

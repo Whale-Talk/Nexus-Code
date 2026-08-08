@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { TextContentBlock } from '../../services/api/provider/types.js';
 import figures from 'figures';
 import * as React from 'react';
 import { COMMAND_MESSAGE_TAG } from '../../constants/xml.js';
@@ -7,7 +7,7 @@ import { Box, Text } from '../../ink.js';
 import { extractTag } from '../../utils/messages.js';
 type Props = {
   addMargin: boolean;
-  param: TextBlockParam;
+  param: TextContentBlock;
 };
 export function UserCommandMessage(t0) {
   const $ = _c(19);

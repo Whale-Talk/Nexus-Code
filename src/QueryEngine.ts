@@ -1,5 +1,5 @@
 import { feature } from './utils/featureFlags.js'
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from './services/api/provider/types.js'
 import { randomUUID } from 'crypto'
 import last from 'lodash-es/last.js'
 import {

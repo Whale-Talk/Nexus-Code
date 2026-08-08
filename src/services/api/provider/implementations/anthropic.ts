@@ -43,6 +43,7 @@ import { randomUUID } from 'crypto'
 import { APIError, APIUserAbortError } from '../errors.js'
 import type {
   AssistantMessage,
+  Base64PDFSource,
   ContentBlock,
   ContentBlockParam,
   ImageSource,
@@ -207,7 +208,7 @@ function cacheControlProviderOptions(cacheControl?: {
 }
 
 /** image/document 的 source → FilePart 的 data (URL 必须是 URL 实例, schema 钉死) */
-function toFileData(source: ImageSource): { type: 'data'; data: string } | { type: 'url'; url: URL } {
+function toFileData(source: ImageSource | Base64PDFSource): { type: 'data'; data: string } | { type: 'url'; url: URL } {
   return source.type === 'base64'
     ? { type: 'data', data: source.data }
     : { type: 'url', url: new URL(source.url) }
