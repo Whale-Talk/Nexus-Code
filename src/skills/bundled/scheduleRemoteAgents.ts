@@ -402,7 +402,7 @@ export function registerScheduleRemoteAgentsSkill(): void {
             false,
           )
           const msg = webSetupEnabled
-            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the Claude GitHub App at https://github.com/Whale-Talk/Nexus-Code
+            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the Claude GitHub App at https://github.com/Whale-Talk/Nexus-Code`
             : `Claude GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://github.com/Whale-Talk/Nexus-Code if your trigger needs this repo.`
           setupNotes.push(msg)
         }
