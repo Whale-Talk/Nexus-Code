@@ -456,7 +456,8 @@ function AssistantMessageBlock(t0) {
     onOpenRateLimitOptions,
     thinkingBlockId,
     lastThinkingBlockId,
-    advisorModel
+    advisorModel,
+    contentLength
   } = t0;
   if (feature("CONNECTOR_TEXT")) {
     if (isConnectorTextBlock(param)) {
@@ -545,22 +546,22 @@ function AssistantMessageBlock(t0) {
       }
     case "thinking":
       {
-        // Nexus: always render thinking — AssistantThinkingMessage decides
-        // between full content (verbose/transcript) and the folded
-        // "∴ Thinking (ctrl+o to expand)" line in normal mode.
+        // original transcript logic: hide non-last thinking in transcript mode
         const isLastThinking = !lastThinkingBlockId || thinkingBlockId === lastThinkingBlockId;
+        const isLastBlock = false; // Nexus: folded until expand behavior is stable
         const t1 = isTranscriptMode && !isLastThinking;
         let t2;
-        if ($[31] !== addMargin || $[32] !== isTranscriptMode || $[33] !== param || $[34] !== t1 || $[35] !== verbose) {
-          t2 = <AssistantThinkingMessage addMargin={addMargin} param={param} isTranscriptMode={isTranscriptMode} verbose={verbose} hideInTranscript={t1} />;
+        if ($[31] !== addMargin || $[32] !== isLastBlock || $[33] !== isTranscriptMode || $[34] !== param || $[35] !== t1 || $[36] !== verbose) {
+          t2 = <AssistantThinkingMessage addMargin={addMargin} param={param} isTranscriptMode={isTranscriptMode} verbose={verbose} hideInTranscript={t1} isLastThinking={isLastBlock} />;
           $[31] = addMargin;
-          $[32] = isTranscriptMode;
-          $[33] = param;
-          $[34] = t1;
-          $[35] = verbose;
-          $[36] = t2;
+          $[32] = isLastBlock;
+          $[33] = isTranscriptMode;
+          $[34] = param;
+          $[35] = t1;
+          $[36] = verbose;
+          $[37] = t2;
         } else {
-          t2 = $[36];
+          t2 = $[37];
         }
         return t2;
       }

@@ -91,7 +91,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
       total_input_tokens: getTotalInputTokens(),
       total_output_tokens: getTotalOutputTokens(),
       context_window_size: contextWindowSize,
-      current_usage: currentUsage,
+      current_usage: currentUsage ? (currentUsage.input_tokens + (currentUsage.cache_creation_input_tokens ?? 0) + (currentUsage.cache_read_input_tokens ?? 0)) : 0,
       used_percentage: contextPercentages.used,
       remaining_percentage: contextPercentages.remaining
     },
