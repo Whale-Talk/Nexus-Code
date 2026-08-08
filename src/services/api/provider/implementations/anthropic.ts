@@ -154,14 +154,14 @@ function buildConversationHeaders(baseURL: string): Record<string, string> {
   return headers
 }
 
-/** fetch 包装: 捕获响应 status (WithResponse 契约) + 后台提取 parent message id */
-function buildTrackingFetch(onStatus: (status: number) => void): FetchFunction {
+/** fetch 包装: 捕获响应 (status/headers — WithResponse 契约) + 后台提取 parent message id */
+function buildTrackingFetch(onResponse: (response: Response) => void): FetchFunction {
   const inner = globalThis.fetch
   return ((input: RequestInfo | URL, init?: RequestInit) => {
     const response = inner(input, init)
     response
       .then(res => {
-        onStatus(res.status)
+        onResponse(res)
         void extractAssistantMessageId(res)
       })
       .catch(() => {})
@@ -169,14 +169,14 @@ function buildTrackingFetch(onStatus: (status: number) => void): FetchFunction {
   }) as unknown as FetchFunction
 }
 
-function createProvider(onStatus: (status: number) => void): AnthropicProvider {
+function createProvider(onResponse: (response: Response) => void): AnthropicProvider {
   const baseURL = resolveBaseURL()
   return createAnthropic({
     baseURL,
     // relay 的 key 无 sk- 前缀, 原样透传 (bin/nexus.cjs:66-74)
     apiKey: process.env.ANTHROPIC_API_KEY,
     headers: buildConversationHeaders(baseURL),
-    fetch: buildTrackingFetch(onStatus),
+    fetch: buildTrackingFetch(onResponse),
   })
 }
 
@@ -489,6 +489,13 @@ const EMPTY_USAGE: Usage = {
   cache_read_input_tokens: null,
 }
 
+/** streamText 元数据扩展面 — fetch 响应头到达后 resolve (模拟 SDK .withResponse()) */
+interface StreamMetadata {
+  status: number
+  headers: Headers
+  requestID: string
+}
+
 function mapUsage(usage: LanguageModelUsage | undefined): Usage {
   if (!usage) return { ...EMPTY_USAGE }
   return {
@@ -563,8 +570,8 @@ function createLinkedController(signal: AbortSignal | undefined): AbortControlle
 async function* streamEvents(
   request: ModelRequest,
   controller: AbortController,
+  provider: AnthropicProvider,
 ): AsyncGenerator<StreamEvent, void, unknown> {
-  const provider = createProvider(() => {})
   const result = aiStreamText(buildCallOptions(request, provider, controller.signal))
   const partIndexByBlockId = new Map<string, number>()
   let nextBlockIndex = 0
@@ -677,6 +684,8 @@ async function* streamEvents(
       }
     }
   } catch (error) {
+    // 中止优先: 用户/看门狗已取消, 任何残留错误 (含裸 AbortError) 都归一到 APIUserAbortError
+    if (controller.signal.aborted) throw new APIUserAbortError()
     throw mapAPIError(error)
   }
 
@@ -784,19 +793,39 @@ function buildContentBlocks(content: Array<ContentPart<ToolSet>>): ContentBlock[
 export const adapter: ProviderAdapter = {
   async streamText(request, signal): Promise<StreamResponse> {
     const controller = createLinkedController(signal)
-    const iterator = streamEvents(request, controller)
-    return {
+    let resolveMetadata: ((metadata: StreamMetadata) => void) | undefined
+    const metadata = new Promise<StreamMetadata>((resolve, reject) => {
+      resolveMetadata = resolve
+      // 中止时 fetch 可能未到达 (响应头未产生) — 元数据随中止拒绝, 防止桥接侧悬挂
+      controller.signal.addEventListener(
+        'abort',
+        () => reject(new APIUserAbortError()),
+        { once: true },
+      )
+    })
+    const provider = createProvider(res => {
+      // fetch 响应头到达即 resolve — 模拟 SDK .withResponse() 的 request_id/headers 面
+      resolveMetadata?.({
+        status: res.status,
+        headers: new Headers(res.headers),
+        requestID: res.headers.get('request-id') ?? '',
+      })
+    })
+    const iterator = streamEvents(request, controller, provider)
+    const stream: StreamResponse = {
       [Symbol.asyncIterator]: () => iterator,
       controller,
     }
+    // metadata 为扩展面 (claude.ts 桥接以类型断言读取) — StreamResponse 接口契约保持不变
+    return Object.assign(stream, { metadata })
   },
 
   async generateText(request, signal): Promise<WithResponse<AssistantMessage>> {
     if (signal?.aborted) throw new APIUserAbortError()
     const controller = createLinkedController(signal)
     let status = 200
-    const provider = createProvider(s => {
-      status = s
+    const provider = createProvider(res => {
+      status = res.status
     })
     try {
       // response / providerMetadata 为 finalStep 的文档级别名 (GenerateTextResult 无 finalStep)

@@ -98,6 +98,14 @@ export type ToolChoice =
   | { type: 'tool'; name: string }
   | { type: 'none' }
 
+/** beta 工具定义 (SDK BetaTool 语义 — type: 'custom' 自定义工具变体) */
+export interface BetaToolDefinition extends ToolDefinition {
+  type?: 'custom' | null
+}
+
+/** 工具联合 (SDK BetaToolUnion 语义 — 标准工具 + beta 变体) */
+export type ToolUnion = ToolDefinition | BetaToolDefinition
+
 /** 工具使用块参数 (BetaToolUseBlockParam, 7 文件消费) */
 export interface ToolUseContentBlock {
   type: 'tool_use'
@@ -106,10 +114,15 @@ export interface ToolUseContentBlock {
   input: Record<string, unknown>
 }
 
-/** thinking 配置 (budget 格式 — DeepSeek 不兼容 adaptive) */
-export interface ThinkingConfigParam {
-  type: 'enabled'
-  budget_tokens: number
+/** thinking 配置 (budget 格式 — DeepSeek 不兼容 adaptive; disabled 显式关闭) */
+export type ThinkingConfigParam =
+  | { type: 'enabled'; budget_tokens: number }
+  | { type: 'disabled' }
+
+/** JSON 输出格式 (SDK BetaJSONOutputFormat 语义 — 结构化输出) */
+export interface JSONOutputFormat {
+  type: 'json_schema'
+  schema: { [key: string]: unknown }
 }
 
 /** 系统消息 */
@@ -205,13 +218,57 @@ export interface RedactedThinkingBlockParam {
   data: string
 }
 
+/** 工具使用响应块 (SDK BetaToolUseBlock 语义 — input 可 unknown, 与参数块 ToolUseContentBlock 区分) */
+export interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: unknown
+}
+
+// 服务端透传块 — SDK BetaContentBlock 其余成员, 本仓库仅透传不消费字段 (判别即可)
+/** 服务端工具调用块 (SDK BetaServerToolUseBlock 语义) */
+export interface ServerToolUseBlock { type: 'server_tool_use' }
+/** web 搜索结果块 (SDK BetaWebSearchToolResultBlock 语义) */
+export interface WebSearchToolResultBlock { type: 'web_search_tool_result' }
+/** web 抓取结果块 (SDK BetaWebFetchToolResultBlock 语义) */
+export interface WebFetchToolResultBlock { type: 'web_fetch_tool_result' }
+/** 代码执行结果块 (SDK BetaCodeExecutionToolResultBlock 语义) */
+export interface CodeExecutionToolResultBlock { type: 'code_execution_tool_result' }
+/** bash 代码执行结果块 (SDK BetaBashCodeExecutionToolResultBlock 语义) */
+export interface BashCodeExecutionToolResultBlock { type: 'bash_code_execution_tool_result' }
+/** 文本编辑器代码执行结果块 (SDK BetaTextEditorCodeExecutionToolResultBlock 语义) */
+export interface TextEditorCodeExecutionToolResultBlock { type: 'text_editor_code_execution_tool_result' }
+/** 工具搜索结果块 (SDK BetaToolSearchToolResultBlock 语义) */
+export interface ToolSearchToolResultBlock { type: 'tool_search_tool_result' }
+/** MCP 工具调用块 (SDK BetaMCPToolUseBlock 语义) */
+export interface MCPToolUseBlock { type: 'mcp_tool_use' }
+/** MCP 工具结果块 (SDK BetaMCPToolResultBlock 语义) */
+export interface MCPToolResultBlock { type: 'mcp_tool_result' }
+/** 容器上传块 (SDK BetaContainerUploadBlock 语义) */
+export interface ContainerUploadBlock { type: 'container_upload' }
+/** compact 块 (SDK BetaCompactionBlock 语义) */
+export interface CompactionBlock { type: 'compaction' }
+
 /** 内容块 (BetaContentBlock 联合类型, 8 文件) */
 export type ContentBlock =
   | TextContentBlock
   | ImageContentBlock
   | ToolUseContentBlock
+  | ToolUseBlock
   | ThinkingBlock
   | RedactedThinkingBlock
+  | ServerToolUseBlock
+  | WebSearchToolResultBlock
+  | WebFetchToolResultBlock
+  | CodeExecutionToolResultBlock
+  | BashCodeExecutionToolResultBlock
+  | TextEditorCodeExecutionToolResultBlock
+  | ToolSearchToolResultBlock
+  | MCPToolUseBlock
+  | MCPToolResultBlock
+  | ContainerUploadBlock
+  | CompactionBlock
 
 /** 消息 (BetaMessage, 6 文件) */
 export interface AssistantMessage {
