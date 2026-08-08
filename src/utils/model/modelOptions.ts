@@ -104,6 +104,24 @@ function getSonnet46Option(): ModelOption {
   }
 }
 
+function getDeepSeekV4ProOption(): ModelOption {
+  return {
+    value: 'deepseek-v4-pro[1m]',
+    label: 'DeepSeek V4 Pro (1M context)',
+    description: 'DeepSeek V4 Pro · stronger reasoning for complex tasks with 1M context window',
+    descriptionForModel: 'DeepSeek V4 Pro - stronger reasoning for complex tasks with 1M context window',
+  }
+}
+
+function getDeepSeekV4FlashOption(): ModelOption {
+  return {
+    value: 'deepseek-v4-flash[1m]',
+    label: 'DeepSeek V4 Flash (1M context)',
+    description: 'DeepSeek V4 Flash · faster default for everyday coding tasks with 1M context window',
+    descriptionForModel: 'DeepSeek V4 Flash - faster default for everyday coding tasks with 1M context window',
+  }
+}
+
 function getCustomOpusOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const customOpusModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
@@ -269,6 +287,23 @@ function getOpusPlanOption(): ModelOption {
 // @[MODEL LAUNCH]: Update the model picker lists below to include/reorder options for the new model.
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
+  // Nexus: custom relay → only show configured DeepSeek models.
+  // Claude model names (Sonnet/Opus/Haiku) don't exist on the relay.
+  // Check against env URL + settings model (provider-managed filtering may
+  // strip ANTHROPIC_BASE_URL from process.env at runtime, but settings persist).
+  const baseUrl = process.env.ANTHROPIC_BASE_URL
+  const s = getSettings_DEPRECATED()
+  const isDeepSeekRelay =
+    (baseUrl && !baseUrl.includes('api.anthropic.com')) ||
+    (s?.model ?? '').includes('deepseek')
+  if (getAPIProvider() === 'firstParty' && isDeepSeekRelay) {
+    return [
+      getDefaultOptionForUser(fastMode),
+      getDeepSeekV4ProOption(),
+      getDeepSeekV4FlashOption(),
+    ]
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     // Build options from antModels config
     const antModelOptions: ModelOption[] = getAntModels().map(m => ({

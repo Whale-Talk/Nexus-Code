@@ -1,0 +1,42 @@
+{
+  "task": "Agent Bar UI — 输入栏下方常驻 Agent 状态条",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "创建 AgentBar 核心组件",
+      "description": "创建 src/components/AgentBar.tsx，从 BackgroundTask 数据源获取运行中/最近完成的 Agent 列表，渲染为横条",
+      "acceptanceCriteria": [
+        "AgentBar.tsx 文件存在且编译通过",
+        "渲染所有运行中 Agent（黄色 Running 标记）",
+        "渲染最近完成 Agent（绿色 Done 标记，5 秒后自动移除）",
+        "无 Agent 时组件返回 null（不占空间）",
+        "点击 Agent 行时能打开 AsyncAgentDetailDialog 查看对话"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "嵌入 PromptInput 布局",
+      "description": "将 AgentBar 嵌入 PromptInput.tsx 底部，成为输入栏和状态栏之间的常驻横条",
+      "acceptanceCriteria": [
+        "AgentBar 在 PromptInput 下方可见",
+        "layout 不破坏现有输入框的交互",
+        "多个 Agent 时横条显示完整不溢出",
+        "Agent 完成 5 秒后自动从列表中移除"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "数据源对接 + 测试验证",
+      "description": "对接 BackgroundTask 管理器的数据（后台运行 Agent 的实时状态），端到端验证",
+      "acceptanceCriteria": [
+        "启动 3 个后台 Agent 后 AgentBar 实时显示 3 个运行中条目",
+        "Agent 完成后自动变绿，5 秒后消失",
+        "编译无 missing imports 报错",
+        "nexus --version 正常"
+      ],
+      "passes": true
+    }
+  ]
+}
