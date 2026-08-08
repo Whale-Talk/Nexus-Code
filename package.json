@@ -1,8 +1,8 @@
 {
   "name": "@while_talk/nexus-code",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
-  "description": "Nexus — Claude Code restored with multi-agent capabilities and configurable backend.",
+  "description": "Nexus \u2014 Claude Code restored with multi-agent capabilities and configurable backend.",
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "bin": {
