@@ -28,6 +28,7 @@ import {
   getVertexRegionForModel,
   isEnvTruthy,
 } from '../../utils/envUtils.js'
+import type { ProviderAdapter } from './provider/index.js'
 
 /**
  * Environment variables for different client types:
@@ -186,7 +187,12 @@ export async function getAnthropicClient({
       }
     }
     // we have always been lying about the return type - this doesn't support batching or models
-    return new AnthropicBedrock(bedrockArgs) as unknown as Anthropic
+    // 类型谎言经 app 自有 ProviderAdapter 中转; 返回契约 (Promise<Anthropic>) 在
+    // 5 个消费方 (claude.ts/sideQuery/claudeAiLimits/tokenEstimation/modelCapabilities)
+    // 迁移到 provider 适配器前保持不变。
+    return new AnthropicBedrock(
+      bedrockArgs,
+    ) as unknown as ProviderAdapter as unknown as Anthropic
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)) {
     const { AnthropicFoundry } = await import('@anthropic-ai/foundry-sdk')
@@ -216,7 +222,9 @@ export async function getAnthropicClient({
       ...(isDebugToStdErr() && { logger: createStderrLogger() }),
     }
     // we have always been lying about the return type - this doesn't support batching or models
-    return new AnthropicFoundry(foundryArgs) as unknown as Anthropic
+    return new AnthropicFoundry(
+      foundryArgs,
+    ) as unknown as ProviderAdapter as unknown as Anthropic
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
     // Refresh GCP credentials if gcpAuthRefresh is configured and credentials are expired
@@ -294,7 +302,9 @@ export async function getAnthropicClient({
       ...(isDebugToStdErr() && { logger: createStderrLogger() }),
     }
     // we have always been lying about the return type - this doesn't support batching or models
-    return new AnthropicVertex(vertexArgs) as unknown as Anthropic
+    return new AnthropicVertex(
+      vertexArgs,
+    ) as unknown as ProviderAdapter as unknown as Anthropic
   }
 
   // Determine authentication method based on available tokens
