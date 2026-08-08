@@ -1,0 +1,85 @@
+# Nexus 发布 — tag v* 触发，或 workflow_dispatch 手动。
+# 链路: 版本一致性校验 → changelog(PR 合并记录) → GitHub Release（附 clone-install 安装说明）。
+# 注意: 本地 dry-run 排练 tag (vX.Y.Z-dryrun) 被 job 级 if 整体跳过（见 check-version.ts 的后缀兜底）。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '手动发布的 tag 名 (vX.Y.Z，需已推送)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    # 强制看门: dryrun 排练 tag 跳过全部 job；手动模式照常运行
+    if: ${{ !contains(github.ref, '-dryrun') && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup bun + install
+        uses: ./.github/actions/setup-bun-install
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Version consistency check
+        run: bun run .github/scripts/check-version.ts "${{ steps.tag.outputs.value }}"
+
+      - name: Generate changelog (PRs since previous tag)
+        id: changelog
+        run: |
+          PREV_TAG="$(git tag --sort=-version:refname | sed -n '2p' || true)"
+          if [ -n "$PREV_TAG" ]; then
+            SINCE_ISO="$(git log -1 --format=%cI "$PREV_TAG" 2>/dev/null || true)"
+            if [ -n "$SINCE_ISO" ]; then
+              gh api "repos/${GITHUB_REPOSITORY}/pulls?state=merged&base=main&per_page=100" \
+                --jq ".[] | select(.merged_at > \"$SINCE_ISO\") | \"- [#\(.number)] \(.title) (@\(.user.login))\"" \
+                > /tmp/changelog.md || true
+            fi
+          fi
+          if [ -s /tmp/changelog.md ]; then
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          VERSION="${TAG#v}"
+          printf '## Nexus %s\n\n### 安装（clone-install）\n```bash\ngit clone --depth 1 --branch %s https://github.com/%s.git nexus\ncd nexus\nbun install\nbun link  # 可选: 全局安装 nexus 命令\n```\n\n### 变更\n' \
+            "${VERSION}" "${TAG}" "${GITHUB_REPOSITORY}" > /tmp/release-header.md
+          if [ "${{ steps.changelog.outputs.generated }}" = "true" ]; then
+            cat /tmp/changelog.md >> /tmp/release-body.md
+          else
+            echo "（无 PR 记录 — 使用自动生成 notes）" >> /tmp/release-body.md
+          fi
+          cat /tmp/release-header.md /tmp/release-body.md > /tmp/release-final.md
+          if [ "${{ steps.changelog.outputs.generated }}" = "true" ]; then
+            gh release create "${TAG}" --target main --title "Nexus ${VERSION}" \
+              --notes-file /tmp/release-final.md
+          else
+            gh release create "${TAG}" --target main --title "Nexus ${VERSION}" \
+              --generate-notes
+          fi

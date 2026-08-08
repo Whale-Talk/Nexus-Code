@@ -74,7 +74,7 @@ type ResumeResult = {
  * Used to hydrate AppState.todos on SDK --resume so the model's todo list
  * survives session restarts without file persistence.
  */
-function extractTodosFromTranscript(messages: Message[]): TodoList {
+export function extractTodosFromTranscript(messages: Message[]): TodoList {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg?.type !== 'assistant') continue

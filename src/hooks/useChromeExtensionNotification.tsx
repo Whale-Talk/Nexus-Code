@@ -41,7 +41,7 @@ async function _temp() {
   if (chromeFlag === undefined) {
     return {
       key: "claude-in-chrome-default-enabled",
-      text: "Claude in Chrome enabled \xB7 /chrome",
+      text: "Nexus in Chrome enabled \xB7 /chrome",
       priority: "low"
     };
   }

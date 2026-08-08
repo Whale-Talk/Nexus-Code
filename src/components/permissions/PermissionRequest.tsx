@@ -134,12 +134,12 @@ function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
     return 'Nexus Code wants to enter plan mode';
   }
   if (feature('REVIEW_ARTIFACT') && toolUseConfirm.tool === ReviewArtifactTool) {
-    return 'Claude needs your approval for a review artifact';
+    return 'Nexus needs your approval for a review artifact';
   }
   if (!toolName || toolName.trim() === '') {
     return 'Nexus Code needs your attention';
   }
-  return `Claude needs your permission to use ${toolName}`;
+  return `Nexus needs your permission to use ${toolName}`;
 }
 
 // TODO: Move this to Tool.renderPermissionRequest

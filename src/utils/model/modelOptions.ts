@@ -104,7 +104,7 @@ function getSonnet46Option(): ModelOption {
   }
 }
 
-function getQuarkOption(): ModelOption {
+export function getQuarkOption(): ModelOption {
   return {
     value: 'deepseek-v4-pro[1m]',
     label: 'Nexus Quark (1M context)',
@@ -113,7 +113,7 @@ function getQuarkOption(): ModelOption {
   }
 }
 
-function getAtomOption(): ModelOption {
+export function getAtomOption(): ModelOption {
   return {
     value: 'deepseek-v4-flash[1m]',
     label: 'Nexus Atom (1M context)',
@@ -122,7 +122,7 @@ function getAtomOption(): ModelOption {
   }
 }
 
-function getElectronOption(): ModelOption {
+export function getElectronOption(): ModelOption {
   return {
     value: 'deepseek-v4-flash[1m]',
     label: 'Nexus Electron (1M context)',
@@ -148,7 +148,7 @@ function getCustomOpusOption(): ModelOption | undefined {
   }
 }
 
-function getOpus41Option(): ModelOption {
+export function getOpus41Option(): ModelOption {
   return {
     value: 'opus',
     label: 'Opus 4.1',
@@ -285,7 +285,7 @@ const MaxHaiku45Option: ModelOption = {
   description: 'Haiku 4.5 · Fastest for quick answers',
 }
 
-function getOpusPlanOption(): ModelOption {
+export function getOpusPlanOption(): ModelOption {
   return {
     value: 'opusplan',
     label: 'Opus Plan Mode',
@@ -293,19 +293,33 @@ function getOpusPlanOption(): ModelOption {
   }
 }
 
+/**
+ * Detect whether traffic is routed through a custom (non-Anthropic) relay.
+ * Pure: callers pass the base URL and the settings model string; no env or
+ * settings access happens here.
+ */
+export function isDeepSeekRelay(
+  baseUrl: string | undefined,
+  settingsModel: string | null | undefined,
+): boolean {
+  return (
+    (!!baseUrl && !baseUrl.includes('api.anthropic.com')) ||
+    (settingsModel ?? '').includes('deepseek')
+  )
+}
+
 // @[MODEL LAUNCH]: Update the model picker lists below to include/reorder options for the new model.
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
   // Nexus: custom relay → only show configured DeepSeek models.
-  // Claude model names (Sonnet/Opus/Haiku) don't exist on the relay.
+  // Nexus model names (Sonnet/Opus/Haiku) don't exist on the relay.
   // Check against env URL + settings model (provider-managed filtering may
   // strip ANTHROPIC_BASE_URL from process.env at runtime, but settings persist).
-  const baseUrl = process.env.ANTHROPIC_BASE_URL
-  const s = getSettings_DEPRECATED()
-  const isDeepSeekRelay =
-    (baseUrl && !baseUrl.includes('api.anthropic.com')) ||
-    (s?.model ?? '').includes('deepseek')
-  if (getAPIProvider() === 'firstParty' && isDeepSeekRelay) {
+  const isRelay = isDeepSeekRelay(
+    process.env.ANTHROPIC_BASE_URL,
+    getSettings_DEPRECATED()?.model,
+  )
+  if (getAPIProvider() === 'firstParty' && isRelay) {
     return [
       getDefaultOptionForUser(fastMode),
       getQuarkOption(),
