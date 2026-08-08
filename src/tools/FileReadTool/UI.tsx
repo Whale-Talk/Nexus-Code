@@ -1,4 +1,4 @@
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import * as React from 'react';
 import { extractTag } from 'src/utils/messages.js';
 import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js';
@@ -141,7 +141,7 @@ export function renderToolResultMessage(output: Output): React.ReactNode {
       }
   }
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   verbose
 }: {
   verbose: boolean;

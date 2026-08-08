@@ -1,6 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../../services/api/provider/types.js';
 import * as React from 'react';
 import { BULLET_OPERATOR } from '../../../constants/figures.js';
 import { Text } from '../../../ink.js';
@@ -16,7 +16,7 @@ type Props = {
   progressMessagesForMessage: ProgressMessage[];
   tool?: Tool; // undefined when resuming an old conversation that uses an old tool
   tools: Tools;
-  param: ToolResultBlockParam;
+  param: ToolResultContentBlock;
   verbose: boolean;
   isTranscriptMode?: boolean;
 };

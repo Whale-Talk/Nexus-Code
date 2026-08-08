@@ -1,9 +1,8 @@
-import { APIError } from '@anthropic-ai/sdk'
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import { APIError } from './api/provider/errors.js'
+import { adapter as anthropicProviderAdapter } from './api/provider/implementations/anthropic.js'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { isClaudeAISubscriber } from '../utils/auth.js'
-import { getModelBetas } from '../utils/betas.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'
 import { getSmallFastModel } from '../utils/model/model.js'
@@ -11,7 +10,6 @@ import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from './analytics/index.js'
 import { logEvent } from './analytics/index.js'
 import { getAPIMetadata } from './api/claude.js'
-import { getAnthropicClient } from './api/client.js'
 import {
   processRateLimitHeaders,
   shouldProcessRateLimits,
@@ -198,23 +196,15 @@ export function emitStatusChange(limits: ClaudeAILimits) {
 
 async function makeTestQuery() {
   const model = getSmallFastModel()
-  const anthropic = await getAnthropicClient({
-    maxRetries: 0,
+  // 非流式请求桥接 — 镜像 claude.ts 的 provider 适配器路径 (generateText)。
+  // 返回 WithResponse.response (headers/status), 消费者 extractQuotaStatusFromHeaders 不变。
+  const result = await anthropicProviderAdapter.generateText({
     model,
-    source: 'quota_check',
+    messages: [{ role: 'user', content: 'quota' }],
+    max_tokens: 1,
+    metadata: getAPIMetadata(),
   })
-  const messages: MessageParam[] = [{ role: 'user', content: 'quota' }]
-  const betas = getModelBetas(model)
-  // biome-ignore lint/plugin: quota check needs raw response access via asResponse()
-  return anthropic.beta.messages
-    .create({
-      model,
-      max_tokens: 1,
-      messages,
-      metadata: getAPIMetadata(),
-      ...(betas.length > 0 ? { betas } : {}),
-    })
-    .asResponse()
+  return result.response
 }
 
 export async function checkQuotaStatus(): Promise<void> {

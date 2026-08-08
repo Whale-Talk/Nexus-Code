@@ -1,5 +1,5 @@
 import { feature } from './featureFlags.js'
-import type { Anthropic } from '@anthropic-ai/sdk'
+import type { MessageParam, ToolDefinition } from '../services/api/provider/types.js'
 import {
   getSystemPrompt,
   SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
@@ -75,8 +75,8 @@ const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
 export const TOOL_TOKEN_COUNT_OVERHEAD = 500
 
 async function countTokensWithFallback(
-  messages: Anthropic.Beta.Messages.BetaMessageParam[],
-  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+  messages: MessageParam[],
+  tools: ToolDefinition[],
 ): Promise<number | null> {
   try {
     const result = await countMessagesTokensWithAPI(messages, tools)

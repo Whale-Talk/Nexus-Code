@@ -1,8 +1,8 @@
 import type {
   ContentBlockParam,
-  ImageBlockParam,
-  TextBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+  ImageContentBlock,
+  TextContentBlock,
+} from '../services/api/provider/types.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   countMessagesTokensWithAPI,
@@ -48,11 +48,11 @@ export function getMaxMcpOutputTokens(): number {
 
 export type MCPToolResult = string | ContentBlockParam[] | undefined
 
-function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
+function isTextBlock(block: ContentBlockParam): block is TextContentBlock {
   return block.type === 'text'
 }
 
-function isImageBlock(block: ContentBlockParam): block is ImageBlockParam {
+function isImageBlock(block: ContentBlockParam): block is ImageContentBlock {
   return block.type === 'image'
 }
 

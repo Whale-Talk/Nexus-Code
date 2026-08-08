@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
+import type { Base64ImageSource, ImageContentBlock } from '../../../services/api/provider/types.js';
 import React, { Suspense, use, useCallback, useMemo, useRef, useState } from 'react';
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
@@ -627,10 +627,10 @@ function _temp2(contents) {
 function _temp(opt) {
   return opt.preview;
 }
-async function convertImagesToBlocks(images: PastedContent[]): Promise<ImageBlockParam[] | undefined> {
+async function convertImagesToBlocks(images: PastedContent[]): Promise<ImageContentBlock[] | undefined> {
   if (images.length === 0) return undefined;
   return Promise.all(images.map(async img => {
-    const block: ImageBlockParam = {
+    const block: ImageContentBlock = {
       type: 'image',
       source: {
         type: 'base64',

@@ -2,7 +2,7 @@
  * Utility for persisting large tool results to disk instead of truncating them.
  */
 
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock } from '../services/api/provider/types.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
@@ -135,7 +135,7 @@ export async function ensureToolResultsDir(): Promise<void> {
  * @returns Information about the persisted file including filepath and preview
  */
 export async function persistToolResult(
-  content: NonNullable<ToolResultBlockParam['content']>,
+  content: NonNullable<ToolResultContentBlock['content']>,
   toolUseId: string,
 ): Promise<PersistedToolResult | PersistToolResultError> {
   const isJson = Array.isArray(content)
@@ -209,11 +209,11 @@ export async function processToolResultBlock<T>(
     mapToolResultToToolResultBlockParam: (
       result: T,
       toolUseID: string,
-    ) => ToolResultBlockParam
+    ) => ToolResultContentBlock
   },
   toolUseResult: T,
   toolUseID: string,
-): Promise<ToolResultBlockParam> {
+): Promise<ToolResultContentBlock> {
   const toolResultBlock = tool.mapToolResultToToolResultBlockParam(
     toolUseResult,
     toolUseID,
@@ -230,10 +230,10 @@ export async function processToolResultBlock<T>(
  * without re-calling mapToolResultToToolResultBlockParam.
  */
 export async function processPreMappedToolResultBlock(
-  toolResultBlock: ToolResultBlockParam,
+  toolResultBlock: ToolResultContentBlock,
   toolName: string,
   maxResultSizeChars: number,
-): Promise<ToolResultBlockParam> {
+): Promise<ToolResultContentBlock> {
   return maybePersistLargeToolResult(
     toolResultBlock,
     toolName,
@@ -248,7 +248,7 @@ export async function processPreMappedToolResultBlock(
  * (images, tool_reference) are treated as non-empty.
  */
 export function isToolResultContentEmpty(
-  content: ToolResultBlockParam['content'],
+  content: ToolResultContentBlock['content'],
 ): boolean {
   if (!content) return true
   if (typeof content === 'string') return content.trim() === ''
@@ -270,10 +270,10 @@ export function isToolResultContentEmpty(
  * with the content replaced by a reference to the persisted file.
  */
 async function maybePersistLargeToolResult(
-  toolResultBlock: ToolResultBlockParam,
+  toolResultBlock: ToolResultContentBlock,
   toolName: string,
   persistenceThreshold?: number,
-): Promise<ToolResultBlockParam> {
+): Promise<ToolResultContentBlock> {
   // Check size first before doing any async work - most tool results are small
   const content = toolResultBlock.content
 
@@ -485,7 +485,7 @@ export type ToolResultReplacementRecord = Extract<
 
 type ToolResultCandidate = {
   toolUseId: string
-  content: NonNullable<ToolResultBlockParam['content']>
+  content: NonNullable<ToolResultContentBlock['content']>
   size: number
 }
 
@@ -496,7 +496,7 @@ type CandidatePartition = {
 }
 
 function isContentAlreadyCompacted(
-  content: ToolResultBlockParam['content'],
+  content: ToolResultContentBlock['content'],
 ): boolean {
   // All budget-produced content starts with the tag (buildLargeToolResultMessage).
   // `.startsWith()` avoids false-positives when the tag appears anywhere else
@@ -505,7 +505,7 @@ function isContentAlreadyCompacted(
 }
 
 function hasImageBlock(
-  content: NonNullable<ToolResultBlockParam['content']>,
+  content: NonNullable<ToolResultContentBlock['content']>,
 ): boolean {
   return (
     Array.isArray(content) &&
@@ -516,7 +516,7 @@ function hasImageBlock(
 }
 
 function contentSize(
-  content: NonNullable<ToolResultBlockParam['content']>,
+  content: NonNullable<ToolResultContentBlock['content']>,
 ): number {
   if (typeof content === 'string') return content.length
   // Sum text-block lengths directly. Slightly under-counts vs serialized

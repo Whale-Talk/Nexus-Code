@@ -1,4 +1,4 @@
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolUseContentBlock } from '../api/provider/types.js'
 import {
   createUserMessage,
   REJECT_MESSAGE,
@@ -20,7 +20,7 @@ type ToolStatus = 'queued' | 'executing' | 'completed' | 'yielded'
 
 type TrackedTool = {
   id: string
-  block: ToolUseBlock
+  block: ToolUseContentBlock
   assistantMessage: AssistantMessage
   status: ToolStatus
   isConcurrencySafe: boolean
@@ -73,7 +73,7 @@ export class StreamingToolExecutor {
   /**
    * Add a tool to the execution queue. Will start executing immediately if conditions allow.
    */
-  addTool(block: ToolUseBlock, assistantMessage: AssistantMessage): void {
+  addTool(block: ToolUseContentBlock, assistantMessage: AssistantMessage): void {
     const toolDefinition = findToolByName(this.toolDefinitions, block.name)
     if (!toolDefinition) {
       this.tools.push({

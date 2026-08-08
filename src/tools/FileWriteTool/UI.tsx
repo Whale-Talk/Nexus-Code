@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import type { StructuredPatchHunk } from 'diff';
 import { isAbsolute, relative, resolve } from 'path';
 import * as React from 'react';
@@ -347,7 +347,7 @@ async function loadRejectionDiff(filePath: string, content: string): Promise<Rej
     };
   }
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   verbose
 }: {
   verbose: boolean;

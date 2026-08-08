@@ -1,4 +1,4 @@
-import type { APIError } from '@anthropic-ai/sdk'
+import type { APIError } from './provider/errors.js'
 
 // SSL/TLS error codes from OpenSSL (used by both Node.js and Bun)
 // See: https://www.openssl.org/docs/man3.1/man3/X509_STORE_CTX_get_error.html
@@ -172,7 +172,7 @@ function extractNestedErrorMessage(error: APIError): string | null {
   }
 
   // Access `.error` via the narrowed type so TypeScript sees the nested shape
-  // instead of the SDK's `Object | undefined`.
+  // instead of the provider APIError's `Record<string, unknown>`.
   const narrowed: NestedAPIError = error
   const nested = narrowed.error
 

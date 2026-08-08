@@ -1,4 +1,10 @@
-import type { ClientOptions } from '@anthropic-ai/sdk'
+// P4 边界: SDK ClientOptions['fetch'] 的本地镜像 — 仅消费 fetch 覆盖签名,
+// 与 claude.ts Options.fetchOverride (SDK ClientOptions['fetch']) 直接对接。
+type DumpPromptsFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>
+
 import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { dirname, join } from 'path'
@@ -145,7 +151,7 @@ function dumpRequest(
 
 export function createDumpPromptsFetch(
   agentIdOrSessionId: string,
-): ClientOptions['fetch'] {
+): DumpPromptsFetch {
   const filePath = getDumpPromptsPath(agentIdOrSessionId)
 
   return async (input: RequestInfo | URL, init?: RequestInit) => {

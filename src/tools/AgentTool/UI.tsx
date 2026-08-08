@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam, ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock, ToolUseContentBlock } from '../../services/api/provider/types.js';
 import * as React from 'react';
 import { ConfigurableShortcutHint } from 'src/components/ConfigurableShortcutHint.js';
 import { CtrlOToExpand, SubAgentProvider } from 'src/components/CtrlOToExpand.js';
@@ -52,7 +52,7 @@ function hasProgressMessage(data: Progress): data is AgentToolProgress {
  * For tool_result messages, uses the provided `toolUseByID` map to find the
  * corresponding tool_use block instead of relying on `normalizedMessages`.
  */
-function getSearchOrReadInfo(progressMessage: ProgressMessage<Progress>, tools: Tools, toolUseByID: Map<string, ToolUseBlockParam>): {
+function getSearchOrReadInfo(progressMessage: ProgressMessage<Progress>, tools: Tools, toolUseByID: Map<string, ToolUseContentBlock>): {
   isSearch: boolean;
   isRead: boolean;
   isREPL: boolean;
@@ -128,13 +128,13 @@ function processProgressMessages(messages: ProgressMessage<Progress>[], tools: T
   const agentMessages = messages.filter((m): m is ProgressMessage<AgentToolProgress> => hasProgressMessage(m.data));
 
   // Build tool_use lookup incrementally as we iterate
-  const toolUseByID = new Map<string, ToolUseBlockParam>();
+  const toolUseByID = new Map<string, ToolUseContentBlock>();
   for (const msg of agentMessages) {
     // Track tool_use blocks as we see them
     if (msg.data.message.type === 'assistant') {
       for (const c of msg.data.message.message.content) {
         if (c.type === 'tool_use') {
-          toolUseByID.set(c.id, c as ToolUseBlockParam);
+          toolUseByID.set(c.id, c as ToolUseContentBlock);
         }
       }
     }
@@ -604,7 +604,7 @@ export function renderToolUseRejectedMessage(_input: {
       <FallbackToolUseRejectedMessage />
     </>;
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   progressMessagesForMessage,
   tools,
   verbose,
@@ -647,13 +647,13 @@ function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
   };
 }
 export function renderGroupedAgentToolUse(toolUses: Array<{
-  param: ToolUseBlockParam;
+  param: ToolUseContentBlock;
   isResolved: boolean;
   isError: boolean;
   isInProgress: boolean;
   progressMessages: ProgressMessage<Progress>[];
   result?: {
-    param: ToolResultBlockParam;
+    param: ToolResultContentBlock;
     output: Output;
   };
 }>, options: {
@@ -787,7 +787,7 @@ export function userFacingNameBackgroundColor(input: Partial<{
 }
 export function extractLastToolInfo(progressMessages: ProgressMessage<Progress>[], tools: Tools): string | null {
   // Build tool_use lookup from all progress messages (needed for reverse iteration)
-  const toolUseByID = new Map<string, ToolUseBlockParam>();
+  const toolUseByID = new Map<string, ToolUseContentBlock>();
   for (const pm of progressMessages) {
     if (!hasProgressMessage(pm.data)) {
       continue;
@@ -795,7 +795,7 @@ export function extractLastToolInfo(progressMessages: ProgressMessage<Progress>[
     if (pm.data.message.type === 'assistant') {
       for (const c of pm.data.message.message.content) {
         if (c.type === 'tool_use') {
-          toolUseByID.set(c.id, c as ToolUseBlockParam);
+          toolUseByID.set(c.id, c as ToolUseContentBlock);
         }
       }
     }

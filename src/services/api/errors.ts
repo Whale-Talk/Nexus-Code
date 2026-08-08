@@ -2,11 +2,10 @@ import {
   APIConnectionError,
   APIConnectionTimeoutError,
   APIError,
-} from '@anthropic-ai/sdk'
-import type {
-  BetaMessage,
-  BetaStopReason,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+} from './provider/errors.js'
+// provider 层 AssistantMessage 即 SDK BetaMessage 语义 (provider/types.ts 别名映射),
+// 别名保留原 BetaMessage 局部名, 避免与 src/types/message.js 的 AssistantMessage 冲突。
+import type { AssistantMessage as BetaMessage } from './provider/types.js'
 import { AFK_MODE_BETA_HEADER } from 'src/constants/betas.js'
 import type { SDKAssistantMessageError } from 'src/entrypoints/agentSdkTypes.js'
 import type {
@@ -913,10 +912,13 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Connection errors (non-timeout) — use formatAPIError for detailed messages
+  // Connection errors (non-timeout) — use formatAPIError for detailed messages.
+  // provider 层 APIConnectionError 不继承 APIError (SDK 层级扁平化, 见
+  // provider/errors.ts 注释), 而 formatAPIError 只消费 .message/.status/.error,
+  // 此处以 APIError 视角断言 (运行时 SDK 连接错误本就带 status/headers 面)。
   if (error instanceof APIConnectionError) {
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatAPIError(error)}`,
+      content: `${API_ERROR_MESSAGE_PREFIX}: ${formatAPIError(error as APIError)}`,
       error: 'unknown',
     })
   }
@@ -1182,7 +1184,8 @@ export function categorizeRetryableAPIError(
 }
 
 export function getErrorMessageIfRefusal(
-  stopReason: BetaStopReason | null,
+  // provider 层 stop_reason 联合未含 'refusal' (P0 消费面扫描遗漏), 此处显式并入
+  stopReason: BetaMessage['stop_reason'] | 'refusal' | null,
   model: string,
 ): AssistantMessage | undefined {
   if (stopReason !== 'refusal') {

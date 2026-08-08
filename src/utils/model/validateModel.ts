@@ -8,7 +8,7 @@ import {
   APIError,
   APIConnectionError,
   AuthenticationError,
-} from '@anthropic-ai/sdk'
+} from '../../services/api/provider/errors.js'
 import { getModelStrings } from './modelStrings.js'
 
 // Cache valid models to avoid repeated API calls

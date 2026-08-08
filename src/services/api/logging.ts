@@ -1,9 +1,11 @@
 import { feature } from 'bun:bundle'
-import { APIError } from '@anthropic-ai/sdk'
+import { APIError } from './provider/errors.js'
+// provider 层 AssistantMessage 即 SDK BetaMessage 语义 (provider/types.ts 别名映射),
+// 别名避免与 src/types/message.js 的 AssistantMessage (app 消息类型) 冲突。
 import type {
-  BetaStopReason,
-  BetaUsage as Usage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+  AssistantMessage as ProviderAssistantMessage,
+  Usage,
+} from './provider/types.js'
 import {
   addToTotalDurationState,
   consumePostCompaction,
@@ -432,7 +434,7 @@ function logAPISuccess({
   attempt: number
   ttftMs: number | null
   requestId: string | null
-  stopReason: BetaStopReason | null
+  stopReason: ProviderAssistantMessage['stop_reason'] | null
   costUSD: number
   didFallBackToNonStreaming: boolean
   querySource: string
@@ -615,7 +617,7 @@ export function logAPISuccessAndDuration({
   messageCount: number
   messageTokens: number
   requestId: string | null
-  stopReason: BetaStopReason | null
+  stopReason: ProviderAssistantMessage['stop_reason'] | null
   didFallBackToNonStreaming: boolean
   querySource: string
   headers?: globalThis.Headers

@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import React from 'react';
 import { CtrlOToExpand } from '../../components/CtrlOToExpand.js';
 import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js';
@@ -144,7 +144,7 @@ export function renderToolUseMessage({
   }
   return parts.join(', ');
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   verbose
 }: {
   verbose: boolean;

@@ -1,7 +1,5 @@
-import type {
-  ToolResultBlockParam,
-  ToolUseBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock, ToolUseContentBlock } from './services/api/provider/types.js'
+
 import type {
   ElicitRequestURLParams,
   ElicitResult,
@@ -557,7 +555,7 @@ export type Tool<
   mapToolResultToToolResultBlockParam(
     content: Output,
     toolUseID: string,
-  ): ToolResultBlockParam
+  ): ToolResultContentBlock
   /**
    * Optional. When omitted, the tool result renders nothing (same as returning
    * null). Omit for tools whose results are surfaced elsewhere (e.g., TodoWrite
@@ -657,7 +655,7 @@ export type Tool<
    * that show "File not found" instead of the raw error).
    */
   renderToolUseErrorMessage?(
-    result: ToolResultBlockParam['content'],
+    result: ToolResultContentBlock['content'],
     options: {
       progressMessagesForMessage: ProgressMessage<P>[]
       tools: Tools
@@ -677,13 +675,13 @@ export type Tool<
    */
   renderGroupedToolUse?(
     toolUses: Array<{
-      param: ToolUseBlockParam
+      param: ToolUseContentBlock
       isResolved: boolean
       isError: boolean
       isInProgress: boolean
       progressMessages: ProgressMessage<P>[]
       result?: {
-        param: ToolResultBlockParam
+        param: ToolResultContentBlock
         output: unknown
       }
     }>,

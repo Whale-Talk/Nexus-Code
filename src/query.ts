@@ -1,8 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import type {
-  ToolResultBlockParam,
-  ToolUseBlock,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock, ToolUseContentBlock } from './services/api/provider/types.js'
+
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
@@ -128,7 +126,7 @@ function* yieldMissingToolResultBlocks(
     // Extract all tool use blocks from this assistant message
     const toolUseBlocks = assistantMessage.message.content.filter(
       content => content.type === 'tool_use',
-    ) as ToolUseBlock[]
+    ) as ToolUseContentBlock[]
 
     // Emit an interruption message for each tool use
     for (const toolUse of toolUseBlocks) {
@@ -554,7 +552,7 @@ async function* queryLoop(
     // Note: stop_reason === 'tool_use' is unreliable -- it's not always set correctly.
     // Set during streaming whenever a tool_use block arrives — the sole
     // loop-exit signal. If false after streaming, we're done (modulo stop-hook retry).
-    const toolUseBlocks: ToolUseBlock[] = []
+    const toolUseBlocks: ToolUseContentBlock[] = []
     let needsFollowUp = false
 
     queryCheckpoint('query_setup_start')
@@ -828,7 +826,7 @@ async function* queryLoop(
 
               const msgToolUseBlocks = message.message.content.filter(
                 content => content.type === 'tool_use',
-              ) as ToolUseBlock[]
+              ) as ToolUseContentBlock[]
               if (msgToolUseBlocks.length > 0) {
                 toolUseBlocks.push(...msgToolUseBlocks)
                 needsFollowUp = true
@@ -1362,7 +1360,6 @@ async function* queryLoop(
 
     queryCheckpoint('query_tool_execution_start')
 
-
     if (streamingToolExecutor) {
       logEvent('tengu_streaming_tool_execution_used', {
         tool_count: toolUseBlocks.length,
@@ -1451,7 +1448,7 @@ async function* queryLoop(
           toolResult?.type === 'user' &&
           Array.isArray(toolResult.message.content)
             ? toolResult.message.content.find(
-                (c): c is ToolResultBlockParam =>
+                (c): c is ToolResultContentBlock =>
                   c.type === 'tool_result' && c.tool_use_id === block.id,
               )
             : undefined
@@ -1562,7 +1559,7 @@ async function* queryLoop(
     // addressed to it — main thread drains agentId===undefined, subagents
     // drain their own agentId. User prompts (mode:'prompt') still go to main
     // only; subagents never see the prompt stream.
-    // eslint-disable-next-line custom-rules/require-tool-match-name -- ToolUseBlock.name has no aliases
+    // eslint-disable-next-line custom-rules/require-tool-match-name -- ToolUseContentBlock.name has no aliases
     const sleepRan = toolUseBlocks.some(b => b.name === SLEEP_TOOL_NAME)
     const isMainThread =
       querySource.startsWith('repl_main_thread') || querySource === 'sdk'
@@ -1612,7 +1609,6 @@ async function* queryLoop(
       }
       pendingMemoryPrefetch.consumedOnIteration = turnCount - 1
     }
-
 
     // Inject prefetched skill discovery. collectSkillDiscoveryPrefetch emits
     // hidden_by_main_turn — true when the prefetch resolved before this point

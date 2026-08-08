@@ -1,5 +1,13 @@
-import type Anthropic from '@anthropic-ai/sdk'
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import type {
+  AssistantMessage,
+  JSONOutputFormat,
+  MessageParam,
+  TextContentBlock,
+  ThinkingConfigParam,
+  ToolChoice,
+  ToolDefinition,
+  ToolUnion,
+} from '../services/api/provider/types.js'
 import {
   getLastApiCompletionTimestamp,
   setLastApiCompletionTimestamp,
@@ -18,14 +26,6 @@ import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
 import { computeFingerprint } from './fingerprint.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 
-type MessageParam = Anthropic.MessageParam
-type TextBlockParam = Anthropic.TextBlockParam
-type Tool = Anthropic.Tool
-type ToolChoice = Anthropic.ToolChoice
-type BetaMessage = Anthropic.Beta.Messages.BetaMessage
-type BetaJSONOutputFormat = Anthropic.Beta.Messages.BetaJSONOutputFormat
-type BetaThinkingConfigParam = Anthropic.Beta.Messages.BetaThinkingConfigParam
-
 export type SideQueryOptions = {
   /** Model to use for the query */
   model: string
@@ -36,15 +36,15 @@ export type SideQueryOptions = {
    * server-side parsing correctly extracts the cc_entrypoint value without including
    * system prompt content.
    */
-  system?: string | TextBlockParam[]
+  system?: string | TextContentBlock[]
   /** Messages to send (supports cache_control on content blocks) */
   messages: MessageParam[]
-  /** Optional tools (supports both standard Tool[] and BetaToolUnion[] for custom tool types) */
-  tools?: Tool[] | BetaToolUnion[]
+  /** Optional tools (supports both standard ToolDefinition[] and beta variants for custom tool types) */
+  tools?: ToolUnion[]
   /** Optional tool choice (use { type: 'tool', name: 'x' } for forced output) */
   tool_choice?: ToolChoice
   /** Optional JSON output format for structured responses */
-  output_format?: BetaJSONOutputFormat
+  output_format?: JSONOutputFormat
   /** Max tokens (default: 1024) */
   max_tokens?: number
   /** Max retries (default: 2) */
@@ -104,7 +104,7 @@ function extractFirstUserMessageText(messages: MessageParam[]): string {
  * // Model validation
  * await sideQuery({ querySource: 'model_validation', model, max_tokens: 1, messages: [{ role: 'user', content: 'Hi' }] })
  */
-export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
+export async function sideQuery(opts: SideQueryOptions): Promise<AssistantMessage> {
   const {
     model,
     system,
@@ -145,7 +145,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
 
   // Build system as array to keep attribution header in its own block
   // (prevents server-side parsing from including system content in cc_entrypoint)
-  const systemBlocks: TextBlockParam[] = [
+  const systemBlocks: TextContentBlock[] = [
     attributionHeader ? { type: 'text', text: attributionHeader } : null,
     // Skip CLI system prompt prefix for internal classifiers that provide their own prompt
     ...(skipSystemPromptPrefix
@@ -164,9 +164,9 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
       : system
         ? [{ type: 'text' as const, text: system }]
         : []),
-  ].filter((block): block is TextBlockParam => block !== null)
+  ].filter((block): block is TextContentBlock => block !== null)
 
-  let thinkingConfig: BetaThinkingConfigParam | undefined
+  let thinkingConfig: ThinkingConfigParam | undefined
   if (thinking === false) {
     thinkingConfig = { type: 'disabled' }
   } else if (thinking !== undefined) {
@@ -184,7 +184,10 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
       model: normalizedModel,
       max_tokens,
       system: systemBlocks,
-      messages,
+      // provider MessageParam → SDK BetaMessageParam 仅差 document source 面, 收敛断言 (Phase 3/4 移除)
+      messages: messages as unknown as Parameters<
+        typeof client.beta.messages.create
+      >[0]['messages'],
       ...(tools && { tools }),
       ...(tool_choice && { tool_choice }),
       ...(output_format && { output_config: { format: output_format } }),
@@ -218,5 +221,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
   })
   setLastApiCompletionTimestamp(now)
 
-  return response
+  // SDK BetaMessage → provider AssistantMessage: stop_reason 含 'refusal'/'pause_turn'
+  // 等 provider 面未建模变体, 收敛断言 (Phase 3/4 替换 client 后移除)
+  return response as unknown as AssistantMessage
 }

@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../../services/api/provider/types.js';
 import * as React from 'react';
 import type { Tools } from '../../../Tool.js';
 import type { NormalizedUserMessage, ProgressMessage } from '../../../types/message.js';
@@ -10,7 +10,7 @@ import { UserToolRejectMessage } from './UserToolRejectMessage.js';
 import { UserToolSuccessMessage } from './UserToolSuccessMessage.js';
 import { useGetToolFromMessages } from './utils.js';
 type Props = {
-  param: ToolResultBlockParam;
+  param: ToolResultContentBlock;
   message: NormalizedUserMessage;
   lookups: ReturnType<typeof buildMessageLookups>;
   progressMessagesForMessage: ProgressMessage[];

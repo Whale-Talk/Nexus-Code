@@ -3,7 +3,7 @@ import type {
   Base64ImageSource,
   ContentBlockParam,
   MessageParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../api/provider/types.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import {
   SSEClientTransport,
@@ -2083,7 +2083,7 @@ export const fetchCommandsForClient = memoizeWithLRU(
                   transformResultContent(message.content, connectedClient.name),
                 ),
               )
-              return transformed.flat()
+              return transformed.flat() as unknown as import('../../services/api/provider/types.js').ContentBlockParam[]
             } catch (error) {
               logMCPError(
                 client.name,
@@ -2124,7 +2124,8 @@ export async function callIdeRpc(
     args,
     signal: createAbortController().signal,
   })
-  return result.content
+  // MCPToolResult 仍为 SDK ContentBlockParam 面, 双跳断言收敛到 provider 面 (同 :2086)
+  return result.content as unknown as string | ContentBlockParam[] | undefined
 }
 
 /**
@@ -2690,7 +2691,7 @@ export async function transformMCPResult(
         )
       ).flat()
       return {
-        content: transformedContent,
+        content: transformedContent as unknown as MCPToolResult,
         type: 'contentArray',
         schema: inferCompactSchema(transformedContent),
       }

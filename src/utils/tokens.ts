@@ -1,4 +1,4 @@
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { Usage } from '../services/api/provider/types.js'
 import { roughTokenCountEstimationForMessages } from '../services/tokenEstimation.js'
 import type { AssistantMessage, Message } from '../types/message.js'
 import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
@@ -14,7 +14,7 @@ export function getTokenUsage(message: Message): Usage | undefined {
     ) &&
     message.message.model !== SYNTHETIC_MODEL
   ) {
-    return message.message.usage
+    return message.message.usage as Usage
   }
   return undefined
 }

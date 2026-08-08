@@ -1,6 +1,11 @@
 import { feature } from 'bun:bundle'
-import type Anthropic from '@anthropic-ai/sdk'
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import type {
+  AssistantMessage,
+  BetaToolDefinition,
+  ImageContentBlock,
+  MessageParam,
+  TextContentBlock,
+} from '../../services/api/provider/types.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { z } from 'zod/v4'
@@ -259,7 +264,7 @@ const yoloClassifierResponseSchema = lazySchema(() =>
 
 export const YOLO_CLASSIFIER_TOOL_NAME = 'classify_result'
 
-const YOLO_CLASSIFIER_TOOL_SCHEMA: BetaToolUnion = {
+const YOLO_CLASSIFIER_TOOL_SCHEMA: BetaToolDefinition = {
   type: 'custom',
   name: YOLO_CLASSIFIER_TOOL_NAME,
   description: 'Report the security classification result for the agent action',
@@ -457,7 +462,7 @@ export function buildTranscriptForClassifier(
  * getUserContext), the classifier proceeds without CLAUDE.md — same as
  * pre-PR behavior.
  */
-function buildClaudeMdMessage(): Anthropic.MessageParam | null {
+function buildClaudeMdMessage(): MessageParam | null {
   const claudeMd = getCachedClaudeMdContent()
   if (claudeMd === null) return null
   return {
@@ -607,7 +612,7 @@ function parseXmlThinking(text: string): string | null {
  * Extract usage stats from an API response.
  */
 function extractUsage(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: AssistantMessage,
 ): ClassifierUsage {
   return {
     inputTokens: result.usage.input_tokens,
@@ -622,7 +627,7 @@ function extractUsage(
  * non-enumerable `_request_id` property on response objects.
  */
 function extractRequestId(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: AssistantMessage,
 ): string | undefined {
   return (result as { _request_id?: string | null })._request_id ?? undefined
 }
@@ -709,11 +714,11 @@ function getClassifierThinkingConfig(
  * prompt caching (1h TTL) across calls.
  */
 async function classifyYoloActionXml(
-  prefixMessages: Anthropic.MessageParam[],
+  prefixMessages: MessageParam[],
   systemPrompt: string,
   userPrompt: string,
   userContentBlocks: Array<
-    Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+    TextContentBlock | ImageContentBlock
   >,
   model: string,
   promptLengths: {
@@ -739,7 +744,7 @@ async function classifyYoloActionXml(
         ? 'xml_fast'
         : 'xml_thinking'
   const xmlSystemPrompt = replaceOutputFormatWithXml(systemPrompt)
-  const systemBlocks: Anthropic.TextBlockParam[] = [
+  const systemBlocks: TextContentBlock[] = [
     {
       type: 'text' as const,
       text: xmlSystemPrompt,
@@ -758,7 +763,7 @@ async function classifyYoloActionXml(
   // Wrap all content (transcript + action) in <transcript> tags.
   // The action is the final tool_use block in the transcript.
   const wrappedContent: Array<
-    Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+    TextContentBlock | ImageContentBlock
   > = [
     { type: 'text' as const, text: '<transcript>\n' },
     ...userContentBlocks,
@@ -1031,13 +1036,13 @@ export async function classifyYoloAction(
   const systemPrompt = await buildYoloSystemPrompt(context)
   const transcriptEntries = buildTranscriptEntries(messages)
   const claudeMdMessage = buildClaudeMdMessage()
-  const prefixMessages: Anthropic.MessageParam[] = claudeMdMessage
+  const prefixMessages: MessageParam[] = claudeMdMessage
     ? [claudeMdMessage]
     : []
 
   let toolCallsLength = actionCompact.length
   let userPromptsLength = 0
-  const userContentBlocks: Anthropic.TextBlockParam[] = []
+  const userContentBlocks: TextContentBlock[] = []
   for (const entry of transcriptEntries) {
     for (const block of entry.content) {
       const serialized = toCompactBlock(block, entry.role, lookup)

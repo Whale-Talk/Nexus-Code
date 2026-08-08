@@ -1,4 +1,4 @@
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import * as React from 'react';
 import { SubAgentProvider } from 'src/components/CtrlOToExpand.js';
 import { FallbackToolUseErrorMessage } from 'src/components/FallbackToolUseErrorMessage.js';
@@ -108,7 +108,7 @@ export function renderToolUseRejectedMessage(_input: Input, {
       <FallbackToolUseRejectedMessage />
     </>;
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   progressMessagesForMessage,
   tools,
   verbose

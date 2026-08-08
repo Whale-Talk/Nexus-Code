@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle';
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import { copyFile, stat as fsStat, truncate as fsTruncate, link } from 'fs/promises';
 import * as React from 'react';
 import type { CanUseToolFn } from 'src/hooks/useCanUseTool.js';
@@ -390,7 +390,7 @@ export const PowerShellTool = buildTool({
     backgroundTaskId,
     backgroundedByUser,
     assistantAutoBackgrounded
-  }: Out, toolUseID: string): ToolResultBlockParam {
+  }: Out, toolUseID: string): ToolResultContentBlock {
     // For image data, format as image content block for Nexus
     if (isImage) {
       const block = buildImageToolResult(stdout, toolUseID);

@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { ToolResultContentBlock } from '../../services/api/provider/types.js';
 import * as React from 'react';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
 import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js';
@@ -171,7 +171,7 @@ export function renderToolResultMessage(content: Out, progressMessagesForMessage
   const timeoutMs = lastProgress?.data?.timeoutMs;
   return <BashToolResultMessage content={content} verbose={verbose} timeoutMs={timeoutMs} />;
 }
-export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'], {
+export function renderToolUseErrorMessage(result: ToolResultContentBlock['content'], {
   verbose,
   progressMessagesForMessage: _progressMessagesForMessage,
   tools: _tools

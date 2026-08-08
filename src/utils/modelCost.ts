@@ -1,4 +1,4 @@
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { Usage } from '../services/api/provider/types.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/index.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { setHasUnknownModelCost } from '../bootstrap/state.js'
@@ -180,7 +180,7 @@ export function calculateUSDCost(resolvedModel: string, usage: Usage): number {
 }
 
 /**
- * Calculate cost from raw token counts without requiring a full BetaUsage object.
+ * Calculate cost from raw token counts without requiring a full Usage object.
  * Useful for side queries (e.g. classifier) that track token counts independently.
  */
 export function calculateCostFromTokens(

@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolResultContentBlock } from '../api/provider/types.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
@@ -135,7 +135,7 @@ export function resetMicrocompactState(): void {
 }
 
 // Helper to calculate tool result tokens
-function calculateToolResultTokens(block: ToolResultBlockParam): number {
+function calculateToolResultTokens(block: ToolResultContentBlock): number {
   if (!block.content) {
     return 0
   }
@@ -144,15 +144,14 @@ function calculateToolResultTokens(block: ToolResultBlockParam): number {
     return roughTokenCountEstimation(block.content)
   }
 
-  // Array of TextBlockParam | ImageBlockParam | DocumentBlockParam
+  // provider 契约: TextContentBlock | ImageContentBlock; 真实响应中的
+  // document 块 (SDK 类型曾覆盖) 与 image 同按 2000 tokens/块估算。
   return block.content.reduce((sum, item) => {
     if (item.type === 'text') {
       return sum + roughTokenCountEstimation(item.text)
-    } else if (item.type === 'image' || item.type === 'document') {
-      // Images/documents are approximately 2000 tokens regardless of format
-      return sum + IMAGE_MAX_TOKEN_SIZE
     }
-    return sum
+    // Images/documents are approximately 2000 tokens regardless of format
+    return sum + IMAGE_MAX_TOKEN_SIZE
   }, 0)
 }
 
