@@ -1,0 +1,34 @@
+# 共享 bun 安装步骤 — 所有 job 统一走这里，避免拷贝漂移。
+# 包含: setup-bun(1.3.14) + 缓存(~/.bun/install/cache) + 腾讯镜像重试 + 失败护栏。
+name: Setup bun + install
+description: Install bun 1.3.14, restore cache, install dependencies with retry
+
+runs:
+  using: composite
+  steps:
+    - name: Setup bun
+      uses: oven-sh/setup-bun@v2.2.0
+      with:
+        bun-version: 1.3.14
+
+    - name: Restore bun cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - name: Install dependencies (with retry)
+      shell: bash
+      run: |
+        ok=""
+        for i in 1 2 3; do
+          if bun install --frozen-lockfile; then ok=1; break; fi
+          echo "::warning::bun install 失败(第 $i 次), 5s 后重试..."
+          sleep 5
+        done
+        # 收尾护栏: 三次全败则最后裸跑一次, 失败即 job 失败（set -e 生效）
+        if [ -z "$ok" ]; then
+          echo "::error::bun install 连续 3 次失败"
+          bun install --frozen-lockfile
+        fi
