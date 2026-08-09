@@ -26,6 +26,7 @@ import init from './commands/init.js'
 import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import login from './commands/login/index.js'
+import nexusConfig from './commands/nexus-config/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
 import installSlackApp from './commands/install-slack-app/index.js'
@@ -335,6 +336,7 @@ const COMMANDS = memoize((): Command[] => [
   exportCommand,
   sandboxToggle,
   ...(!isUsing3PServices() ? [logout, login()] : []),
+  nexusConfig(),
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,

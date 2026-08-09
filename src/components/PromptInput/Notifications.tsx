@@ -305,7 +305,7 @@ function NotificationContent({
         </Box>}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : 'Not logged in · Run /login'}
+            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? '认证错误 · 请重试' : '未配置 API 密钥 · 运行 /nexus-config 配置'}
           </Text>
         </Box>}
       {debug && <Box>

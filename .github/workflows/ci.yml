@@ -26,10 +26,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # gitleaks-action v3 需要商业 license — 改用 CLI 直接扫描（免费, 无 license 要求）
       - name: Gitleaks secret scan
-        uses: gitleaks/gitleaks-action@v3.0.0
+        run: |
+          curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          /tmp/gitleaks detect --source . --redact --verbose --no-banner --config .gitleaks.toml
         env:
-          # v3 breaking change: PR 扫描需要显式 token；默认发现泄露即失败
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # L1 — 安装健康 + 导入图冒烟 + 锁文件漂移

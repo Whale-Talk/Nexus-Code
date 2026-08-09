@@ -98,6 +98,10 @@ function isManagedOAuthContext(): boolean {
 /** Whether we are supporting direct 1P auth. */
 // this code is closely related to getAuthTokenSource
 export function isAnthropicAuthEnabled(): boolean {
+  // Nexus: no account concept — always API-key based, never OAuth.
+  // This disables the login/OAuth onboarding flow entirely.
+  if (process.env.NEXUS_BASE_URL) return false
+
   // --bare: API-key-only, never OAuth.
   if (isBareMode()) return false
 

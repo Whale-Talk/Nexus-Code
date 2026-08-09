@@ -13,13 +13,14 @@ import { isRunningOnHomespace } from '../utils/envUtils.js';
 import { PreflightStep } from '../utils/preflightChecks.js';
 import type { ThemeSetting } from '../utils/theme.js';
 import { ApproveApiKey } from './ApproveApiKey.js';
+import { NexusConfigForm } from '../commands/nexus-config/NexusConfigForm.js';
 import { ConsoleOAuthFlow } from './ConsoleOAuthFlow.js';
 import { Select } from './CustomSelect/select.js';
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
-type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
+type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'nexus-config' | 'security' | 'terminal-setup';
 interface OnboardingStep {
   id: StepId;
   component: React.ReactNode;
@@ -32,7 +33,8 @@ export function Onboarding({
 }: Props): React.ReactNode {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [skipOAuth, setSkipOAuth] = useState(false);
-  const [oauthEnabled] = useState(() => isAnthropicAuthEnabled());
+  // Nexus: 无账号概念, OAuth 登录恒禁用
+  const [oauthEnabled] = useState(false);
   const [theme, setTheme] = useTheme();
   useEffect(() => {
     logEvent('tengu_began_setup', {
@@ -40,6 +42,9 @@ export function Onboarding({
     });
   }, [oauthEnabled]);
   function goToNextStep() {
+    if (process.env.NEXUS_DEBUG_ONBOARDING) {
+      process.stderr.write(`[onboarding] goToNextStep: ${currentStepIndex} -> ${currentStepIndex + 1}, total ${steps.length}\n`)
+    }
     if (currentStepIndex < steps.length - 1) {
       const nextIndex = currentStepIndex + 1;
       setCurrentStepIndex(nextIndex);
@@ -128,6 +133,12 @@ export function Onboarding({
     steps.push({
       id: 'api-key',
       component: <ApproveApiKey customApiKeyTruncated={apiKeyNeedingApproval} onDone={handleApiKeyDone} />
+    });
+  } else if (!process.env.NEXUS_API_KEY && !process.env.NEXUS_AUTH_TOKEN) {
+    // Nexus: 无 API key 时直接进入配置引导（替代 OAuth 登录）
+    steps.push({
+      id: 'nexus-config',
+      component: <NexusConfigForm onDone={goToNextStep} />
     });
   }
   if (oauthEnabled) {

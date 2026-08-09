@@ -1,0 +1,12 @@
+# Gitleaks 配置 — 豁免误报（占位/示例/公开设计值）
+title = "Nexus Code gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Upstream sample values and public Datadog token (not secrets)"
+regexes = [
+  '''default_claude_max_20x''',
+  '''pubbbf48e6d78dae54bceaa4acf463299bf''',
+]

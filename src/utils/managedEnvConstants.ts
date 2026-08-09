@@ -37,9 +37,19 @@ const PROVIDER_MANAGED_ENV_VARS = new Set([
   'CLAUDE_CODE_SKIP_BEDROCK_AUTH',
   'CLAUDE_CODE_SKIP_VERTEX_AUTH',
   'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
-  // Nexus: model defaults are NOT provider-managed — the launcher
-  // sets provider-specific model IDs that MUST flow through.
-  // These are intentionally excluded from the managed set.
+  // Model defaults — the launcher sets provider-specific model IDs that
+  // MUST flow through. Settings (e.g. stale ~/.claude/settings.json from
+  // upstream Claude Code) must NOT override them — otherwise the model
+  // becomes claude-sonnet-4-6 and the relay returns 503.
+  'NEXUS_MODEL',
+  'ANTHROPIC_MODEL',
+  'NEXUS_QUARK_MODEL',
+  'NEXUS_ATOM_MODEL',
+  'NEXUS_ELECTRON_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'CLAUDE_CODE_SUBAGENT_MODEL',
 ])
 
 const PROVIDER_MANAGED_ENV_PREFIXES = [
