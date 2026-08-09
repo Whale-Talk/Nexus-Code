@@ -63,7 +63,7 @@ export function Onboarding({
     />
     </Box>;
   const securityStep = <Box flexDirection="column" gap={1} paddingLeft={1}>
-      <Text bold>Security notes:</Text>
+      <Text bold>安全提示:</Text>
       <Box flexDirection="column" width={70}>
         {/**
          * OrderedList misnumbers items when rendering conditionally,
@@ -71,20 +71,20 @@ export function Onboarding({
          */}
         <OrderedList>
           <OrderedList.Item>
-            <Text>Nexus can make mistakes</Text>
+            <Text>Nexus 可能会犯错</Text>
             <Text dimColor wrap="wrap">
-              You should always review Nexus&apos;s responses, especially when
+              请始终审查 Nexus 的回复，尤其是在
               <Newline />
-              running code.
+              运行代码时。
               <Newline />
             </Text>
           </OrderedList.Item>
           <OrderedList.Item>
             <Text>
-              Due to prompt injection risks, only use it with code you trust
+              由于存在提示注入风险，请仅对您信任的代码使用
             </Text>
             <Text dimColor wrap="wrap">
-              For more details see:
+              更多详情请参阅:
               <Newline />
               <Link url="https://github.com/Whale-Talk/Nexus-Code" />
             </Text>
@@ -146,7 +146,7 @@ export function Onboarding({
     steps.push({
       id: 'terminal-setup',
       component: <Box flexDirection="column" gap={1} paddingLeft={1}>
-          <Text bold>Use Nexus Code&apos;s terminal setup?</Text>
+          <Text bold>是否使用 Nexus Code 的终端设置？</Text>
           <Box flexDirection="column" width={70} gap={1}>
             <Text>
               For the optimal coding experience, enable the recommended settings
@@ -169,7 +169,7 @@ export function Onboarding({
             }
           }} onCancel={() => goToNextStep()} />
             <Text dimColor>
-              {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to skip</>}
+              {exitState.pending ? <>再次按 {exitState.keyName} 退出</> : <>回车确认 · Esc 跳过</>}
             </Text>
           </Box>
         </Box>
@@ -206,7 +206,7 @@ export function Onboarding({
       <Box flexDirection="column" marginTop={1}>
         {currentStep?.component}
         {exitState.pending && <Box padding={1}>
-            <Text dimColor>Press {exitState.keyName} again to exit</Text>
+            <Text dimColor>再次按 {exitState.keyName} 退出</Text>
           </Box>}
       </Box>
     </Box>;
