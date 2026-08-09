@@ -348,6 +348,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
       getDefaultOptionForUser(fastMode),
       getQuarkOption(),
       getAtomOption(),
+      getElectronOption(),
     ]
   }
 
