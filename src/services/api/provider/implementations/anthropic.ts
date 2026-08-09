@@ -128,7 +128,7 @@ async function extractAssistantMessageId(response: Response): Promise<void> {
  * 与 @anthropic-ai/sdk 把 env baseURL 当 v1 根的行为一致。
  */
 function resolveBaseURL(): string {
-  const raw = process.env.ANTHROPIC_BASE_URL
+  const raw = process.env.NEXUS_BASE_URL
   if (!raw) return 'https://api.anthropic.com/v1'
   const trimmed = raw.replace(/\/+$/, '')
   return /\/v1$/.test(trimmed) ? trimmed : `${trimmed}/v1`
@@ -174,7 +174,7 @@ function createProvider(onResponse: (response: Response) => void): AnthropicProv
   return createAnthropic({
     baseURL,
     // relay 的 key 无 sk- 前缀, 原样透传 (bin/nexus.cjs:66-74)
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey: process.env.NEXUS_API_KEY,
     headers: buildConversationHeaders(baseURL),
     fetch: buildTrackingFetch(onResponse),
   })

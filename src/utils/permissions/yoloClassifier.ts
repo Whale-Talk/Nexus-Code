@@ -1351,7 +1351,7 @@ function getClassifierModel(): string {
   // Nexus: use fast model for classifier (relays serve DeepSeek models).
   return (
     process.env.ANTHROPIC_SMALL_FAST_MODEL ||
-    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL ||
+    process.env.NEXUS_ELECTRON_MODEL ||
     getMainLoopModel()
   )
 }

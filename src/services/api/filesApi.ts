@@ -27,11 +27,11 @@ import {
 const FILES_API_BETA_HEADER = 'files-api-2025-04-14,oauth-2025-04-20'
 const ANTHROPIC_VERSION = '2023-06-01'
 
-// API base URL - uses ANTHROPIC_BASE_URL set by env-manager for the appropriate environment
+// API base URL - uses NEXUS_BASE_URL set by env-manager for the appropriate environment
 // Falls back to public API for standalone usage
 function getDefaultApiBaseUrl(): string {
   return (
-    process.env.ANTHROPIC_BASE_URL ||
+    process.env.NEXUS_BASE_URL ||
     process.env.CLAUDE_CODE_API_BASE_URL ||
     'https://api.anthropic.com'
   )

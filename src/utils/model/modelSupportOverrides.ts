@@ -10,16 +10,16 @@ export type ModelCapabilityOverride =
 
 const TIERS = [
   {
-    modelEnvVar: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    capabilitiesEnvVar: 'ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
+    modelEnvVar: 'NEXUS_QUARK_MODEL',
+    capabilitiesEnvVar: 'NEXUS_QUARK_MODEL_SUPPORTED_CAPABILITIES',
   },
   {
-    modelEnvVar: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-    capabilitiesEnvVar: 'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+    modelEnvVar: 'NEXUS_ATOM_MODEL',
+    capabilitiesEnvVar: 'NEXUS_ATOM_MODEL_SUPPORTED_CAPABILITIES',
   },
   {
-    modelEnvVar: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-    capabilitiesEnvVar: 'ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
+    modelEnvVar: 'NEXUS_ELECTRON_MODEL',
+    capabilitiesEnvVar: 'NEXUS_ELECTRON_MODEL_SUPPORTED_CAPABILITIES',
   },
 ] as const
 

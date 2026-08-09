@@ -83,7 +83,7 @@ const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
 /**
  * CCR and Nexus Desktop spawn the CLI with OAuth and should never fall back
  * to the user's ~/.claude/settings.json API-key config (apiKeyHelper,
- * env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN). Those settings exist for
+ * env.NEXUS_API_KEY, env.NEXUS_AUTH_TOKEN). Those settings exist for
  * the user's terminal CLI, not managed sessions. Without this guard, a user
  * who runs `claude` in their terminal with an API key sees every CCD session
  * also use that key — and fail if it's stale/wrong-org.
@@ -105,7 +105,7 @@ export function isAnthropicAuthEnabled(): boolean {
   // local auth-injecting proxy. The launcher sets CLAUDE_CODE_OAUTH_TOKEN as a
   // placeholder iff the local side is a subscriber (so the remote includes the
   // oauth-2025 beta header to match what the proxy will inject). The remote's
-  // ~/.claude settings (apiKeyHelper, settings.env.ANTHROPIC_API_KEY) MUST NOT
+  // ~/.claude settings (apiKeyHelper, settings.env.NEXUS_API_KEY) MUST NOT
   // flip this — they'd cause a header mismatch with the proxy and a bogus
   // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
   if (process.env.ANTHROPIC_UNIX_SOCKET) {
@@ -122,7 +122,7 @@ export function isAnthropicAuthEnabled(): boolean {
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.NEXUS_AUTH_TOKEN ||
     apiKeyHelper ||
     process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
 
@@ -131,7 +131,7 @@ export function isAnthropicAuthEnabled(): boolean {
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   const hasExternalApiKey =
-    apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
+    apiKeySource === 'NEXUS_API_KEY' || apiKeySource === 'apiKeyHelper'
 
   // Disable Anthropic auth if:
   // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
@@ -162,9 +162,9 @@ export function getAuthTokenSource() {
   }
 
   // Nexus: if an API key is set, AUTH_TOKEN is irrelevant — suppress the
-  // inherited ANTHROPIC_AUTH_TOKEN to avoid auth conflict warnings.
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext() && !process.env.ANTHROPIC_API_KEY) {
-    return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
+  // inherited NEXUS_AUTH_TOKEN to avoid auth conflict warnings.
+  if (process.env.NEXUS_AUTH_TOKEN && !isManagedOAuthContext() && !process.env.NEXUS_API_KEY) {
+    return { source: 'NEXUS_AUTH_TOKEN' as const, hasToken: true }
   }
 
   if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
@@ -208,7 +208,7 @@ export function getAuthTokenSource() {
 }
 
 export type ApiKeySource =
-  | 'ANTHROPIC_API_KEY'
+  | 'NEXUS_API_KEY'
   | 'apiKeyHelper'
   | '/login managed key'
   | 'none'
@@ -219,12 +219,12 @@ export function getAnthropicApiKey(): null | string {
 }
 
 /**
- * Nexus: true when ANTHROPIC_BASE_URL points at a custom relay (any host
+ * Nexus: true when NEXUS_BASE_URL points at a custom relay (any host
  * other than api.anthropic.com). Used to prefer env API keys in interactive
  * sessions where official OAuth would otherwise take over.
  */
 function isCustomAnthropicBaseUrl(): boolean {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL
+  const baseUrl = process.env.NEXUS_BASE_URL
   if (!baseUrl) return false
   try {
     return new URL(baseUrl).host !== 'api.anthropic.com'
@@ -246,12 +246,12 @@ export function getAnthropicApiKeyWithSource(
   key: null | string
   source: ApiKeySource
 } {
-  // --bare: hermetic auth. Only ANTHROPIC_API_KEY env or apiKeyHelper from
+  // --bare: hermetic auth. Only NEXUS_API_KEY env or apiKeyHelper from
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.
   if (isBareMode()) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return { key: process.env.ANTHROPIC_API_KEY, source: 'ANTHROPIC_API_KEY' }
+    if (process.env.NEXUS_API_KEY) {
+      return { key: process.env.NEXUS_API_KEY, source: 'NEXUS_API_KEY' }
     }
     if (getConfiguredApiKeyHelper()) {
       return {
@@ -264,18 +264,18 @@ export function getAnthropicApiKeyWithSource(
     return { key: null, source: 'none' }
   }
 
-  // On homespace, don't use ANTHROPIC_API_KEY (use Console key instead)
+  // On homespace, don't use NEXUS_API_KEY (use Console key instead)
   // https://anthropic.slack.com/archives/C08428WSLKV/p1747331773214779
   const apiKeyEnv = isRunningOnHomespace()
     ? undefined
-    : process.env.ANTHROPIC_API_KEY
+    : process.env.NEXUS_API_KEY
 
   // Always check for direct environment variable when the user ran claude --print.
   // This is useful for CI, etc.
   if ((preferThirdPartyAuthentication() || isCustomAnthropicBaseUrl()) && apiKeyEnv) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'NEXUS_API_KEY',
     }
   }
 
@@ -285,7 +285,7 @@ export function getAnthropicApiKeyWithSource(
     if (apiKeyFromFd) {
       return {
         key: apiKeyFromFd,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'NEXUS_API_KEY',
       }
     }
 
@@ -295,14 +295,14 @@ export function getAnthropicApiKeyWithSource(
       !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
+        'NEXUS_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
       )
     }
 
     if (apiKeyEnv) {
       return {
         key: apiKeyEnv,
-        source: 'ANTHROPIC_API_KEY',
+        source: 'NEXUS_API_KEY',
       }
     }
 
@@ -312,7 +312,7 @@ export function getAnthropicApiKeyWithSource(
       source: 'none',
     }
   }
-  // Check for ANTHROPIC_API_KEY before checking the apiKeyHelper or /login-managed key
+  // Check for NEXUS_API_KEY before checking the apiKeyHelper or /login-managed key
   if (
     apiKeyEnv &&
     getGlobalConfig().customApiKeyResponses?.approved?.includes(
@@ -321,7 +321,7 @@ export function getAnthropicApiKeyWithSource(
   ) {
     return {
       key: apiKeyEnv,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'NEXUS_API_KEY',
     }
   }
 
@@ -330,7 +330,7 @@ export function getAnthropicApiKeyWithSource(
   if (apiKeyFromFd) {
     return {
       key: apiKeyFromFd,
-      source: 'ANTHROPIC_API_KEY',
+      source: 'NEXUS_API_KEY',
     }
   }
 

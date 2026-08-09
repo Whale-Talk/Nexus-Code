@@ -110,18 +110,18 @@ export function createOpenAICompatibleAdapter(
 
 /**
  * 注册表友好工厂 (index.ts registerProvider 签名: () => Promise<{ adapter }>)。
- * 环境变量驱动: ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY。
+ * 环境变量驱动: NEXUS_BASE_URL + NEXUS_AUTH_TOKEN / NEXUS_API_KEY。
  */
 export function createOpenAICompatibleProvider(): Promise<{
   adapter: ProviderAdapter
 }> {
-  const baseURL = process.env.ANTHROPIC_BASE_URL
+  const baseURL = process.env.NEXUS_BASE_URL
   const apiKey =
-    process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY
+    process.env.NEXUS_AUTH_TOKEN || process.env.NEXUS_API_KEY
   if (!baseURL) {
     return Promise.reject(
       new Error(
-        'createOpenAICompatibleProvider: ANTHROPIC_BASE_URL 未设置 (必须带 /v1 后缀)',
+        'createOpenAICompatibleProvider: NEXUS_BASE_URL 未设置 (必须带 /v1 后缀)',
       ),
     )
   }

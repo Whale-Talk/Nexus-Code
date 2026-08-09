@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // Nexus launcher — Node.js entry point that manages config isolation and spawns bun.
+//   Settings use NEXUS_* keys. The launcher bridges: NEXUS_* env vars for our code,
+//   ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk).
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
 const { homedir } = require('os')
 const { delimiter, dirname, join, resolve } = require('path')
@@ -11,7 +13,7 @@ const originalCwd = process.cwd() // user's launch directory
 const configDir = join(homedir(), '.nexus')
 const settingsPath = join(configDir, 'settings.json')
 
-// --- Default settings ---
+// --- Default settings (NEXUS_* keys) ---
 const defaultSettings = {
   $schema: 'https://json.schemastore.org/claude-code-settings.json',
   env: {
@@ -21,17 +23,23 @@ const defaultSettings = {
     CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
     MCP_TIMEOUT: '60000',
     API_TIMEOUT_MS: '3000000',
-    ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
-    ANTHROPIC_MODEL: 'deepseek-v4-pro[1m]',
-    ANTHROPIC_DEFAULT_OPUS_MODEL: 'deepseek-v4-pro[1m]',
-    ANTHROPIC_DEFAULT_SONNET_MODEL: 'deepseek-v4-pro[1m]',
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'deepseek-v4-flash[1m]',
+    NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
+    NEXUS_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_QUARK_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_ATOM_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_ELECTRON_MODEL: 'deepseek-v4-flash[1m]',
     CLAUDE_CODE_SUBAGENT_MODEL: 'deepseek-v4-flash[1m]',
   },
   model: 'deepseek-v4-pro[1m]',
   deepseek: { effort: 'max' },
   // Nexus: accept bypass-permissions warning once so it never shows again.
   skipDangerousModePermissionPrompt: true,
+}
+
+// Backward compat: also accept old ANTHROPIC_* keys
+function resolveEnvKey(settings, newKey, oldKey) {
+  let env = settings?.env || {}
+  return env[newKey] || env[oldKey]
 }
 
 function readJson(p, fallback) {
@@ -51,9 +59,8 @@ if (!existsSync(settingsPath)) {
       env: {
         ...defaultSettings.env,
         ...(current.env || {}),
-        // Preserve user's base URL; fall back to default only if unset
-        ANTHROPIC_BASE_URL:
-          current.env?.ANTHROPIC_BASE_URL || defaultSettings.env.ANTHROPIC_BASE_URL,
+        NEXUS_BASE_URL:
+          current.env?.NEXUS_BASE_URL || current.env?.ANTHROPIC_BASE_URL || defaultSettings.env.NEXUS_BASE_URL,
       },
       model: current.model ?? defaultSettings.model,
     }
@@ -63,23 +70,12 @@ if (!existsSync(settingsPath)) {
   }
 }
 
-// --- Auth: resolve API key from env → settings.env ---
+// --- Auth: resolve API key (NEXUS_API_KEY, with backward compat) ---
 function resolveApiKey() {
-  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
   try {
     const s = JSON.parse(readFileSync(settingsPath, 'utf8'))
-    const key = s?.env?.ANTHROPIC_API_KEY
+    const key = s?.env?.NEXUS_API_KEY || s?.env?.ANTHROPIC_API_KEY
     if (typeof key === 'string' && key.trim()) return key.trim()
-  } catch {}
-  return undefined
-}
-
-// --- Auth: resolve AUTH_TOKEN from settings ---
-function resolveAuthToken() {
-  try {
-    const s = JSON.parse(readFileSync(settingsPath, 'utf8'))
-    const t = s?.env?.ANTHROPIC_AUTH_TOKEN
-    if (typeof t === 'string' && t.trim()) return t.trim()
   } catch {}
   return undefined
 }
@@ -88,40 +84,42 @@ function resolveAuthToken() {
 process.env.CLAUDE_CONFIG_DIR = configDir
 process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
 
-// Base URL: user's settings.env, else default
 const settings = readJson(settingsPath, {})
-process.env.ANTHROPIC_BASE_URL =
-  settings?.env?.ANTHROPIC_BASE_URL || defaultSettings.env.ANTHROPIC_BASE_URL
 
-// Auth: wipe inherited tokens first to prevent auth conflict warnings.
-// (Node's delete process.env may fail on inherited vars — set to empty instead.)
-process.env.ANTHROPIC_AUTH_TOKEN = ''
-process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
+// Bridge: set NEXUS_* for our code
+process.env.NEXUS_BASE_URL =
+  resolveEnvKey(settings, 'NEXUS_BASE_URL', 'ANTHROPIC_BASE_URL') || defaultSettings.env.NEXUS_BASE_URL
+process.env.NEXUS_MODEL =
+  resolveEnvKey(settings, 'NEXUS_MODEL', 'ANTHROPIC_MODEL') || settings?.model || defaultSettings.model
+process.env.NEXUS_QUARK_MODEL =
+  resolveEnvKey(settings, 'NEXUS_QUARK_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') || 'deepseek-v4-pro[1m]'
+process.env.NEXUS_ATOM_MODEL =
+  resolveEnvKey(settings, 'NEXUS_ATOM_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL') || 'deepseek-v4-pro[1m]'
+process.env.NEXUS_ELECTRON_MODEL =
+  resolveEnvKey(settings, 'NEXUS_ELECTRON_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL') || 'deepseek-v4-flash[1m]'
 
-// Auth: prefer settings.env values (user-configured tokens)
-const configuredKey = resolveApiKey()
-if (configuredKey) process.env.ANTHROPIC_API_KEY = configuredKey
-
-const configuredToken = resolveAuthToken()
-if (configuredToken) {
-  process.env.ANTHROPIC_AUTH_TOKEN = configuredToken
-}
-delete process.env.ANTHROPIC_AUTH_TOKEN
-delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-
-// Model env: preserve [1m] for relay channels
-process.env.ANTHROPIC_MODEL =
-  settings?.env?.ANTHROPIC_MODEL || settings?.model || defaultSettings.model
-process.env.ANTHROPIC_DEFAULT_OPUS_MODEL =
-  settings?.env?.ANTHROPIC_DEFAULT_OPUS_MODEL || 'deepseek-v4-pro[1m]'
-process.env.ANTHROPIC_DEFAULT_SONNET_MODEL =
-  settings?.env?.ANTHROPIC_DEFAULT_SONNET_MODEL || 'deepseek-v4-pro[1m]'
-process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL =
-  settings?.env?.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'deepseek-v4-flash[1m]'
+// Bridge: also set ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk)
+process.env.ANTHROPIC_BASE_URL = process.env.NEXUS_BASE_URL
+process.env.ANTHROPIC_MODEL = process.env.NEXUS_MODEL
+process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = process.env.NEXUS_QUARK_MODEL
+process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = process.env.NEXUS_ATOM_MODEL
+process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = process.env.NEXUS_ELECTRON_MODEL
 process.env.CLAUDE_CODE_SUBAGENT_MODEL =
   settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash[1m]'
 
-// Effort: map deepseek.effort → CLAUDE_CODE_EFFORT_LEVEL (max/medium/low)
+// Auth: wipe inherited tokens, set NEXUS_API_KEY + bridge to ANTHROPIC_API_KEY
+process.env.ANTHROPIC_AUTH_TOKEN = ''
+process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
+delete process.env.ANTHROPIC_AUTH_TOKEN
+delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+
+const configuredKey = resolveApiKey()
+if (configuredKey) {
+  process.env.NEXUS_API_KEY = configuredKey
+  process.env.ANTHROPIC_API_KEY = configuredKey   // bridge for SDK internals
+}
+
+// Effort
 const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
 const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || 'medium'
 process.env.CLAUDE_CODE_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
@@ -139,8 +137,6 @@ process.env.CLAUDE_CODE_FORCE_FULL_LOGO = '1'
 
 // --- Launch ---
 const bun = process.env.BUN_BINARY || 'bun'
-// Nexus default: skip permission prompts. Override with
-// --permission-mode default on the command line to restore prompts.
 const userArgs = process.argv.slice(2)
 const hasPermissionFlag = userArgs.some(a =>
   a.startsWith('--permission-mode') || a === '--dangerously-skip-permissions'
@@ -152,8 +148,6 @@ const args = [
   ...userArgs,
 ]
 const child = spawn(bun, args, {
-  // Run in the user's launch directory, not projectDir — session history
-  // and project context must follow where the user started Nexus.
   cwd: originalCwd,
   env: process.env,
   stdio: 'inherit',

@@ -39,7 +39,7 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: \${{ secrets.NEXUS_API_KEY }}
 
           # This is an optional setting that allows Nexus to read CI results on PRs
           additional_permissions: |
@@ -134,7 +134,7 @@ jobs:
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: \${{ secrets.NEXUS_API_KEY }}
           plugin_marketplaces: 'https://github.com/Whale-Talk/Nexus-Code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review \${{ github.repository }}/pull/\${{ github.event.pull_request.number }}'
