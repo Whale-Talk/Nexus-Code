@@ -91,6 +91,8 @@ process.env.NEXUS_BASE_URL =
   resolveEnvKey(settings, 'NEXUS_BASE_URL', 'ANTHROPIC_BASE_URL') || defaultSettings.env.NEXUS_BASE_URL
 process.env.NEXUS_MODEL =
   resolveEnvKey(settings, 'NEXUS_MODEL', 'ANTHROPIC_MODEL') || settings?.model || defaultSettings.model
+// 通用透传: 用户配置的 NEXUS_PROVIDER + 三角色模型 ID（任意厂商均可）
+process.env.NEXUS_PROVIDER = settings?.env?.NEXUS_PROVIDER || 'anthropic'
 process.env.NEXUS_QUARK_MODEL =
   resolveEnvKey(settings, 'NEXUS_QUARK_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') || 'deepseek-v4-pro[1m]'
 process.env.NEXUS_ATOM_MODEL =

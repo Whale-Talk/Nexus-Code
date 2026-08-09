@@ -64,6 +64,18 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
     }
   }
 
+  // Nexus: 自定义 relay (任何厂商) — Default 显示当前模型, 无 Anthropic 定价
+  if (isDeepSeekRelay(process.env.NEXUS_BASE_URL, null) || process.env.NEXUS_PROVIDER === 'openai-compatible') {
+    const current = process.env.NEXUS_MODEL || getSettings_DEPRECATED()?.model
+    return {
+      value: null,
+      label: 'Default (recommended)',
+      description: current
+        ? `Use the default model (currently ${current.replace(/\[1m\]$/i, '')})`
+        : 'Use the default model',
+    }
+  }
+
   // PAYG
   const is3P = getAPIProvider() !== 'firstParty'
   return {
@@ -104,29 +116,41 @@ function getSonnet46Option(): ModelOption {
   }
 }
 
+// Nexus: 三角色选项动态生成 — 从 env 读取模型 ID, 适配任意厂商。
+// label 按 [1m] 后缀自动加 "(1M context)"。
+function withContextSuffix(model: string, name: string): string {
+  return /\[1m\]/i.test(model) ? `${name} (1M context)` : name
+}
+
 export function getQuarkOption(): ModelOption {
+  const model = process.env.NEXUS_QUARK_MODEL || 'deepseek-v4-pro[1m]'
+  const has1m = /\[1m\]/i.test(model)
   return {
-    value: 'deepseek-v4-pro[1m]',
-    label: 'Nexus Quark (1M context)',
-    description: 'Nexus Quark · deep reasoning engine for complex analysis with 1M context window',
+    value: model,
+    label: withContextSuffix(model, 'Nexus Quark'),
+    description: `Nexus Quark · deep reasoning engine for complex analysis${has1m ? ' with 1M context window' : ''}`,
     descriptionForModel: 'Nexus Quark - deep reasoning engine for the most challenging tasks',
   }
 }
 
 export function getAtomOption(): ModelOption {
+  const model = process.env.NEXUS_ATOM_MODEL || 'deepseek-v4-flash[1m]'
+  const has1m = /\[1m\]/i.test(model)
   return {
-    value: 'deepseek-v4-flash[1m]',
-    label: 'Nexus Atom (1M context)',
-    description: 'Nexus Atom · balanced daily engine for everyday coding with 1M context window',
+    value: model,
+    label: withContextSuffix(model, 'Nexus Atom'),
+    description: `Nexus Atom · balanced daily engine for everyday coding${has1m ? ' with 1M context window' : ''}`,
     descriptionForModel: 'Nexus Atom - balanced daily engine for everyday coding tasks',
   }
 }
 
 export function getElectronOption(): ModelOption {
+  const model = process.env.NEXUS_ELECTRON_MODEL || 'deepseek-v4-flash[1m]'
+  const has1m = /\[1m\]/i.test(model)
   return {
-    value: 'deepseek-v4-flash[1m]',
-    label: 'Nexus Electron (1M context)',
-    description: 'Nexus Electron · fastest response engine for sub-agents and quick tasks',
+    value: model,
+    label: withContextSuffix(model, 'Nexus Electron'),
+    description: `Nexus Electron · fastest response engine for sub-agents and quick tasks${has1m ? ' with 1M context window' : ''}`,
     descriptionForModel: 'Nexus Electron - fastest response engine for sub-agents and quick tasks',
   }
 }
