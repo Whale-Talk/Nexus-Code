@@ -39,16 +39,16 @@ import type { ProviderAdapter } from './provider/index.js'
  * AWS Bedrock:
  * - AWS credentials configured via aws-sdk defaults
  * - AWS_REGION or AWS_DEFAULT_REGION: Sets the AWS region for all models (default: us-east-1)
- * - ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION: Optional. Override AWS region specifically for the small fast model (Haiku)
+ * - NEXUS_SMALL_FAST_MODEL_AWS_REGION: Optional. Override AWS region specifically for the small fast model (Haiku)
  *
  * Foundry (Azure):
- * - ANTHROPIC_FOUNDRY_RESOURCE: Your Azure resource name (e.g., 'my-resource')
+ * - NEXUS_FOUNDRY_RESOURCE: Your Azure resource name (e.g., 'my-resource')
  *   For the full endpoint: https://{resource}.services.ai.azure.com/anthropic/v1/messages
- * - ANTHROPIC_FOUNDRY_BASE_URL: Optional. Alternative to resource - provide full base URL directly
+ * - NEXUS_FOUNDRY_BASE_URL: Optional. Alternative to resource - provide full base URL directly
  *   (e.g., 'https://my-resource.services.ai.azure.com')
  *
  * Authentication (one of the following):
- * - ANTHROPIC_FOUNDRY_API_KEY: Your Microsoft Foundry API key (if using API key auth)
+ * - NEXUS_FOUNDRY_API_KEY: Your Microsoft Foundry API key (if using API key auth)
  * - Azure AD authentication: If no API key is provided, uses DefaultAzureCredential
  *   which supports multiple auth methods (environment variables, managed identity,
  *   Azure CLI, etc.). See: https://docs.microsoft.com/en-us/javascript/api/@azure/identity
@@ -61,7 +61,7 @@ import type { ProviderAdapter } from './provider/index.js'
  *   - VERTEX_REGION_CLAUDE_3_7_SONNET: Region for Claude 3.7 Sonnet model
  * - CLOUD_ML_REGION: Optional. The default GCP region to use for all models
  *   If specific model region not specified above
- * - ANTHROPIC_VERTEX_PROJECT_ID: Required. Your GCP project ID
+ * - NEXUS_VERTEX_PROJECT_ID: Required. Your GCP project ID
  * - Standard GCP credentials configured via google-auth-library
  *
  * Priority for determining region:
@@ -118,7 +118,7 @@ export async function getAnthropicClient({
 
   // Log API client configuration for HFI debugging
   logForDebugging(
-    `[API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: ${!!process.env.ANTHROPIC_CUSTOM_HEADERS}, has Authorization header: ${!!customHeaders['Authorization']}`,
+    `[API:request] Creating client, NEXUS_CUSTOM_HEADERS present: ${!!process.env.NEXUS_CUSTOM_HEADERS}, has Authorization header: ${!!customHeaders['Authorization']}`,
   )
 
   // Add additional protection header if enabled via env var
@@ -156,8 +156,8 @@ export async function getAnthropicClient({
     // Use region override for small fast model if specified
     const awsRegion =
       model === getSmallFastModel() &&
-      process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
-        ? process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
+      process.env.NEXUS_SMALL_FAST_MODEL_AWS_REGION
+        ? process.env.NEXUS_SMALL_FAST_MODEL_AWS_REGION
         : getAWSRegion()
 
     const bedrockArgs: ConstructorParameters<typeof AnthropicBedrock>[0] = {
@@ -197,9 +197,9 @@ export async function getAnthropicClient({
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)) {
     const { AnthropicFoundry } = await import('@anthropic-ai/foundry-sdk')
     // Determine Azure AD token provider based on configuration
-    // SDK reads ANTHROPIC_FOUNDRY_API_KEY by default
+    // SDK reads NEXUS_FOUNDRY_API_KEY by default
     let azureADTokenProvider: (() => Promise<string>) | undefined
-    if (!process.env.ANTHROPIC_FOUNDRY_API_KEY) {
+    if (!process.env.NEXUS_FOUNDRY_API_KEY) {
       if (isEnvTruthy(process.env.CLAUDE_CODE_SKIP_FOUNDRY_AUTH)) {
         // Mock token provider for testing/proxy scenarios (similar to Vertex mock GoogleAuth)
         azureADTokenProvider = () => Promise.resolve('')
@@ -280,7 +280,7 @@ export async function getAnthropicClient({
         } as unknown as GoogleAuth)
       : new GoogleAuth({
           scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-          // Only use ANTHROPIC_VERTEX_PROJECT_ID as last resort fallback
+          // Only use NEXUS_VERTEX_PROJECT_ID as last resort fallback
           // This prevents the 12-second metadata server timeout when:
           // - No project env vars are set AND
           // - No credential keyfile is specified AND
@@ -291,7 +291,7 @@ export async function getAnthropicClient({
           ...(hasProjectEnvVar || hasKeyFile
             ? {}
             : {
-                projectId: process.env.ANTHROPIC_VERTEX_PROJECT_ID,
+                projectId: process.env.NEXUS_VERTEX_PROJECT_ID,
               }),
         })
 
@@ -339,7 +339,7 @@ async function configureApiKeyHeaders(
 
 function getCustomHeaders(): Record<string, string> {
   const customHeaders: Record<string, string> = {}
-  const customHeadersEnv = process.env.ANTHROPIC_CUSTOM_HEADERS
+  const customHeadersEnv = process.env.NEXUS_CUSTOM_HEADERS
 
   if (!customHeadersEnv) return customHeaders
 

@@ -356,11 +356,11 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     betaHeaders.push(PROMPT_CACHING_SCOPE_BETA_HEADER)
   }
 
-  // If ANTHROPIC_BETAS is set, split it by commas and add to betaHeaders.
+  // If NEXUS_BETAS is set, split it by commas and add to betaHeaders.
   // This is an explicit user opt-in, so honor it regardless of model.
-  if (process.env.ANTHROPIC_BETAS) {
+  if (process.env.NEXUS_BETAS) {
     betaHeaders.push(
-      ...process.env.ANTHROPIC_BETAS.split(',')
+      ...process.env.NEXUS_BETAS.split(',')
         .map(_ => _.trim())
         .filter(Boolean),
     )

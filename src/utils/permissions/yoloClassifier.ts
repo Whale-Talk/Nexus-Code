@@ -67,7 +67,7 @@ const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
   : ''
 
-const ANTHROPIC_PERMISSIONS_TEMPLATE: string =
+const NEXUS_PERMISSIONS_TEMPLATE: string =
   feature('TRANSCRIPT_CLASSIFIER') && process.env.USER_TYPE === 'ant'
     ? txtRequire(require('./yolo-classifier-prompts/permissions_anthropic.txt'))
     : ''
@@ -493,7 +493,7 @@ export async function buildYoloSystemPrompt(
   const systemPrompt = BASE_PROMPT.replace('<permissions_template>', () =>
     usingExternal
       ? EXTERNAL_PERMISSIONS_TEMPLATE
-      : ANTHROPIC_PERMISSIONS_TEMPLATE,
+      : NEXUS_PERMISSIONS_TEMPLATE,
   )
 
   const autoMode = getAutoModeConfig()
@@ -1350,7 +1350,7 @@ function getClassifierModel(): string {
   }
   // Nexus: use fast model for classifier (relays serve DeepSeek models).
   return (
-    process.env.ANTHROPIC_SMALL_FAST_MODEL ||
+    process.env.NEXUS_SMALL_FAST_MODEL ||
     process.env.NEXUS_ELECTRON_MODEL ||
     getMainLoopModel()
   )

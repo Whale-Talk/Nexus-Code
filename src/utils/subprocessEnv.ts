@@ -17,8 +17,8 @@ const GHA_SUBPROCESS_SCRUB = [
   'NEXUS_API_KEY',
   'CLAUDE_CODE_OAUTH_TOKEN',
   'NEXUS_AUTH_TOKEN',
-  'ANTHROPIC_FOUNDRY_API_KEY',
-  'ANTHROPIC_CUSTOM_HEADERS',
+  'NEXUS_FOUNDRY_API_KEY',
+  'NEXUS_CUSTOM_HEADERS',
 
   // OTLP exporter headers — documented to carry Authorization=Bearer tokens
   // for monitoring backends; read in-process by OTEL SDK, subprocesses never need them
