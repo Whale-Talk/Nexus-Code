@@ -177,12 +177,12 @@ function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
     // For pro and enterprise, Sonnet limit is the same as weekly
-    const limit = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
+    const limit = isProOrEnterprise ? 'weekly limit' : 'Atom limit'
     return formatLimitReachedText(limit, resetMessage, model)
   }
 
   if (limits.rateLimitType === 'seven_day_opus') {
-    return formatLimitReachedText('Opus limit', resetMessage, model)
+    return formatLimitReachedText('Quark limit', resetMessage, model)
   }
 
   if (limits.rateLimitType === 'seven_day') {
@@ -206,10 +206,10 @@ function getEarlyWarningText(limits: ClaudeAILimits): string | null {
       limitName = 'session limit'
       break
     case 'seven_day_opus':
-      limitName = 'Opus limit'
+      limitName = 'Quark limit'
       break
     case 'seven_day_sonnet':
-      limitName = 'Sonnet limit'
+      limitName = 'Atom limit'
       break
     case 'overage':
       limitName = 'extra usage'
@@ -311,13 +311,13 @@ export function getUsingOverageText(limits: ClaudeAILimits): string {
   } else if (limits.rateLimitType === 'seven_day') {
     limitName = 'weekly limit'
   } else if (limits.rateLimitType === 'seven_day_opus') {
-    limitName = 'Opus limit'
+    limitName = 'Quark limit'
   } else if (limits.rateLimitType === 'seven_day_sonnet') {
     const subscriptionType = getSubscriptionType()
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
     // For pro and enterprise, Sonnet limit is the same as weekly
-    limitName = isProOrEnterprise ? 'weekly limit' : 'Sonnet limit'
+    limitName = isProOrEnterprise ? 'weekly limit' : 'Atom limit'
   }
 
   if (!limitName) {
