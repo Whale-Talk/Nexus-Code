@@ -98,16 +98,13 @@ process.env.NEXUS_ATOM_MODEL =
 process.env.NEXUS_ELECTRON_MODEL =
   resolveEnvKey(settings, 'NEXUS_ELECTRON_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL') || 'deepseek-v4-flash[1m]'
 
-// Bridge: also set ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk)
-process.env.ANTHROPIC_BASE_URL = process.env.NEXUS_BASE_URL
-process.env.ANTHROPIC_MODEL = process.env.NEXUS_MODEL
-process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = process.env.NEXUS_QUARK_MODEL
-process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = process.env.NEXUS_ATOM_MODEL
-process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = process.env.NEXUS_ELECTRON_MODEL
 process.env.CLAUDE_CODE_SUBAGENT_MODEL =
   settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash[1m]'
 
-// Auth: wipe inherited tokens, set NEXUS_API_KEY + bridge to ANTHROPIC_API_KEY
+// Auth: wipe inherited tokens (conflict warnings), set NEXUS_API_KEY.
+// @ai-sdk/anthropic takes apiKey explicitly (adapter passes NEXUS_API_KEY),
+// so no ANTHROPIC_* bridge is needed for our request path. Cloud backends
+// (Bedrock/Foundry/Vertex) in client.ts keep their own SDK env vars.
 process.env.ANTHROPIC_AUTH_TOKEN = ''
 process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
 delete process.env.ANTHROPIC_AUTH_TOKEN
@@ -116,7 +113,6 @@ delete process.env.CLAUDE_CODE_OAUTH_TOKEN
 const configuredKey = resolveApiKey()
 if (configuredKey) {
   process.env.NEXUS_API_KEY = configuredKey
-  process.env.ANTHROPIC_API_KEY = configuredKey   // bridge for SDK internals
 }
 
 // Effort

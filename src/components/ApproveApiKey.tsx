@@ -75,7 +75,7 @@ export function ApproveApiKey(t0) {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text>Do you want to use this API key?</Text>;
+    t5 = <Text>确认使用已配置的 API 密钥吗？</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
@@ -83,7 +83,7 @@ export function ApproveApiKey(t0) {
   let t6;
   if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
     t6 = {
-      label: "Yes",
+      label: <Text>Yes (<Text bold={true}>recommended</Text>)</Text>,
       value: "yes"
     };
     $[9] = t6;
@@ -93,7 +93,7 @@ export function ApproveApiKey(t0) {
   let t7;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
     t7 = [t6, {
-      label: <Text>No (<Text bold={true}>recommended</Text>)</Text>,
+      label: "No",
       value: "no"
     }];
     $[10] = t7;
@@ -102,7 +102,7 @@ export function ApproveApiKey(t0) {
   }
   let t8;
   if ($[11] !== onChange) {
-    t8 = <Select defaultValue="no" defaultFocusValue="no" options={t7} onChange={value_0 => onChange(value_0 as 'yes' | 'no')} onCancel={() => onChange("no")} />;
+    t8 = <Select defaultValue="yes" defaultFocusValue="yes" options={t7} onChange={value_0 => onChange(value_0 as 'yes' | 'no')} onCancel={() => onChange("no")} />;
     $[11] = onChange;
     $[12] = t8;
   } else {
@@ -110,7 +110,7 @@ export function ApproveApiKey(t0) {
   }
   let t9;
   if ($[13] !== t2 || $[14] !== t4 || $[15] !== t8) {
-    t9 = <Dialog title="Detected a custom API key in your environment" color="warning" onCancel={t2}>{t4}{t5}{t8}</Dialog>;
+    t9 = <Dialog title="检测到已配置的 API 密钥" color="warning" onCancel={t2}>{t4}{t5}{t8}</Dialog>;
     $[13] = t2;
     $[14] = t4;
     $[15] = t8;
