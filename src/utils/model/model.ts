@@ -590,6 +590,10 @@ export function getMarketingNameForModel(modelId: string): string | undefined {
   const has1m = modelId.toLowerCase().includes('[1m]')
   const canonical = getCanonicalName(modelId)
 
+  // Nexus: GLM 系列 (智谱 OpenAI-compatible)
+  if (canonical.includes('glm')) {
+    return canonical.includes('glm-5') ? 'GLM-5' : 'GLM'
+  }
   if (canonical.includes('claude-opus-4-6')) {
     return has1m ? 'Opus 4.6 (with 1M context)' : 'Opus 4.6'
   }
@@ -631,5 +635,8 @@ export function normalizeModelStringForAPI(model: string): string {
   // Nexus: for DeepSeek models, [1m] is part of the actual model ID on the
   // relay — NOT a context-window marker. Preserve it.
   if (model.includes('deepseek')) return model
+  // GLM: [1m] is a client-side context hint — strip before sending to Zhipu
+  // (智谱原生模型名不带后缀, 如 glm-5.2)
+  if (model.includes('glm')) return model.replace(/\[(1|2)m\]/gi, '')
   return model.replace(/\[(1|2)m\]/gi, '')
 }
