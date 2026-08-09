@@ -124,7 +124,10 @@ export function ModelPicker(t0) {
   const selectOptions = t5;
   let t6;
   if ($[14] !== initialValue || $[15] !== selectOptions) {
-    t6 = selectOptions.some(_ => _.value === initialValue) ? initialValue : selectOptions[0]?.value ?? undefined;
+    t6 = selectOptions.some(_ => _.value === initialValue)
+      ? initialValue
+      : selectOptions.find(_ => _.value.split('::')[0] === initialValue)?.value
+        ?? selectOptions[0]?.value ?? undefined;
     $[14] = initialValue;
     $[15] = selectOptions;
     $[16] = t6;
@@ -389,7 +392,8 @@ function _temp4() {}
 function _temp3(opt_0) {
   return {
     ...opt_0,
-    value: opt_0.value === null ? NO_PREFERENCE : opt_0.value
+    // 唯一 value: 模型ID::角色名 — 避免 Atom/Electron 同模型时 Select 焦点冲突
+    value: opt_0.value === null ? NO_PREFERENCE : `${opt_0.value}::${opt_0.label}`
   };
 }
 function _temp2(s_0) {
@@ -400,7 +404,10 @@ function _temp(s) {
 }
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
-  return value === NO_PREFERENCE ? getDefaultMainLoopModel() : parseUserSpecifiedModel(value);
+  if (value === NO_PREFERENCE) return getDefaultMainLoopModel();
+  // 还原唯一后缀 (模型ID::角色名)
+  const modelId = value.split('::')[0]
+  return parseUserSpecifiedModel(modelId);
 }
 function EffortLevelIndicator(t0) {
   const $ = _c(5);
