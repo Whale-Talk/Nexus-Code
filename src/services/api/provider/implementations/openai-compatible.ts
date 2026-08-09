@@ -330,6 +330,7 @@ function buildCallArgs(
   request: ModelRequest,
   model: LanguageModel,
   signal: AbortSignal | undefined,
+  onResponse?: (response: Response) => void,
 ) {
   const tools = toToolSet(request)
   return {
@@ -362,6 +363,7 @@ function buildCallArgs(
     headers: buildTrackingHeaders(),
     // 重试交给仓库 withRetry — 关闭 AI SDK 内部重试避免双重重试
     maxRetries: 0,
+    ...(onResponse !== undefined ? { onResponse } : {}),
   }
 }
 
@@ -749,7 +751,7 @@ async function streamRequest(
     buildCallArgs(request, provider(request.model), controller.signal),
   )
 
-  return {
+  const stream: StreamResponse = {
     controller,
     [Symbol.asyncIterator]() {
       return streamEvents(
@@ -761,6 +763,22 @@ async function streamRequest(
       )
     },
   }
+  // 扩展面: metadata — 绑定 AI SDK result.response (PromiseLike, 流结束后 resolve)
+  // claude.ts 桥接读取 stream.metadata.status 做错误处理; 对 OpenAI 兼容端点,
+  // 响应头在流结束时才可用, 桥接的 await 会延迟到流完成 (正常流无感知)。
+  const metadata = (async () => {
+    const res = await result.response
+    const headers = res.headers ?? {}
+    const requestId = headers['x-request-id'] ?? headers['request-id'] ?? res.id ?? ''
+    return {
+      // OpenAI 兼容端点无独立 status — 请求级错误以流事件 error 呈现,
+      // 桥接的 status >= 400 检查对正常流始终通过。
+      status: 200,
+      headers: new Headers(headers),
+      requestID: requestId,
+    }
+  })()
+  return Object.assign(stream, { metadata })
 }
 
 // ============================================================================
