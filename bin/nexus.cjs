@@ -91,14 +91,16 @@ process.env.NEXUS_BASE_URL =
   resolveEnvKey(settings, 'NEXUS_BASE_URL', 'ANTHROPIC_BASE_URL') || defaultSettings.env.NEXUS_BASE_URL
 process.env.NEXUS_MODEL =
   resolveEnvKey(settings, 'NEXUS_MODEL', 'ANTHROPIC_MODEL') || settings?.model || defaultSettings.model
-// 通用透传: 用户配置的 NEXUS_PROVIDER + 三角色模型 ID（任意厂商均可）
+// 通用透传: 用户配置的 NEXUS_PROVIDER + 三角色模型 ID（任意厂商均可）。
+// 兼容只配一个模型: 角色缺省时跟随 NEXUS_MODEL; 都不配才用 DeepSeek 默认。
 process.env.NEXUS_PROVIDER = settings?.env?.NEXUS_PROVIDER || 'anthropic'
+process.env.NEXUS_MODEL = process.env.NEXUS_MODEL || defaultSettings.model
 process.env.NEXUS_QUARK_MODEL =
-  resolveEnvKey(settings, 'NEXUS_QUARK_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') || 'deepseek-v4-pro[1m]'
+  resolveEnvKey(settings, 'NEXUS_QUARK_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') || process.env.NEXUS_MODEL
 process.env.NEXUS_ATOM_MODEL =
-  resolveEnvKey(settings, 'NEXUS_ATOM_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL') || 'deepseek-v4-pro[1m]'
+  resolveEnvKey(settings, 'NEXUS_ATOM_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL') || process.env.NEXUS_MODEL
 process.env.NEXUS_ELECTRON_MODEL =
-  resolveEnvKey(settings, 'NEXUS_ELECTRON_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL') || 'deepseek-v4-flash[1m]'
+  resolveEnvKey(settings, 'NEXUS_ELECTRON_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL') || process.env.NEXUS_MODEL
 
 process.env.CLAUDE_CODE_SUBAGENT_MODEL =
   settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash[1m]'
