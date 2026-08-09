@@ -176,6 +176,12 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  // Nexus: 用户显式配置的默认模型 (NEXUS_MODEL / settings.model) 优先
+  const nexusDefault = process.env.NEXUS_MODEL
+  if (nexusDefault) {
+    return nexusDefault as ModelName
+  }
+
   // Ants default to defaultModel from flag config, or Quark 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
