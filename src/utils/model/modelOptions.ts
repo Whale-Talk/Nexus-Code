@@ -119,7 +119,7 @@ function getSonnet46Option(): ModelOption {
 // Nexus: 三角色选项动态生成 — 从 env 读取模型 ID, 适配任意厂商。
 // label 按 [1m] 后缀自动加 "(1M context)"。
 function withContextSuffix(model: string, name: string): string {
-  return /\[1m\]/i.test(model) ? `${name} (1M context)` : name
+  return has1mContext(model) ? `${name} (1M context)` : name
 }
 
 export function getQuarkOption(): ModelOption {

@@ -36,7 +36,11 @@ export function has1mContext(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  return /\[1m\]/i.test(model)
+  // [1m] 后缀显式标记
+  if (/\[1m\]/i.test(model)) return true
+  // 已知原生 1M 模型（无需后缀 — 中转站可能不认带后缀的模型名）
+  const m = model.toLowerCase()
+  return m === 'glm-5.2' || m.includes('glm-5.2')
 }
 
 // @[MODEL LAUNCH]: Update this pattern if the new model supports 1M context
