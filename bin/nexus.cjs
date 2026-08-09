@@ -93,6 +93,11 @@ const settings = readJson(settingsPath, {})
 process.env.ANTHROPIC_BASE_URL =
   settings?.env?.ANTHROPIC_BASE_URL || defaultSettings.env.ANTHROPIC_BASE_URL
 
+// Auth: wipe inherited tokens first to prevent auth conflict warnings.
+// (Node's delete process.env may fail on inherited vars — set to empty instead.)
+process.env.ANTHROPIC_AUTH_TOKEN = ''
+process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
+
 // Auth: prefer settings.env values (user-configured tokens)
 const configuredKey = resolveApiKey()
 if (configuredKey) process.env.ANTHROPIC_API_KEY = configuredKey
@@ -100,9 +105,8 @@ if (configuredKey) process.env.ANTHROPIC_API_KEY = configuredKey
 const configuredToken = resolveAuthToken()
 if (configuredToken) {
   process.env.ANTHROPIC_AUTH_TOKEN = configuredToken
-} else {
-  delete process.env.ANTHROPIC_AUTH_TOKEN
 }
+delete process.env.ANTHROPIC_AUTH_TOKEN
 delete process.env.CLAUDE_CODE_OAUTH_TOKEN
 
 // Model env: preserve [1m] for relay channels
