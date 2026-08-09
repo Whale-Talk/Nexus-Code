@@ -105,7 +105,7 @@ export function modelSupportsThinking(model: string): boolean {
   if (provider === 'foundry' || provider === 'firstParty') {
     return !canonical.includes('claude-3-')
   }
-  // 3P (Bedrock/Vertex): only Opus 4+ and Sonnet 4+
+  // 3P (Bedrock/Vertex): only Quark 4+ and Atom 4+
   return canonical.includes('sonnet-4') || canonical.includes('opus-4')
 }
 

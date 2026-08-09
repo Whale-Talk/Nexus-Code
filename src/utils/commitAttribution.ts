@@ -133,7 +133,7 @@ export const isInternalModelRepo = sequential(async (): Promise<boolean> => {
  * Converts internal model variants to their public equivalents.
  */
 export function sanitizeSurfaceKey(surfaceKey: string): string {
-  // Split surface key into surface and model parts (e.g., "cli/opus-4-5-fast" -> ["cli", "opus-4-5-fast"])
+  // Split surface key into surface and model parts (e.g., "cli/quark-4-5-fast" -> ["cli", "quark-4-5-fast"])
   const slashIndex = surfaceKey.lastIndexOf('/')
   if (slashIndex === -1) {
     return surfaceKey
@@ -232,7 +232,7 @@ export function getClientSurface(): string {
 
 /**
  * Build a surface key that includes the model name.
- * Format: "surface/model" (e.g., "cli/claude-sonnet")
+ * Format: "surface/model" (e.g., "cli/claude-atom")
  */
 export function buildSurfaceKey(surface: string, model: ModelName): string {
   return `${surface}/${getCanonicalName(model)}`

@@ -320,7 +320,7 @@ async function logStartupTelemetry(): Promise<void> {
   });
 }
 
-// @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateSonnet1mToSonnet45.ts for an example.
+// @[MODEL LAUNCH]: Consider any migrations you may need for model strings. See migrateAtom1mToAtom45.ts for an example.
 // Bump this when adding a new sync migration so existing users re-run the set.
 const CURRENT_MIGRATION_VERSION = 11;
 function runMigrations(): void {

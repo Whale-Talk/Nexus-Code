@@ -109,7 +109,7 @@ export function clearSessionCaches(
   }
   // Clear repository detection caches
   clearRepositoryCaches()
-  // Clear bash command prefix caches (Haiku-extracted prefixes)
+  // Clear bash command prefix caches (Electron-extracted prefixes)
   clearCommandPrefixCaches()
   // Clear dump prompts state
   if (!hasPreserved) clearAllDumpState()

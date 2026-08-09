@@ -30,7 +30,7 @@ export function getDefaultSubagentModel(): string {
  * Get the effective model string for an agent.
  *
  * For Bedrock, if the parent model uses a cross-region inference prefix (e.g., "eu.", "us."),
- * that prefix is inherited by subagents using alias models (e.g., "sonnet", "haiku", "opus").
+ * that prefix is inherited by subagents using alias models (e.g., "atom", "electron", "quark").
  * This ensures subagents use the same region as the parent, which is necessary when
  * IAM permissions are scoped to specific cross-region inference profiles.
  */
@@ -79,7 +79,7 @@ export function getAgentModel(
 
   if (agentModelWithExp === 'inherit') {
     // Apply runtime model resolution for inherit to get the effective model
-    // This ensures agents using 'inherit' get opusplan→Opus resolution in plan mode
+    // This ensures agents using 'inherit' get quarkplan→Quark resolution in plan mode
     return getRuntimeMainLoopModel({
       permissionMode: permissionMode ?? 'default',
       mainLoopModel: parentModel,
@@ -95,16 +95,16 @@ export function getAgentModel(
 }
 
 /**
- * Check if a bare family alias (opus/sonnet/haiku) matches the parent model's
+ * Check if a bare family alias (quark/atom/electron) matches the parent model's
  * tier. When it does, the subagent inherits the parent's exact model string
  * instead of resolving the alias to a provider default.
  *
  * Prevents surprising downgrades: a Vertex user on Nexus Quark (via /model) who
- * spawns a subagent with `model: opus` should get Nexus Quark, not whatever
- * getDefaultOpusModel() returns for 3P.
+ * spawns a subagent with `model: quark` should get Nexus Quark, not whatever
+ * getDefaultQuarkModel() returns for 3P.
  * See https://github.com/Whale-Talk/Nexus-Code.
  *
- * Only bare family aliases match. `opus[1m]`, `best`, `opusplan` fall through
+ * Only bare family aliases match. `quark[1m]`, `best`, `quarkplan` fall through
  * since they carry semantics beyond "same tier as parent".
  */
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {

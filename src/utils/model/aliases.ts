@@ -17,7 +17,7 @@ export function isModelAlias(modelInput: string): modelInput is ModelAlias {
 
 /**
  * Bare model family aliases that act as wildcards in the availableModels allowlist.
- * When "opus" is in the allowlist, ANY opus model is allowed (opus 4.5, 4.6, etc.).
+ * When "quark" is in the allowlist, ANY quark model is allowed (quark 4.5, 4.6, etc.).
  * When a specific model ID is in the allowlist, only that exact version is allowed.
  */
 export const MODEL_FAMILY_ALIASES = ['atom', 'quark', 'electron'] as const

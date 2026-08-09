@@ -76,7 +76,7 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
 function getCustomSonnetOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const customSonnetModel = process.env.NEXUS_ATOM_MODEL
-  // When a 3P user has a custom sonnet model string, show it directly
+  // When a 3P user has a custom atom model string, show it directly
   if (is3P && customSonnetModel) {
     const is1m = has1mContext(customSonnetModel)
     return {
@@ -91,7 +91,7 @@ function getCustomSonnetOption(): ModelOption | undefined {
   }
 }
 
-// @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
+// @[MODEL LAUNCH]: Update or add model option functions (getAtomXXOption, getQuarkXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
 function getSonnet46Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
@@ -134,7 +134,7 @@ export function getElectronOption(): ModelOption {
 function getCustomOpusOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const customOpusModel = process.env.NEXUS_QUARK_MODEL
-  // When a 3P user has a custom opus model string, show it directly
+  // When a 3P user has a custom quark model string, show it directly
   if (is3P && customOpusModel) {
     const is1m = has1mContext(customOpusModel)
     return {
@@ -192,7 +192,7 @@ export function getOpus46_1MOption(fastMode = false): ModelOption {
 function getCustomHaikuOption(): ModelOption | undefined {
   const is3P = getAPIProvider() !== 'firstParty'
   const customHaikuModel = process.env.NEXUS_ELECTRON_MODEL
-  // When a 3P user has a custom haiku model string, show it directly
+  // When a 3P user has a custom electron model string, show it directly
   if (is3P && customHaikuModel) {
     return {
       value: 'haiku',
@@ -228,7 +228,7 @@ function getHaiku35Option(): ModelOption {
 }
 
 function getHaikuOption(): ModelOption {
-  // Return correct Haiku option based on provider
+  // Return correct Electron option based on provider
   const haikuModel = getDefaultHaikuModel()
   return haikuModel === getModelStrings().haiku45
     ? getHaiku45Option()
@@ -312,7 +312,7 @@ export function isDeepSeekRelay(
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
   // Nexus: custom relay → only show configured DeepSeek models.
-  // Nexus model names (Sonnet/Opus/Haiku) don't exist on the relay.
+  // Nexus model names (Atom/Quark/Electron) don't exist on the relay.
   // Check against env URL + settings model (provider-managed filtering may
   // strip NEXUS_BASE_URL from process.env at runtime, but settings persist).
   const isRelay = isDeepSeekRelay(
@@ -347,7 +347,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
 
   if (isClaudeAISubscriber()) {
     if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
-      // Max and Team Premium users: Opus is default, show Sonnet as alternative
+      // Max and Team Premium users: Quark is default, show Atom as alternative
       const premiumOptions = [getDefaultOptionForUser(fastMode)]
       if (!isOpus1mMergeEnabled() && checkOpus1mAccess()) {
         premiumOptions.push(getMaxOpus46_1MOption(fastMode))
@@ -362,7 +362,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
       return premiumOptions
     }
 
-    // Pro/Team Standard/Enterprise users: Sonnet is default, show Opus as alternative
+    // Pro/Team Standard/Enterprise users: Atom is default, show Quark as alternative
     const standardOptions = [getDefaultOptionForUser(fastMode)]
     if (checkSonnet1mAccess()) {
       standardOptions.push(getMaxSonnet46_1MOption())
@@ -381,7 +381,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return standardOptions
   }
 
-  // PAYG 1P API: Default (Sonnet) + Sonnet 1M + Opus 4.6 + Opus 1M + Haiku
+  // PAYG 1P API: Default (Atom) + Atom 1M + Quark 4.6 + Quark 1M + Electron
   if (getAPIProvider() === 'firstParty') {
     const payg1POptions = [getDefaultOptionForUser(fastMode)]
     if (checkSonnet1mAccess()) {
@@ -399,14 +399,14 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return payg1POptions
   }
 
-  // PAYG 3P: Default (Sonnet 4.5) + Sonnet (3P custom) or Sonnet 4.6/1M + Opus (3P custom) or Opus 4.1/Opus 4.6/Opus1M + Haiku + Opus 4.1
+  // PAYG 3P: Default (Atom 4.5) + Atom (3P custom) or Atom 4.6/1M + Quark (3P custom) or Quark 4.1/Quark 4.6/Quark1M + Electron + Quark 4.1
   const payg3pOptions = [getDefaultOptionForUser(fastMode)]
 
   const customSonnet = getCustomSonnetOption()
   if (customSonnet !== undefined) {
     payg3pOptions.push(customSonnet)
   } else {
-    // Add Sonnet 4.6 since Sonnet 4.5 is the default
+    // Add Atom 4.6 since Atom 4.5 is the default
     payg3pOptions.push(getSonnet46Option())
     if (checkSonnet1mAccess()) {
       payg3pOptions.push(getSonnet46_1MOption())
@@ -417,7 +417,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   if (customOpus !== undefined) {
     payg3pOptions.push(customOpus)
   } else {
-    // Add Opus 4.1, Opus 4.6 and Opus 4.6 1M
+    // Add Quark 4.1, Quark 4.6 and Quark 4.6 1M
     payg3pOptions.push(getOpus41Option()) // This is the default opus
     payg3pOptions.push(getOpus46Option(fastMode))
     if (checkOpus1mAccess()) {
@@ -445,7 +445,7 @@ function getModelFamilyInfo(
 ): { alias: string; currentVersionName: string } | null {
   const canonical = getCanonicalName(model)
 
-  // Sonnet family
+  // Atom family
   if (
     canonical.includes('claude-sonnet-4-6') ||
     canonical.includes('claude-sonnet-4-5') ||
@@ -459,7 +459,7 @@ function getModelFamilyInfo(
     }
   }
 
-  // Opus family
+  // Quark family
   if (canonical.includes('claude-opus-4')) {
     const currentName = getMarketingNameForModel(getDefaultOpusModel())
     if (currentName) {
@@ -467,7 +467,7 @@ function getModelFamilyInfo(
     }
   }
 
-  // Haiku family
+  // Electron family
   if (
     canonical.includes('claude-haiku') ||
     canonical.includes('claude-3-5-haiku')

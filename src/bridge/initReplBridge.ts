@@ -301,7 +301,7 @@ export async function initReplBridge(
 
   // Shared by both v1 and v2 — fires on every title-worthy user message until
   // it returns true. At count 1: deriveTitle placeholder immediately, then
-  // generateSessionTitle (Haiku, sentence-case) fire-and-forget upgrade. At
+  // generateSessionTitle (Electron, sentence-case) fire-and-forget upgrade. At
   // count 3: re-generate over the full conversation. Skips entirely if the
   // title is explicit (/remote-control <name> or /rename) — re-checks
   // sessionStorage at call time so /rename between messages isn't clobbered.
@@ -326,9 +326,9 @@ export async function initReplBridge(
       getAccessToken: getBridgeAccessToken,
     }).catch(() => {})
   }
-  // Fire-and-forget Haiku generation with post-await guards. Re-checks /rename
+  // Fire-and-forget Electron generation with post-await guards. Re-checks /rename
   // (sessionStorage), v1 env-lost (lastBridgeSessionId), and same-session
-  // out-of-order resolution (genSeq — count-1's Haiku resolving after count-3
+  // out-of-order resolution (genSeq — count-1's Electron resolving after count-3
   // would clobber the richer title). generateSessionTitle never rejects.
   const generateAndPatch = (input: string, bridgeSessionId: string): void => {
     const gen = ++genSeq
@@ -550,7 +550,7 @@ const TITLE_MAX_LEN = 50
  * Quick placeholder title: strip display tags, take the first sentence,
  * collapse whitespace, truncate to 50 chars. Returns undefined if the result
  * is empty (e.g. message was only <local-command-stdout>). Replaced by
- * generateSessionTitle once Haiku resolves (~1-15s).
+ * generateSessionTitle once Electron resolves (~1-15s).
  */
 function deriveTitle(raw: string): string | undefined {
   // Strip <ide_opened_file>, <session-start-hook>, etc. — these appear in

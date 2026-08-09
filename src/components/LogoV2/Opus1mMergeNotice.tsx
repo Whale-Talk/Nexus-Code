@@ -11,7 +11,7 @@ export function shouldShowOpus1mMergeNotice(): boolean {
   return isOpus1mMergeEnabled() && (getGlobalConfig().opus1mMergeNoticeSeenCount ?? 0) < MAX_SHOW_COUNT;
 }
 export function Opus1mMergeNotice() {
-  // Nexus: no Opus models — notice permanently disabled
+  // Nexus: no Quark models — notice permanently disabled
   return null;
   const $ = _c(4);
   const [show] = useState(shouldShowOpus1mMergeNotice);

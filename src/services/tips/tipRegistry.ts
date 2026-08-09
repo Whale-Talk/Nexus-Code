@@ -480,7 +480,7 @@ const externalTips: Tip[] = [
       const config = getGlobalConfig()
       const modelSetting = getUserSpecifiedModelSetting()
       const hasOpusPlanMode = modelSetting === 'opusplan'
-      // Show reminder if they have Opus Plan Mode and haven't used plan mode recently (3+ days)
+      // Show reminder if they have Quark Plan Mode and haven't used plan mode recently (3+ days)
       const daysSinceLastUse = config.lastPlanModeUse
         ? (Date.now() - config.lastPlanModeUse) / (1000 * 60 * 60 * 24)
         : Infinity

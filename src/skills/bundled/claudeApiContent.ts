@@ -37,10 +37,10 @@ export const SKILL_MODEL_VARS = {
   OPUS_ID: 'claude-opus-4-6',
   OPUS_NAME: 'Nexus Quark',
   SONNET_ID: 'claude-sonnet-4-6',
-  SONNET_NAME: 'Nexus Nexus Atom',
+  SONNET_NAME: 'Nexus Atom',
   HAIKU_ID: 'claude-haiku-4-5',
-  HAIKU_NAME: 'Nexus Nexus Electron',
-  // Previous Sonnet ID — used in "do not append date suffixes" example in SKILL.md.
+  HAIKU_NAME: 'Nexus Electron',
+  // Previous Atom ID — used in "do not append date suffixes" example in SKILL.md.
   PREV_SONNET_ID: 'claude-sonnet-4-5',
 } satisfies Record<string, string>
 

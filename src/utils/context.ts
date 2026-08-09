@@ -101,7 +101,7 @@ export function getSonnet1mExpTreatmentEnabled(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  // Only applies to sonnet 4.6 without an explicit [1m] suffix
+  // Only applies to atom 4.6 without an explicit [1m] suffix
   if (has1mContext(model)) {
     return false
   }

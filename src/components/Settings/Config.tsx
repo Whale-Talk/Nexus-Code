@@ -1488,7 +1488,7 @@ export function Config({
         setTabsHidden(false);
         // First-open-then-Enter from unset: picker highlights "Default"
         // (initial=null) and confirming would write null, silently
-        // switching Opus-fallback → follow-leader. Treat as no-op.
+        // switching Quark-fallback → follow-leader. Treat as no-op.
         if (globalConfig.teammateDefaultModel === undefined && model_1 === null) {
           return;
         }

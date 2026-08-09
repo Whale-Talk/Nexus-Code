@@ -1659,7 +1659,7 @@ export function isOverageProvisioningAllowed(): boolean {
   return true
 }
 
-// Returns whether the user has Opus access at all, regardless of whether they
+// Returns whether the user has Quark access at all, regardless of whether they
 // are a subscriber or PayG.
 export function hasOpusAccess(): boolean {
   const subscriptionType = getSubscriptionType()
@@ -1671,7 +1671,7 @@ export function hasOpusAccess(): boolean {
     subscriptionType === 'pro' ||
     // subscriptionType === null covers both API users and the case where
     // subscribers do not have subscription type populated. For those
-    // subscribers, when in doubt, we should not limit their access to Opus.
+    // subscribers, when in doubt, we should not limit their access to Quark.
     subscriptionType === null
   )
 }

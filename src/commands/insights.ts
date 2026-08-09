@@ -37,12 +37,12 @@ import { countCharInString } from '../utils/stringUtils.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
 import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
 
-// Model for facet extraction and summarization (Opus - best quality)
+// Model for facet extraction and summarization (Quark - best quality)
 function getAnalysisModel(): string {
   return getDefaultOpusModel()
 }
 
-// Model for narrative insights (Opus - best quality)
+// Model for narrative insights (Quark - best quality)
 function getInsightsModel(): string {
   return getDefaultOpusModel()
 }

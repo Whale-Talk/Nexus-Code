@@ -150,7 +150,7 @@ export function isInProtectedNamespace(): boolean {
 /**
  * Model prefix → env var for Vertex region overrides.
  * Order matters: more specific prefixes must come before less specific ones
- * (e.g., 'claude-opus-4-1' before 'claude-opus-4').
+ * (e.g., 'claude-quark-4-1' before 'claude-quark-4').
  */
 const VERTEX_REGION_OVERRIDES: ReadonlyArray<[string, string]> = [
   ['claude-haiku-4-5', 'VERTEX_REGION_CLAUDE_HAIKU_4_5'],

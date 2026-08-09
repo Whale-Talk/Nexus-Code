@@ -544,13 +544,13 @@ export function getPromptCachingEnabled(model: string): boolean {
     if (model === smallFastModel) return false
   }
 
-  // Check if we should disable for default Sonnet
+  // Check if we should disable for default Atom
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_SONNET)) {
     const defaultSonnet = getDefaultSonnetModel()
     if (model === defaultSonnet) return false
   }
 
-  // Check if we should disable for default Opus
+  // Check if we should disable for default Quark
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_OPUS)) {
     const defaultOpus = getDefaultOpusModel()
     if (model === defaultOpus) return false
@@ -741,7 +741,7 @@ export async function verifyApiKey(
   }
 
   try {
-    // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
+    // WARNING: if you change this to use a non-Electron model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
     const model = getSmallFastModel()
     const betas = getModelBetas(model)
     return await returnValue(
@@ -1230,7 +1230,7 @@ async function* queryModel(
   void
 > {
   // Check cheap conditions first — the off-switch await blocks on GrowthBook
-  // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
+  // init (~10ms). For non-Quark models (electron, atom) this skips the await
   // entirely. Subscribers don't hit this path at all.
   if (
     !isClaudeAISubscriber() &&
@@ -1478,7 +1478,7 @@ async function* queryModel(
   //   called from ~20 places (analytics, feedback, sharing, etc.), many of which
   //   don't have model context. Adding model to its signature would be a large refactor.
   // - This post-processing uses the model-aware isToolSearchEnabled() check
-  // - This handles mid-conversation model switching (e.g., Sonnet → Haiku) where
+  // - This handles mid-conversation model switching (e.g., Atom → Electron) where
   //   stale tool-search fields from the previous model would cause 400 errors
   //
   // Note: For assistant messages, normalizeMessagesForAPI already normalized the
@@ -1748,7 +1748,7 @@ async function* queryModel(
   const paramsFromContext = (retryContext: RetryContext) => {
     const betasParams = [...betas]
 
-    // Append 1M beta dynamically for the Sonnet 1M experiment.
+    // Append 1M beta dynamically for the Atom 1M experiment.
     if (
       !betasParams.includes(CONTEXT_1M_BETA_HEADER) &&
       getSonnet1mExpTreatmentEnabled(retryContext.model)
@@ -3488,7 +3488,7 @@ export async function queryHaiku({
       return [result]
     },
   )
-  // We don't use streaming for Haiku so this is safe
+  // We don't use streaming for Electron so this is safe
   return result[0]! as AssistantMessage
 }
 
@@ -3605,7 +3605,7 @@ export function getMaxOutputTokensForModel(model: string): number {
   // = 4,911 tokens; 32k/64k defaults over-reserve 8-16× slot capacity.
   // Requests hitting the cap get one clean retry at 64k (query.ts
   // max_output_tokens_escalate). Math.min keeps models with lower native
-  // defaults (e.g. claude-3-opus at 4k) at their native value. Applied
+  // defaults (e.g. claude-3-quark at 4k) at their native value. Applied
   // before the env-var override so CLAUDE_CODE_MAX_OUTPUT_TOKENS still wins.
   const defaultTokens = isMaxTokensCapEnabled()
     ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)

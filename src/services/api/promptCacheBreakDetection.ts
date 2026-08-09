@@ -125,7 +125,7 @@ const MIN_CACHE_MISS_TOKENS = 2_000
 const CACHE_TTL_5MIN_MS = 5 * 60 * 1000
 export const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
 
-// Models to exclude from cache break detection (e.g., haiku has different caching behavior)
+// Models to exclude from cache break detection (e.g., electron has different caching behavior)
 function isExcludedModel(model: string): boolean {
   return model.includes('haiku')
 }
@@ -449,7 +449,7 @@ export async function checkResponseForCacheBreak(
     const state = previousStateBySource.get(key)
     if (!state) return
 
-    // Skip excluded models (e.g., haiku has different caching behavior)
+    // Skip excluded models (e.g., electron has different caching behavior)
     if (isExcludedModel(state.model)) return
 
     const prevCacheRead = state.prevCacheReadTokens

@@ -77,7 +77,7 @@ export type PewterLedgerVariant = 'trim' | 'cut' | 'cap' | null
  *   p50 4,906 chars | p90 11,617 | mean 6,207 | 82% Nexus Quark
  *   Reject rate monotonic with size: 20% at <2K → 50% at 20K+
  *
- * Primary: session-level Avg Cost (fact__201omjcij85f) — Opus output is
+ * Primary: session-level Avg Cost (fact__201omjcij85f) — Quark output is
  *   5× input price so cost is an output-weighted proxy. planLengthChars
  *   on tengu_plan_exit is the mechanism but NOT the goal — the cap arm
  *   could shrink the plan file while increasing total output via

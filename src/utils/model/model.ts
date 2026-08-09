@@ -101,7 +101,7 @@ export function getBestModel(): ModelName {
   return getDefaultOpusModel()
 }
 
-// @[MODEL LAUNCH]: Update the default Opus model (3P providers may lag so keep defaults unchanged).
+// @[MODEL LAUNCH]: Update the default Quark model (3P providers may lag so keep defaults unchanged).
 export function getDefaultOpusModel(): ModelName {
   if (process.env.NEXUS_QUARK_MODEL) {
     return process.env.NEXUS_QUARK_MODEL
@@ -115,25 +115,25 @@ export function getDefaultOpusModel(): ModelName {
   return getModelStrings().opus46
 }
 
-// @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
+// @[MODEL LAUNCH]: Update the default Atom model (3P providers may lag so keep defaults unchanged).
 export function getDefaultSonnetModel(): ModelName {
   if (process.env.NEXUS_ATOM_MODEL) {
     return process.env.NEXUS_ATOM_MODEL
   }
-  // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
+  // Default to Atom 4.5 for 3P since they may not have 4.6 yet
   if (getAPIProvider() !== 'firstParty') {
     return getModelStrings().sonnet45
   }
   return getModelStrings().sonnet46
 }
 
-// @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
+// @[MODEL LAUNCH]: Update the default Electron model (3P providers may lag so keep defaults unchanged).
 export function getDefaultHaikuModel(): ModelName {
   if (process.env.NEXUS_ELECTRON_MODEL) {
     return process.env.NEXUS_ELECTRON_MODEL
   }
 
-  // Haiku 4.5 is available on all platforms (first-party, Foundry, Bedrock, Vertex)
+  // Electron 4.5 is available on all platforms (first-party, Foundry, Bedrock, Vertex)
   return getModelStrings().haiku45
 }
 
@@ -149,7 +149,7 @@ export function getRuntimeMainLoopModel(params: {
 }): ModelName {
   const { permissionMode, mainLoopModel, exceeds200kTokens = false } = params
 
-  // opusplan uses Opus in plan mode without [1m] suffix.
+  // quarkplan uses Quark in plan mode without [1m] suffix.
   if (
     getUserSpecifiedModelSetting() === 'opusplan' &&
     permissionMode === 'plan' &&
@@ -158,7 +158,7 @@ export function getRuntimeMainLoopModel(params: {
     return getDefaultOpusModel()
   }
 
-  // sonnetplan by default
+  // atomplan by default
   if (getUserSpecifiedModelSetting() === 'haiku' && permissionMode === 'plan') {
     return getDefaultSonnetModel()
   }
@@ -170,13 +170,13 @@ export function getRuntimeMainLoopModel(params: {
  * Get the default main loop model setting.
  *
  * This handles the built-in default:
- * - Opus for Max and Team Premium users
- * - Sonnet 4.6 for all other users (including Team Standard, Pro, Enterprise)
+ * - Quark for Max and Team Premium users
+ * - Atom 4.6 for all other users (including Team Standard, Pro, Enterprise)
  *
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Ants default to defaultModel from flag config, or Opus 1M if not configured
+  // Ants default to defaultModel from flag config, or Quark 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
       getAntModelOverrideConfig()?.defaultModel ??
@@ -184,18 +184,18 @@ export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
     )
   }
 
-  // Max users get Opus as default
+  // Max users get Quark as default
   if (isMaxSubscriber()) {
     return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
   }
 
-  // Team Premium gets Opus (same as Max)
+  // Team Premium gets Quark (same as Max)
   if (isTeamPremiumSubscriber()) {
     return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
   }
 
-  // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
-  // Note that PAYG (3P) may default to an older Sonnet model
+  // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Atom as default
+  // Note that PAYG (3P) may default to an older Atom model
   return getDefaultSonnetModel()
 }
 
@@ -210,8 +210,8 @@ export function getDefaultMainLoopModel(): ModelName {
 // @[MODEL LAUNCH]: Add a canonical name mapping for the new model below.
 /**
  * Pure string-match that strips date/provider suffixes from a first-party model
- * name. Input must already be a 1P-format ID (e.g. 'claude-3-7-sonnet-20250219',
- * 'us.anthropic.claude-opus-4-6-v1:0'). Does not touch settings, so safe at
+ * name. Input must already be a 1P-format ID (e.g. 'claude-3-7-atom-20250219',
+ * 'us.anthropic.claude-quark-4-6-v1:0'). Does not touch settings, so safe at
  * module top-level (see MODEL_COSTS in modelCost.ts).
  */
 export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
@@ -271,10 +271,10 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
 
 /**
  * Maps a full model string to a shorter canonical version that's unified across 1P and 3P providers.
- * For example, 'claude-3-5-haiku-20241022' and 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
- * would both be mapped to 'claude-3-5-haiku'.
- * @param fullModelName The full model name (e.g., 'claude-3-5-haiku-20241022')
- * @returns The short name (e.g., 'claude-3-5-haiku') if found, or the original name if no mapping exists
+ * For example, 'claude-3-5-electron-20241022' and 'us.anthropic.claude-3-5-electron-20241022-v1:0'
+ * would both be mapped to 'claude-3-5-electron'.
+ * @param fullModelName The full model name (e.g., 'claude-3-5-electron-20241022')
+ * @returns The short name (e.g., 'claude-3-5-electron') if found, or the original name if no mapping exists
  */
 export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   // Resolve overridden model IDs (e.g. Bedrock ARNs) back to canonical names.
@@ -323,7 +323,7 @@ export function isOpus1mMergeEnabled(): boolean {
   // config-loading subprocess can have OAuth tokens with valid scopes but no
   // subscriptionType field (stale or partial refresh). Without this guard,
   // isProSubscriber() returns false for such users and the merge leaks
-  // opus[1m] into the model dropdown — the API then rejects it with a
+  // quark[1m] into the model dropdown — the API then rejects it with a
   // misleading "rate limit reached" error.
   if (isClaudeAISubscriber() && getSubscriptionType() === null) {
     return false
@@ -447,7 +447,7 @@ export function getPublicModelName(model: ModelName): string {
  * This function intentionally does not support version numbers to align with
  * the model switcher.
  *
- * Supports [1m] suffix on any model alias (e.g., haiku[1m], sonnet[1m]) to enable
+ * Supports [1m] suffix on any model alias (e.g., electron[1m], atom[1m]) to enable
  * 1M context window without requiring each variant to be in MODEL_ALIASES.
  *
  * @param modelInput The model alias or name provided by the user.
@@ -483,8 +483,8 @@ export function parseUserSpecifiedModel(
     }
   }
 
-  // Opus 4/4.1 are no longer available on the first-party API (same as
-  // Claude.ai) — silently remap to the current Opus default. The 'opus'
+  // Quark 4/4.1 are no longer available on the first-party API (same as
+  // Claude.ai) — silently remap to the current Quark default. The 'quark'
   // alias already resolves to 4.6, so the only users on these explicit
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
@@ -523,14 +523,14 @@ export function parseUserSpecifiedModel(
  * Resolves a skill's `model:` frontmatter against the current model, carrying
  * the `[1m]` suffix over when the target family supports it.
  *
- * A skill author writing `model: opus` means "use opus-class reasoning" — not
- * "downgrade to 200K". If the user is on opus[1m] at 230K tokens and invokes a
- * skill with `model: opus`, passing the bare alias through drops the effective
+ * A skill author writing `model: quark` means "use quark-class reasoning" — not
+ * "downgrade to 200K". If the user is on quark[1m] at 230K tokens and invokes a
+ * skill with `model: quark`, passing the bare alias through drops the effective
  * context window from 1M to 200K, which trips autocompact at 23% apparent usage
  * and surfaces "Context limit reached" even though nothing overflowed.
  *
- * We only carry [1m] when the target actually supports it (sonnet/opus). A skill
- * with `model: haiku` on a 1M session still downgrades — haiku has no 1M variant,
+ * We only carry [1m] when the target actually supports it (atom/quark). A skill
+ * with `model: electron` on a 1M session still downgrades — electron has no 1M variant,
  * so the autocompact that follows is correct. Skills that already specify [1m]
  * are left untouched.
  */
@@ -541,8 +541,8 @@ export function resolveSkillModelOverride(
   if (has1mContext(skillModel) || !has1mContext(currentModel)) {
     return skillModel
   }
-  // modelSupports1M matches on canonical IDs ('claude-opus-4-6', 'claude-sonnet-4');
-  // a bare 'opus' alias falls through getCanonicalName unmatched. Resolve first.
+  // modelSupports1M matches on canonical IDs ('claude-quark-4-6', 'claude-atom-4');
+  // a bare 'quark' alias falls through getCanonicalName unmatched. Resolve first.
   if (modelSupports1M(parseUserSpecifiedModel(skillModel))) {
     return skillModel + '[1m]'
   }
@@ -561,7 +561,7 @@ function isLegacyOpusFirstParty(model: string): boolean {
 }
 
 /**
- * Opt-out for the legacy Opus 4.0/4.1 → current Opus remap.
+ * Opt-out for the legacy Quark 4.0/4.1 → current Quark remap.
  */
 export function isLegacyModelRemapEnabled(): boolean {
   return !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_LEGACY_MODEL_REMAP)

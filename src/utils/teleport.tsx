@@ -95,7 +95,7 @@ type TitleAndBranch = {
 };
 
 /**
- * Generates a title and branch name for a coding session using Claude Haiku
+ * Generates a title and branch name for a coding session using Claude Electron
  * @param description The description/prompt for the session
  * @returns Promise<TitleAndBranch> The generated title and branch name
  */
@@ -813,7 +813,7 @@ export async function teleportToRemote(options: {
       return null;
     }
 
-    // Explicit environmentId short-circuits Haiku title-gen + env selection.
+    // Explicit environmentId short-circuits Electron title-gen + env selection.
     // Still runs repo detection so the container gets a working directory —
     // the code_review orchestrator reads --repo-dir $(pwd), it doesn't clone
     // (bughunter.go:520 sets a git source too; env-manager does the checkout
@@ -915,7 +915,7 @@ export async function teleportToRemote(options: {
 
     const repoInfo = await detectCurrentRepositoryWithHost();
 
-    // Generate title and branch name for the session. Skip the Haiku call
+    // Generate title and branch name for the session. Skip the Electron call
     // when both title and outcome branch are explicitly provided.
     let sessionTitle: string;
     let sessionBranch: string;

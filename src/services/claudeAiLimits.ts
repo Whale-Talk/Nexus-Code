@@ -120,7 +120,7 @@ export type OverageDisabledReason =
 export type ClaudeAILimits = {
   status: QuotaStatus
   // unifiedRateLimitFallbackAvailable is currently used to warn users that set
-  // their model to Opus whenever they are about to run out of quota. It does
+  // their model to Quark whenever they are about to run out of quota. It does
   // not change the actual model that is used.
   unifiedRateLimitFallbackAvailable: boolean
   resetsAt?: number

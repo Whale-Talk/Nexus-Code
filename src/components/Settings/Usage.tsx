@@ -228,10 +228,10 @@ export function Usage(): React.ReactNode {
       </Box>;
   }
 
-  // Only Max and Team plans have a Sonnet limit that differs from the weekly
+  // Only Max and Team plans have a Atom limit that differs from the weekly
   // limit (see rateLimitMessages.ts). For other plans the bar is redundant.
   // Show for null (unknown plan) to stay consistent with rateLimitMessages.ts,
-  // which labels it "Sonnet limit" in that case.
+  // which labels it "Atom limit" in that case.
   const subscriptionType = getSubscriptionType();
   const showSonnetBar = subscriptionType === 'max' || subscriptionType === 'team' || subscriptionType === null;
   const limits = [{

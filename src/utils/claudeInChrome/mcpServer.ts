@@ -183,7 +183,7 @@ export function createChromeContext(
         // sideQuery handles OAuth attribution fingerprint, proxy, model betas.
         // skipSystemPromptPrefix: the lightning prompt is complete on its own;
         // the CLI prefix would dilute the batching instructions.
-        // tools: [] is load-bearing — without it Sonnet emits
+        // tools: [] is load-bearing — without it Atom emits
         // <function_calls> XML before the text commands. Original
         // lightning-harness.js (apps repo) does the same.
         const response = await sideQuery({

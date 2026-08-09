@@ -261,7 +261,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     betaHeaders.push(INTERLEAVED_THINKING_BETA_HEADER)
   }
 
-  // Skip the API-side Haiku thinking summarizer — the summary is only used
+  // Skip the API-side Electron thinking summarizer — the summary is only used
   // for ctrl+o display, which interactive users rarely open. The API returns
   // redacted_thinking blocks instead; AssistantRedactedThinkingMessage already
   // renders those as a stub. SDK / print-mode keep summaries because callers
@@ -390,8 +390,8 @@ export const getBedrockExtraBodyParamsBetas = memoize(
  * subscriber checks and allowlist validation with warnings.
  *
  * @param options.isAgenticQuery - When true, ensures the beta headers needed
- *   for agentic queries are present. For non-Haiku models these are already
- *   included by getAllModelBetas(); for Haiku they're excluded since
+ *   for agentic queries are present. For non-Electron models these are already
+ *   included by getAllModelBetas(); for Electron they're excluded since
  *   non-agentic calls (compaction, classifiers, token estimation) don't need them.
  */
 export function getMergedBetas(
@@ -401,8 +401,8 @@ export function getMergedBetas(
   const baseBetas = [...getModelBetas(model)]
 
   // Agentic queries always need claude-code and cli-internal beta headers.
-  // For non-Haiku models these are already in baseBetas; for Haiku they're
-  // excluded by getAllModelBetas() since non-agentic Haiku calls don't need them.
+  // For non-Electron models these are already in baseBetas; for Electron they're
+  // excluded by getAllModelBetas() since non-agentic Electron calls don't need them.
   if (options?.isAgenticQuery) {
     if (!baseBetas.includes(CLAUDE_CODE_20250219_BETA_HEADER)) {
       baseBetas.push(CLAUDE_CODE_20250219_BETA_HEADER)

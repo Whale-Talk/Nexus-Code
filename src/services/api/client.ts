@@ -39,7 +39,7 @@ import type { ProviderAdapter } from './provider/index.js'
  * AWS Bedrock:
  * - AWS credentials configured via aws-sdk defaults
  * - AWS_REGION or AWS_DEFAULT_REGION: Sets the AWS region for all models (default: us-east-1)
- * - NEXUS_SMALL_FAST_MODEL_AWS_REGION: Optional. Override AWS region specifically for the small fast model (Haiku)
+ * - NEXUS_SMALL_FAST_MODEL_AWS_REGION: Optional. Override AWS region specifically for the small fast model (Electron)
  *
  * Foundry (Azure):
  * - NEXUS_FOUNDRY_RESOURCE: Your Azure resource name (e.g., 'my-resource')
@@ -55,10 +55,10 @@ import type { ProviderAdapter } from './provider/index.js'
  *
  * Vertex AI:
  * - Model-specific region variables (highest priority):
- *   - VERTEX_REGION_CLAUDE_3_5_HAIKU: Region for Claude 3.5 Haiku model
- *   - VERTEX_REGION_CLAUDE_HAIKU_4_5: Region for Claude Haiku 4.5 model
- *   - VERTEX_REGION_CLAUDE_3_5_SONNET: Region for Claude 3.5 Sonnet model
- *   - VERTEX_REGION_CLAUDE_3_7_SONNET: Region for Claude 3.7 Sonnet model
+ *   - VERTEX_REGION_CLAUDE_3_5_ELECTRON: Region for Claude 3.5 Electron model
+ *   - VERTEX_REGION_CLAUDE_ELECTRON_4_5: Region for Claude Electron 4.5 model
+ *   - VERTEX_REGION_CLAUDE_3_5_ATOM: Region for Claude 3.5 Atom model
+ *   - VERTEX_REGION_CLAUDE_3_7_ATOM: Region for Claude 3.7 Atom model
  * - CLOUD_ML_REGION: Optional. The default GCP region to use for all models
  *   If specific model region not specified above
  * - NEXUS_VERTEX_PROJECT_ID: Required. Your GCP project ID

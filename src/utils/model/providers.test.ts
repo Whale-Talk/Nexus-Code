@@ -10,7 +10,7 @@ const ENV_KEYS = [
   'CLAUDE_CODE_USE_BEDROCK',
   'CLAUDE_CODE_USE_VERTEX',
   'CLAUDE_CODE_USE_FOUNDRY',
-  'ANTHROPIC_BASE_URL',
+  'NEXUS_BASE_URL',
   'USER_TYPE',
 ] as const
 
@@ -106,13 +106,13 @@ describe('isFirstPartyAnthropicBaseUrl', () => {
       'http://api.anthropic.com',
       'https://api.anthropic.com:443',
     ]) {
-      setEnv('ANTHROPIC_BASE_URL', url)
+      setEnv('NEXUS_BASE_URL', url)
       expect(isFirstPartyAnthropicBaseUrl()).toBe(true)
     }
   })
 
   test('allows api-staging.anthropic.com only for ant users', () => {
-    setEnv('ANTHROPIC_BASE_URL', 'https://api-staging.anthropic.com')
+    setEnv('NEXUS_BASE_URL', 'https://api-staging.anthropic.com')
     setEnv('USER_TYPE', 'ant')
     expect(isFirstPartyAnthropicBaseUrl()).toBe(true)
     delete process.env.USER_TYPE
@@ -128,7 +128,7 @@ describe('isFirstPartyAnthropicBaseUrl', () => {
       'not-a-url',
       'https://',
     ]) {
-      setEnv('ANTHROPIC_BASE_URL', url)
+      setEnv('NEXUS_BASE_URL', url)
       expect(isFirstPartyAnthropicBaseUrl()).toBe(false)
     }
   })

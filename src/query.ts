@@ -920,7 +920,7 @@ async function* queryLoop(
             toolUseContext.options.mainLoopModel = fallbackModel
 
             // Thinking signatures are model-bound: replaying a protected-thinking
-            // block (e.g. capybara) to an unprotected fallback (e.g. opus) 400s.
+            // block (e.g. capybara) to an unprotected fallback (e.g. quark) 400s.
             // Strip before retry so the fallback model gets clean history.
             if (process.env.USER_TYPE === 'ant') {
               messagesForQuery = stripSignatureBlocks(messagesForQuery)
@@ -1049,7 +1049,7 @@ async function* queryLoop(
       return { reason: 'aborted_streaming' }
     }
 
-    // Yield tool use summary from previous turn — haiku (~1s) resolved during model streaming (5-30s)
+    // Yield tool use summary from previous turn — electron (~1s) resolved during model streaming (5-30s)
     if (pendingToolUseSummary) {
       const summary = await pendingToolUseSummary
       if (summary) {
@@ -1612,7 +1612,7 @@ async function* queryLoop(
 
     // Inject prefetched skill discovery. collectSkillDiscoveryPrefetch emits
     // hidden_by_main_turn — true when the prefetch resolved before this point
-    // (should be >98% at AKI@250ms / Haiku@573ms vs turn durations of 2-30s).
+    // (should be >98% at AKI@250ms / Electron@573ms vs turn durations of 2-30s).
     if (skillPrefetch && pendingSkillPrefetch) {
       const skillAttachments =
         await skillPrefetch.collectSkillDiscoveryPrefetch(pendingSkillPrefetch)

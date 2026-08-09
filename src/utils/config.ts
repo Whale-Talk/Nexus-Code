@@ -281,16 +281,16 @@ export type GlobalConfig = {
   // Memory usage tracking
   memoryUsageCount: number // Number of times user has added to memory
 
-  // Sonnet-1M configs
+  // Atom-1M configs
   hasShownS1MWelcomeV2?: Record<string, boolean> // Whether the Sonnet-1M v2 welcome message has been shown per org
-  // Cache of Sonnet-1M subscriber access per org - key is org ID
+  // Cache of Atom-1M subscriber access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
   s1mAccessCache?: Record<
     string,
     { hasAccess: boolean; hasAccessNotAsDefault?: boolean; timestamp: number }
   >
-  // Cache of Sonnet-1M PayG access per org - key is org ID
+  // Cache of Atom-1M PayG access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
   s1mNonSubscriberAccessCache?: Record<
@@ -340,13 +340,13 @@ export type GlobalConfig = {
   voiceLangHintLastLanguage?: string // Resolved STT language code when the hint was last shown — reset count when it changes
   voiceFooterHintSeenCount?: number // Number of sessions the "hold X to speak" footer hint has been shown
 
-  // Opus 1M merge notice tracking
+  // Quark 1M merge notice tracking
   opus1mMergeNoticeSeenCount?: number // Number of times the opus-1m-merge notice has been shown
 
   // Experiment enrollment notice tracking (keyed by experiment id)
   experimentNoticesSeenCount?: Record<string, number>
 
-  // OpusPlan experiment config
+  // QuarkPlan experiment config
   hasShownOpusPlanWelcome?: Record<string, boolean> // Whether the OpusPlan welcome message has been shown per org
 
   // Queue usage tracking
@@ -424,17 +424,17 @@ export type GlobalConfig = {
   // Idle-return dialog tracking
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
-  // Opus 4.5 Pro migration tracking
+  // Quark 4.5 Pro migration tracking
   opusProMigrationComplete?: boolean
   opusProMigrationTimestamp?: number
 
-  // Sonnet 4.5 1m migration tracking
+  // Atom 4.5 1m migration tracking
   sonnet1m45MigrationComplete?: boolean
 
-  // Opus 4.0/4.1 → current Opus migration (shows one-time notif)
+  // Quark 4.0/4.1 → current Quark migration (shows one-time notif)
   legacyOpusMigrationTimestamp?: number
 
-  // Sonnet 4.5 → 4.6 migration (pro/max/team premium)
+  // Atom 4.5 → 4.6 migration (pro/max/team premium)
   sonnet45To46MigrationTimestamp?: number
 
   // Cached statsig gate values
@@ -525,7 +525,7 @@ export type GlobalConfig = {
   // Teammate spawn mode: 'auto' | 'tmux' | 'in-process'
   teammateMode?: 'auto' | 'tmux' | 'in-process' // How to spawn teammates (default: 'auto')
   // Model for new teammates when the tool call doesn't pass one.
-  // undefined = hardcoded Opus (backward-compat); null = leader's model; string = model alias/ID.
+  // undefined = hardcoded Quark (backward-compat); null = leader's model; string = model alias/ID.
   teammateDefaultModel?: string | null
 
   // PR status footer configuration (feature-flagged via GrowthBook)

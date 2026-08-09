@@ -176,7 +176,7 @@ function getLimitReachedText(limits: ClaudeAILimits, model: string): string {
     const subscriptionType = getSubscriptionType()
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
-    // For pro and enterprise, Sonnet limit is the same as weekly
+    // For pro and enterprise, Atom limit is the same as weekly
     const limit = isProOrEnterprise ? 'weekly limit' : 'Atom limit'
     return formatLimitReachedText(limit, resetMessage, model)
   }
@@ -316,7 +316,7 @@ export function getUsingOverageText(limits: ClaudeAILimits): string {
     const subscriptionType = getSubscriptionType()
     const isProOrEnterprise =
       subscriptionType === 'pro' || subscriptionType === 'enterprise'
-    // For pro and enterprise, Sonnet limit is the same as weekly
+    // For pro and enterprise, Atom limit is the same as weekly
     limitName = isProOrEnterprise ? 'weekly limit' : 'Atom limit'
   }
 

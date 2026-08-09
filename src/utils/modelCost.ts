@@ -32,7 +32,7 @@ export type ModelCosts = {
   webSearchRequests: number
 }
 
-// Standard pricing tier for Sonnet models: $3 input / $15 output per Mtok
+// Standard pricing tier for Atom models: $3 input / $15 output per Mtok
 export const COST_TIER_3_15 = {
   inputTokens: 3,
   outputTokens: 15,
@@ -41,7 +41,7 @@ export const COST_TIER_3_15 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing tier for Opus 4/4.1: $15 input / $75 output per Mtok
+// Pricing tier for Quark 4/4.1: $15 input / $75 output per Mtok
 export const COST_TIER_15_75 = {
   inputTokens: 15,
   outputTokens: 75,
@@ -50,7 +50,7 @@ export const COST_TIER_15_75 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing tier for Opus 4.5: $5 input / $25 output per Mtok
+// Pricing tier for Quark 4.5: $5 input / $25 output per Mtok
 export const COST_TIER_5_25 = {
   inputTokens: 5,
   outputTokens: 25,
@@ -68,7 +68,7 @@ export const COST_TIER_30_150 = {
   webSearchRequests: 0.01,
 } as const satisfies ModelCosts
 
-// Pricing for Haiku 3.5: $0.80 input / $4 output per Mtok
+// Pricing for Electron 3.5: $0.80 input / $4 output per Mtok
 export const COST_HAIKU_35 = {
   inputTokens: 0.8,
   outputTokens: 4,
