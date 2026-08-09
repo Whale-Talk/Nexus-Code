@@ -50,7 +50,7 @@ export function BypassPermissionsModeDialog(t0) {
   const handleEscape = _temp2;
   let t3;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box flexDirection="column" gap={1}><Text>In Bypass Permissions mode, Nexus Code will not ask for your approval before running potentially dangerous commands.<Newline />This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.</Text><Text>By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.</Text><Link url="https://github.com/Whale-Talk/Nexus-Code" /></Box>;
+    t3 = <Box flexDirection="column" gap={1}><Text>在 Bypass Permissions 模式下，Nexus Code 在运行潜在危险命令前不会征求您的批准。<Newline />此模式仅应在具有受限互联网访问、易于恢复的沙箱容器/虚拟机中使用。</Text><Text>继续即表示您接受在 Bypass Permissions 模式下所做操作的全部责任。</Text><Link url="https://github.com/NexusAir-Technologies/agent_NexusCode" /></Box>;
     $[3] = t3;
   } else {
     t3 = $[3];
@@ -58,10 +58,10 @@ export function BypassPermissionsModeDialog(t0) {
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = [{
-      label: "No, exit",
+      label: "不，退出",
       value: "decline"
     }, {
-      label: "Yes, I accept",
+      label: "是，我接受",
       value: "accept"
     }];
     $[4] = t4;
@@ -70,7 +70,7 @@ export function BypassPermissionsModeDialog(t0) {
   }
   let t5;
   if ($[5] !== onChange) {
-    t5 = <Dialog title="WARNING: Nexus Code running in Bypass Permissions mode" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
+    t5 = <Dialog title="警告：Nexus Code 正在以 Bypass Permissions 模式运行" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
     $[5] = onChange;
     $[6] = t5;
   } else {
