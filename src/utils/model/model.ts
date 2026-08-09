@@ -458,6 +458,12 @@ export function getPublicModelName(model: ModelName): string {
  *
  * @param modelInput The model alias or name provided by the user.
  */
+/** 别名解析: 默认模型已带 [1m] 则不重复加后缀 */
+function withAliasSuffix(model: string, wants1m: boolean): string {
+  if (!wants1m) return model
+  return /\[1m\]/i.test(model) ? model : model + '[1m]'
+}
+
 export function parseUserSpecifiedModel(
   modelInput: ModelName | ModelAlias,
 ): ModelName {
@@ -473,16 +479,16 @@ export function parseUserSpecifiedModel(
     switch (modelString) {
       case 'quarkplan':
       case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+        return withAliasSuffix(getDefaultSonnetModel(), has1mTag)
       case 'atom':
       case 'sonnet':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
+        return withAliasSuffix(getDefaultSonnetModel(), has1mTag)
       case 'electron':
       case 'haiku':
-        return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
+        return withAliasSuffix(getDefaultHaikuModel(), has1mTag)
       case 'quark':
       case 'opus':
-        return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+        return withAliasSuffix(getDefaultOpusModel(), has1mTag)
       case 'best':
         return getBestModel()
       default:
@@ -518,8 +524,10 @@ export function parseUserSpecifiedModel(
   }
 
   // Preserve original case for custom model names (e.g., Azure Foundry deployment IDs)
-  // Only strip [1m] suffix if present, maintaining case of the base model
-  if (has1mTag) {
+  // Only strip [1m] suffix if present, maintaining case of the base model.
+  // 裸名模型 (如 glm-5.2, has1mContext 识别为 1M) 不加后缀 — 保持与三角色选项匹配,
+  // 中转站等不认带 [1m] 的模型名。
+  if (has1mTag && /\[1m\]/i.test(modelInputTrimmed)) {
     return modelInputTrimmed.replace(/\[1m\]$/i, '').trim() + '[1m]'
   }
   return modelInputTrimmed
