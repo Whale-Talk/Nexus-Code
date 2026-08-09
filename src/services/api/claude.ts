@@ -205,6 +205,7 @@ import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import { getAnthropicClient } from './client.js'
 import { adapter as anthropicProviderAdapter } from './provider/implementations/anthropic.js'
+import { createOpenAICompatibleProvider } from './provider/implementations/openai-compatible.js'
 import type {
   AssistantMessage as ProviderAssistantMessage,
   ContentBlock,
@@ -303,6 +304,22 @@ interface ProviderStreamMetadata {
   metadata: Promise<{ status: number; headers: Headers; requestID: string }>
 }
 
+// ---------------------------------------------------------------------------
+// Provider 选择 — NEXUS_PROVIDER 决定走哪个适配器:
+//   'anthropic' (默认): @ai-sdk/anthropic, 请求 ${baseURL}/messages (DeepSeek relay)
+//   'openai-compatible': @ai-sdk/openai-compatible, 请求 ${baseURL}/chat/completions (Zhipu 等)
+// ---------------------------------------------------------------------------
+let openAICompatAdapter: import('./provider/types.js').ProviderAdapter | null = null
+
+async function getStreamingAdapter(): Promise<import('./provider/types.js').ProviderAdapter> {
+  const provider = process.env.NEXUS_PROVIDER ?? 'anthropic'
+  if (provider === 'openai-compatible') {
+    openAICompatAdapter ??= await createOpenAICompatibleProvider().then(m => m.adapter)
+    return openAICompatAdapter
+  }
+  return anthropicProviderAdapter
+}
+
 /**
  * Anthropic 格式请求参数 → provider ModelRequest。
  * 只转发抽象层支持的字段 (betas/context_management/output_config/speed 等
@@ -338,7 +355,8 @@ async function createProviderStream(
   params: RequestParams,
   opts: { signal?: AbortSignal },
 ): Promise<ProviderStreamResult> {
-  const stream = await anthropicProviderAdapter.streamText(
+  const adapter = await getStreamingAdapter()
+  const stream = await adapter.streamText(
     buildModelRequest(params),
     opts.signal,
   )

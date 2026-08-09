@@ -76,24 +76,20 @@ export interface OpenAICompatibleAdapterOptions {
 }
 
 /**
- * 创建 OpenAI-compatible ProviderAdapter (DeepSeek relay PoC)。
- * baseURL 校验: openai-compatible 会拼 `${baseURL}chat/completions`,
- * 不带 /v1 后缀会打到错误的路径, 此处快速失败。
+ * 创建 OpenAI-compatible ProviderAdapter。
+ * baseURL 处理: openai-compatible 会拼 `${baseURL}chat/completions`,
+ * 若 baseURL 未以 / 结尾则自动补全（Zhipu 的 /api/paas/v4 等也支持）。
  */
 export function createOpenAICompatibleAdapter(
   options: OpenAICompatibleAdapterOptions,
 ): ProviderAdapter {
-  const url = new URL(options.baseURL)
-  const path = url.pathname.replace(/\/+$/, '')
-  if (!path.endsWith('/v1')) {
-    throw new Error(
-      `openai-compatible baseURL 必须以 /v1 结尾 (got: ${options.baseURL})`,
-    )
-  }
+  const baseURL = options.baseURL.endsWith('/')
+    ? options.baseURL
+    : options.baseURL + '/'
 
   const provider = createOpenAICompatible({
     name: options.name ?? 'openai-compatible',
-    baseURL: options.baseURL,
+    baseURL,
     ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
     ...(options.headers !== undefined ? { headers: options.headers } : {}),
     ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
@@ -121,7 +117,7 @@ export function createOpenAICompatibleProvider(): Promise<{
   if (!baseURL) {
     return Promise.reject(
       new Error(
-        'createOpenAICompatibleProvider: NEXUS_BASE_URL 未设置 (必须带 /v1 后缀)',
+        'createOpenAICompatibleProvider: NEXUS_BASE_URL 未设置',
       ),
     )
   }
