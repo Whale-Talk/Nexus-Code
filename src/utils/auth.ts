@@ -161,7 +161,9 @@ export function getAuthTokenSource() {
     return { source: 'none' as const, hasToken: false }
   }
 
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
+  // Nexus: if an API key is set, AUTH_TOKEN is irrelevant — suppress the
+  // inherited ANTHROPIC_AUTH_TOKEN to avoid auth conflict warnings.
+  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext() && !process.env.ANTHROPIC_API_KEY) {
     return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
   }
 
