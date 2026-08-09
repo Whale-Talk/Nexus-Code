@@ -249,7 +249,7 @@ export function ModelPicker(t0) {
         onSelect(null, selectedEffort);
         return;
       }
-      onSelect(value_0, selectedEffort);
+      onSelect(selectedModel, selectedEffort);
     };
     $[35] = effort;
     $[36] = hasToggledEffort;
