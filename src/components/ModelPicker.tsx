@@ -74,7 +74,6 @@ export function ModelPicker(t0) {
     t3 = $[3];
   }
   const modelOptions = t3;
-  try { require('fs').appendFileSync('/tmp/modelpicker-debug.log', `initial=${JSON.stringify(initial)} | options=[${modelOptions.map(o => o.value).join('|')}] | match=${modelOptions.some(opt => opt.value === initial)}\n`) } catch {}
   let t4;
   bb0: {
     if (initial !== null && !modelOptions.some(opt => opt.value === initial)) {
@@ -127,7 +126,12 @@ export function ModelPicker(t0) {
   if ($[14] !== initialValue || $[15] !== selectOptions) {
     t6 = selectOptions.some(_ => _.value === initialValue)
       ? initialValue
-      : selectOptions.find(_ => _.value.split('::')[0] === initialValue)?.value
+      : selectOptions.find(_ => {
+          // 与 resolveOptionModel 对称: 用 lastIndexOf 还原模型 ID，
+          // 模型 ID 本身含 :: (如 provider::model) 时不被截断
+          const sep = _.value.lastIndexOf('::')
+          return (sep === -1 ? _.value : _.value.slice(0, sep)) === initialValue
+        })?.value
         ?? selectOptions[0]?.value ?? undefined;
     $[14] = initialValue;
     $[15] = selectOptions;
@@ -406,8 +410,10 @@ function _temp(s) {
 function resolveOptionModel(value?: string): string | undefined {
   if (!value) return undefined;
   if (value === NO_PREFERENCE) return getDefaultMainLoopModel();
-  // 还原唯一后缀 (模型ID::角色名)
-  const modelId = value.split('::')[0]
+  // 还原唯一后缀 (模型ID::角色名) — 用 indexOf 而非 split，
+  // 防止模型 ID 本身含 :: (如 "provider::model") 被错误截断
+  const sepIndex = value.lastIndexOf('::');
+  const modelId = sepIndex === -1 ? value : value.slice(0, sepIndex)
   return parseUserSpecifiedModel(modelId);
 }
 function EffortLevelIndicator(t0) {

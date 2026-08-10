@@ -9,6 +9,7 @@ import {
   getUseCoworkPlugins,
 } from '../../bootstrap/state.js'
 import { getRemoteManagedSettingsSyncFromCache } from '../../services/remoteManagedSettings/syncCacheState.js'
+import { clearSkillCaches } from '../../skills/loadSkillsDir.js'
 import { uniq } from '../array.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
@@ -504,6 +505,10 @@ export function updateSettingsForSource(
 
     // Invalidate the session cache since settings have been updated
     resetSettingsCache()
+    // Skill/command loading is gated on setting sources (userSettings/
+    // projectSettings/plugin-only) — clear their memoized caches too, so
+    // e.g. disabling userSettings takes effect without a restart.
+    clearSkillCaches()
 
     if (source === 'localSettings') {
       // Okay to add to gitignore async without awaiting

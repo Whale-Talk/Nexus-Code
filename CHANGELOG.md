@@ -5,6 +5,23 @@
 
 ---
 
+## [1.0.4] - 2026-08-11
+
+### 修复（全项目 5 维审查发现）
+- **启动器**：shebang 改回 `#!/usr/bin/env node`（bun 缺失时友好提示真正可达）；子代理模型缺省跟随 `NEXUS_MODEL`（非 DeepSeek 厂商子代理可用）；effort 默认值统一
+- **改名回退对称**：项目级 `.claude/{skills,agents,commands}` legacy 回退；`rules` 路径改为 `.nexus/rules` 优先 + `.claude/rules` 回退；`--add-dir` 技能监听路径修正；危险目录保护补 `.nexus`
+- **安全**：删除 WebSearchTool/ModelPicker 遗留 `/tmp` 调试日志（PII）；`@include` symlink 跨界防护（realpath 后判定外部）；gitleaks 路径级豁免改为精确 key 字面量豁免
+- **配置**：dev/launcher 模式全局配置统一（`getGlobalClaudeFile` 回退 `getNexusConfigHomeDir`）；`NEXUS_PROVIDER` 非法值 fail-fast
+- **Provider**：openai-compatible baseURL 智能 `/v1` 归一化（已含版本段则不追加）；VERTEX_REGION 文档键名修正
+- **技能**：settings 变更时清 skills/commands 缓存
+- **模型**：ModelPicker 用 `lastIndexOf('::')` 防模型 ID 含 `::` 截断；`deepseek`/`flash` 别名补解析 case
+
+### 文档
+- 安装教程迁移至 README（Bun 安装 / 3 步安装 / 密钥配置 / 三角色 / 常见问题）
+- 知识库仅保留成员 API Token 分配 + settings.json 参考
+
+---
+
 ## [1.0.3] - 2026-08-10
 
 ### 变更
@@ -111,6 +128,7 @@
 | 1.0.1 | 2026-08-09 | 多厂商适配 + GLM + 本地搜索 + 中文 UI |
 | 1.0.2 | 2026-08-10 | CLAUDE.md→NEXUS.md 全量改名 + 安装问题修复 |
 | 1.0.3 | 2026-08-10 | NEXUS_SUBAGENT_MODEL 环境变量改名 |
+| 1.0.4 | 2026-08-11 | 全项目审查修复（回退对称/安全/启动器/文档重构） |
 
 ## 附录: 文档索引
 

@@ -76,6 +76,7 @@ export const DANGEROUS_DIRECTORIES = [
   '.vscode',
   '.idea',
   '.claude',
+  '.nexus',
 ] as const
 
 /**
@@ -227,18 +228,18 @@ function isClaudeConfigFilePath(filePath: string): boolean {
     return true
   }
 
-  // Check if file is within .claude/commands or .claude/agents directories
+  // Check if file is within {.claude,.nexus}/{commands,agents,skills} directories
   // using proper path segment validation (not string matching with includes())
   // pathInWorkingPath now handles case-insensitive comparison to prevent bypasses
-  const commandsDir = join(getOriginalCwd(), '.claude', 'commands')
-  const agentsDir = join(getOriginalCwd(), '.claude', 'agents')
-  const skillsDir = join(getOriginalCwd(), '.claude', 'skills')
-
-  return (
-    pathInWorkingPath(filePath, commandsDir) ||
-    pathInWorkingPath(filePath, agentsDir) ||
-    pathInWorkingPath(filePath, skillsDir)
+  const protectedDirs = (
+    ['.claude', '.nexus'] as const
+  ).flatMap(dirName =>
+    (['commands', 'agents', 'skills'] as const).map(subdir =>
+      join(getOriginalCwd(), dirName, subdir),
+    ),
   )
+
+  return protectedDirs.some(dir => pathInWorkingPath(filePath, dir))
 }
 
 // Check if file is the plan file for the current session
