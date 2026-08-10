@@ -18,4 +18,4 @@ coverage/
 .vscode/
 
 .omc/
-dist-check/
+dist-check/proxy/
