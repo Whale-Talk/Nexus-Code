@@ -4,7 +4,7 @@
  *
  * When CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST is truthy in the spawn env, these
  * are stripped from settings-sourced env so the host's routing config isn't
- * overridden by a user's ~/.claude/settings.json — e.g. a Bedrock setup for
+ * overridden by a user's ~/.nexus/settings.json — e.g. a Bedrock setup for
  * terminal CLI that would break a host that only supports first-party auth.
  *
  * @[MODEL LAUNCH]: New models usually don't need changes here —
@@ -38,7 +38,7 @@ const PROVIDER_MANAGED_ENV_VARS = new Set([
   'CLAUDE_CODE_SKIP_VERTEX_AUTH',
   'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
   // Model defaults — the launcher sets provider-specific model IDs that
-  // MUST flow through. Settings (e.g. stale ~/.claude/settings.json from
+  // MUST flow through. Settings (e.g. stale ~/.nexus/settings.json from
   // upstream Claude Code) must NOT override them — otherwise the model
   // becomes claude-sonnet-4-6 and the relay returns 503.
   'NEXUS_MODEL',

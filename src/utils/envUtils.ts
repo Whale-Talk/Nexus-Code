@@ -4,7 +4,7 @@ import { join } from 'path'
 
 // Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
-export const getClaudeConfigHomeDir = memoize(
+export const getNexusConfigHomeDir = memoize(
   (): string => {
     return (
       process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.nexus')
@@ -14,7 +14,7 @@ export const getClaudeConfigHomeDir = memoize(
 )
 
 export function getTeamsDir(): string {
-  return join(getClaudeConfigHomeDir(), 'teams')
+  return join(getNexusConfigHomeDir(), 'teams')
 }
 
 /**

@@ -1,6 +1,6 @@
 export const AGENT_PATHS = {
-  project: '.claude/agents',
-  user: '~/.claude/agents',
+  project: '.nexus/agents',
+  user: '~/.nexus/agents',
 } as const
 
 export type ModeState = string
