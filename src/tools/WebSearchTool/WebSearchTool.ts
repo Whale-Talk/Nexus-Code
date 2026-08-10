@@ -168,29 +168,52 @@ function makeOutputFromSearchResponse(
   }
 }
 
-// Exa MCP 搜索 — provider-independent 本地搜索 (opencode 同款方案)。
-// 直接 POST Exa MCP, 无 key 可用。返回格式化文本 (标题/URL/摘要)。
+// 本地 MCP 搜索 — provider-independent (opencode 同款方案)。
+// Provider 可选: exa (默认) / parallel; 支持 EXA_API_KEY / PARALLEL_API_KEY。
+// 无 key 也可用。返回格式化文本 (标题/URL/摘要)。
+const EXA_URL = 'https://mcp.exa.ai/mcp'
+const PARALLEL_URL = 'https://search.parallel.ai/mcp'
+
+function resolveSearchConfig(): { url: string; tool: string; apiKey?: string; parallelArgs?: boolean } {
+  const provider = process.env.NEXUS_SEARCH_PROVIDER ?? 'exa'
+  if (provider === 'parallel') {
+    return {
+      url: PARALLEL_URL,
+      tool: 'web_search',
+      apiKey: process.env.PARALLEL_API_KEY,
+      parallelArgs: true, // Parallel 用 objective + search_queries 参数
+    }
+  }
+  return {
+    url: EXA_URL,
+    tool: 'web_search_exa',
+    apiKey: process.env.EXA_API_KEY,
+  }
+}
+
 async function exaSearch(
   query: string,
   numResults = 5,
 ): Promise<string | null> {
+  const { url, tool, apiKey, parallelArgs } = resolveSearchConfig()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 25000)
   try {
-    const res = await fetch('https://mcp.exa.ai/mcp', {
+    const args = parallelArgs
+      ? { objective: query, search_queries: [query], numResults }
+      : { query, numResults }
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
         method: 'tools/call',
-        params: {
-          name: 'web_search_exa',
-          arguments: { query, numResults },
-        },
+        params: { name: tool, arguments: args },
       }),
       signal: controller.signal,
     })
