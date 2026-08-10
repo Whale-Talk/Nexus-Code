@@ -67,7 +67,7 @@ const defaultSettings = {
     API_TIMEOUT_MS: '3000000',
     NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
     NEXUS_MODEL: 'deepseek-v4-pro[1m]',
-    CLAUDE_CODE_SUBAGENT_MODEL: 'deepseek-v4-flash[1m]',
+    NEXUS_SUBAGENT_MODEL: 'deepseek-v4-flash[1m]',
   },
   model: 'deepseek-v4-pro[1m]',
   deepseek: { effort: 'max' },
@@ -142,8 +142,12 @@ process.env.NEXUS_ATOM_MODEL =
 process.env.NEXUS_ELECTRON_MODEL =
   settings?.env?.NEXUS_ELECTRON_MODEL || process.env.NEXUS_MODEL
 
-process.env.CLAUDE_CODE_SUBAGENT_MODEL =
-  settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL || 'deepseek-v4-flash[1m]'
+// 子代理模型: NEXUS_SUBAGENT_MODEL (新) + CLAUDE_CODE_SUBAGENT_MODEL (旧键兼容)
+process.env.NEXUS_SUBAGENT_MODEL =
+  settings?.env?.NEXUS_SUBAGENT_MODEL ||
+  settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL ||
+  'deepseek-v4-flash[1m]'
+process.env.CLAUDE_CODE_SUBAGENT_MODEL = process.env.NEXUS_SUBAGENT_MODEL
 
 // Auth: wipe inherited tokens (conflict warnings), set NEXUS_API_KEY.
 // @ai-sdk/anthropic takes apiKey explicitly (adapter passes NEXUS_API_KEY),
