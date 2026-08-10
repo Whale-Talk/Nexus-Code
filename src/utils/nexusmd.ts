@@ -823,7 +823,7 @@ export const getMemoryFiles = memoize(
     )
 
     // Process User file (only if userSettings is enabled)
-    // Primary: NEXUS.md (via getMemoryPath), legacy fallback: CLAUDE.md
+    // Primary: ~/.nexus/NEXUS.md, fallbacks: ~/.nexus/CLAUDE.md → ~/.claude/CLAUDE.md (OMC legacy)
     if (isSettingSourceEnabled('userSettings')) {
       result.push(
         ...(await processMemoryFile(
@@ -831,6 +831,10 @@ export const getMemoryFiles = memoize(
         )),
         ...(await processMemoryFile(
           join(dirname(getMemoryPath('User')), 'CLAUDE.md'), 'User', processedPaths, true,
+        )),
+        // Legacy OMC: old ~/.claude/CLAUDE.md before the .nexus migration
+        ...(await processMemoryFile(
+          join(dirname(getNexusConfigHomeDir()), '.claude', 'CLAUDE.md'), 'User', processedPaths, true,
         )),
       )
       // Process User ~/.nexus/rules/*.md files
