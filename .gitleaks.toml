@@ -5,13 +5,11 @@ title = "Nexus Code gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Upstream sample values, public Datadog token, and purged proxy file"
+description = "Upstream sample values, public Datadog token, and rotated GLM key literal"
 regexes = [
   '''default_claude_max_20x''',
   '''pubbbf48e6d78dae54bceaa4acf463299bf''',
-]
-# proxy/glm_proxy.py 已从历史中清除，但 git object 可能残留于 server 端。
-# Key 已作废轮换。该路径的 finding 一律豁免。
-paths = [
-  '''proxy/glm_proxy\.py''',
+  # 已轮换作废的旧 GLM key（精确字面量，非路径豁免）。
+  # 仅此一个值豁免；proxy/ 路径下未来新增的密钥仍会被扫描。
+  '''e5aa78d31f5a41729ba9736a5b89964f\.hlWEaMYVG0yUJDCx''',
 ]

@@ -389,7 +389,6 @@ export const WebSearchTool = buildTool({
     // Exa MCP 免费可用, 任何模型 (DeepSeek/GLM/中转站) 都能搜。
     try {
       const exaResult = await exaSearch(query)
-      try { require('fs').appendFileSync('/tmp/nexus-exa.log', `query=${query} | result=${exaResult ? 'OK(' + exaResult.length + ')' : 'NULL'}\n`) } catch {}
       if (exaResult) {
         return {
           data: {
@@ -400,7 +399,6 @@ export const WebSearchTool = buildTool({
         }
       }
     } catch (e) {
-      try { require('fs').appendFileSync('/tmp/nexus-exa.log', `query=${query} | ERROR: ${e}\n`) } catch {}
       logError(`[WebSearch] Exa search failed, falling back to server: ${e}`)
     }
 
@@ -550,7 +548,6 @@ export const WebSearchTool = buildTool({
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     const { query, results } = output
-    try { require('fs').appendFileSync('/tmp/nexus-exa.log', `mapToolResult: query=${query} | results=${results?.length} | size=${JSON.stringify(results ?? []).length}\n`) } catch {}
 
     let formattedOutput = `Web search results for query: "${query}"\n\n`
 

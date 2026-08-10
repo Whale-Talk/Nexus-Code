@@ -194,7 +194,7 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Project skills directory (.claude/skills)
+  // Project skills directory (.nexus/skills)
   const projectSkillsPath = getSkillsPath('projectSettings', 'skills')
   if (projectSkillsPath) {
     try {
@@ -207,7 +207,7 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Project commands directory (.claude/commands)
+  // Project commands directory (.nexus/commands)
   const projectCommandsPath = getSkillsPath('projectSettings', 'commands')
   if (projectCommandsPath) {
     try {
@@ -220,14 +220,16 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Additional directories (--add-dir) skills
+  // Additional directories (--add-dir) skills — primary .nexus, legacy .claude
   for (const dir of getAdditionalDirectoriesForNexusMd()) {
-    const additionalSkillsPath = platformPath.join(dir, '.claude', 'skills')
-    try {
-      await fs.stat(additionalSkillsPath)
-      paths.push(additionalSkillsPath)
-    } catch {
-      // Path doesn't exist, skip it
+    for (const dirName of ['.nexus', '.claude']) {
+      const additionalSkillsPath = platformPath.join(dir, dirName, 'skills')
+      try {
+        await fs.stat(additionalSkillsPath)
+        paths.push(additionalSkillsPath)
+      } catch {
+        // Path doesn't exist, skip it
+      }
     }
   }
 

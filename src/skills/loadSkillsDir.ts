@@ -883,30 +883,33 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.nexus', 'skills')
+      // Primary: .nexus/skills, legacy fallback: .claude/skills (pre-rename projects)
+      for (const dirName of ['.nexus', '.claude']) {
+        const skillDir = join(currentDir, dirName, 'skills')
 
-      // Skip if we've already checked this path (hit or miss) — avoids
-      // repeating the same failed stat on every Read/Write/Edit call when
-      // the directory doesn't exist (the common case).
-      if (!dynamicSkillDirs.has(skillDir)) {
-        dynamicSkillDirs.add(skillDir)
-        try {
-          await fs.stat(skillDir)
-          // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
-          // loading silently. `git check-ignore` handles nested .gitignore,
-          // .git/info/exclude, and global gitignore. Fails open outside a
-          // git repo (exit 128 → false); the invocation-time trust dialog
-          // is the actual security boundary.
-          if (await isPathGitignored(currentDir, resolvedCwd)) {
-            logForDebugging(
-              `[skills] Skipped gitignored skills dir: ${skillDir}`,
-            )
-            continue
+        // Skip if we've already checked this path (hit or miss) — avoids
+        // repeating the same failed stat on every Read/Write/Edit call when
+        // the directory doesn't exist (the common case).
+        if (!dynamicSkillDirs.has(skillDir)) {
+          dynamicSkillDirs.add(skillDir)
+          try {
+            await fs.stat(skillDir)
+            // Skills dir exists. Before loading, check if the containing dir
+            // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
+            // loading silently. `git check-ignore` handles nested .gitignore,
+            // .git/info/exclude, and global gitignore. Fails open outside a
+            // git repo (exit 128 → false); the invocation-time trust dialog
+            // is the actual security boundary.
+            if (await isPathGitignored(currentDir, resolvedCwd)) {
+              logForDebugging(
+                `[skills] Skipped gitignored skills dir: ${skillDir}`,
+              )
+              continue
+            }
+            newDirs.push(skillDir)
+          } catch {
+            // Directory doesn't exist — already recorded above, continue
           }
-          newDirs.push(skillDir)
-        } catch {
-          // Directory doesn't exist — already recorded above, continue
         }
       }
 

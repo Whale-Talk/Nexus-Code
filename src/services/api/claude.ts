@@ -317,6 +317,14 @@ async function getStreamingAdapter(): Promise<import('./provider/types.js').Prov
     openAICompatAdapter ??= await createOpenAICompatibleProvider().then(m => m.adapter)
     return openAICompatAdapter
   }
+  if (provider !== 'anthropic') {
+    // Fail fast on misspelled/misconfigured providers instead of silently
+    // falling back to the anthropic adapter (which would 4xx against relays).
+    throw new Error(
+      `NEXUS_PROVIDER 非法值: "${provider}"。支持: "anthropic" | "openai-compatible"。` +
+        `请在 ~/.nexus/settings.json 的 env.NEXUS_PROVIDER 修正。`,
+    )
+  }
   return anthropicProviderAdapter
 }
 

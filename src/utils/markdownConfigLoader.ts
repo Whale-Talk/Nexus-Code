@@ -221,7 +221,7 @@ function resolveStopBoundary(cwd: string): string | null {
 
 /**
  * Traverses from the current directory up to the git root (or home directory if not in a git repo),
- * collecting all .claude directories along the way.
+ * collecting all .nexus directories along the way (with .claude legacy fallback).
  *
  * Stopping at git root prevents commands/skills from parent directories outside the repository
  * from leaking into projects. For example, if ~/projects/.nexus/commands/ exists, it won't
@@ -229,7 +229,7 @@ function resolveStopBoundary(cwd: string): string | null {
  *
  * @param subdir Subdirectory (eg. "commands", "agents")
  * @param cwd Current working directory to start from
- * @returns Array of directory paths containing .claude/subdir, from most specific (cwd) to least specific
+ * @returns Array of directory paths containing .nexus/subdir (or legacy .claude/subdir), from most specific (cwd) to least specific
  */
 export function getProjectDirsUpToHome(
   subdir: ClaudeConfigDirectory,
@@ -250,18 +250,21 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.nexus', subdir)
-    // Filter to existing dirs. This is a perf filter (avoids spawning
-    // ripgrep on non-existent dirs downstream) and the worktree fallback
-    // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
-    // handling instead of existsSync — re-throws unexpected errors rather
-    // than silently swallowing them. Downstream loadMarkdownFiles handles
-    // the TOCTOU window (dir disappearing before read) gracefully.
-    try {
-      statSync(claudeSubdir)
-      dirs.push(claudeSubdir)
-    } catch (e: unknown) {
-      if (!isFsInaccessible(e)) throw e
+    // Primary: .nexus/<subdir>, legacy fallback: .claude/<subdir> (pre-rename projects)
+    for (const dirName of ['.nexus', '.claude']) {
+      const claudeSubdir = join(current, dirName, subdir)
+      // Filter to existing dirs. This is a perf filter (avoids spawning
+      // ripgrep on non-existent dirs downstream) and the worktree fallback
+      // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
+      // handling instead of existsSync — re-throws unexpected errors rather
+      // than silently swallowing them. Downstream loadMarkdownFiles handles
+      // the TOCTOU window (dir disappearing before read) gracefully.
+      try {
+        statSync(claudeSubdir)
+        dirs.push(claudeSubdir)
+      } catch (e: unknown) {
+        if (!isFsInaccessible(e)) throw e
+      }
     }
 
     // Stop after processing the git root directory - this prevents commands from parent
@@ -306,14 +309,14 @@ export const loadMarkdownFilesForSubdir = memoize(
     const managedDir = join(getManagedFilePath(), '.nexus', subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
-    // For git worktrees where the worktree does NOT have .claude/<subdir> checked
+    // For git worktrees where the worktree does NOT have .nexus/<subdir> checked
     // out (e.g. sparse-checkout), fall back to the main repository's copy.
     // getProjectDirsUpToHome stops at the worktree root (where the .git file is),
     // so it never sees the main repo on its own.
     //
-    // Only add the main repo's copy when the worktree root's .claude/<subdir>
+    // Only add the main repo's copy when the worktree root's .nexus/<subdir>
     // is absent. A standard `git worktree add` checks out the full tree, so the
-    // worktree already has identical .claude/<subdir> content — loading the main
+    // worktree already has identical .nexus/<subdir> content — loading the main
     // repo's copy too would duplicate every command/agent/skill
     // (anthropics/claude-code#29599, #28182, #26992).
     //
@@ -381,7 +384,7 @@ export const loadMarkdownFilesForSubdir = memoize(
     const allFiles = [...managedFiles, ...userFiles, ...projectFiles]
 
     // Deduplicate files that resolve to the same physical file (same inode).
-    // This prevents the same file from appearing multiple times when ~/.claude is
+    // This prevents the same file from appearing multiple times when ~/.nexus is
     // symlinked to a directory within the project hierarchy, causing the same
     // physical file to be discovered through different paths.
     const fileIdentities = await Promise.all(
