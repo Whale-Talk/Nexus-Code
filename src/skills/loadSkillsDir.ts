@@ -638,6 +638,8 @@ async function loadSkillsFromCommandsDir(
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
     const userSkillsDir = join(getNexusConfigHomeDir(), 'skills')
+    // Legacy fallback: OMC installs to ~/.claude/skills before the .nexus migration
+    const legacyUserSkillsDir = join(dirname(getNexusConfigHomeDir()), '.claude', 'skills')
     const managedSkillsDir = join(getManagedFilePath(), '.nexus', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
@@ -687,7 +689,14 @@ export const getSkillDirCommands = memoize(
         ? Promise.resolve([])
         : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
       isSettingSourceEnabled('userSettings') && !skillsLocked
-        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
+        ? (async () => {
+            // Load from ~/.nexus/skills (primary) AND ~/.claude/skills (legacy OMC)
+            const [primary, legacy] = await Promise.all([
+              loadSkillsFromSkillsDir(userSkillsDir, 'userSettings'),
+              loadSkillsFromSkillsDir(legacyUserSkillsDir, 'userSettings'),
+            ])
+            return [...primary, ...legacy]
+          })()
         : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
