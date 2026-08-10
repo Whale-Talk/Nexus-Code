@@ -98,19 +98,24 @@ nexus --version   # 应输出 1.0.4
 
 ### 2. 配置 API 密钥
 
-首次启动自动创建 `~/.nexus/settings.json`；或手动编辑：
+首次启动自动创建 `~/.nexus/settings.json`；或手动编辑（三角色完整配置）：
 
 ```json
 {
   "env": {
     "NEXUS_BASE_URL": "http://192.168.77.162:8080",
     "NEXUS_API_KEY": "你的Token",
-    "NEXUS_MODEL": "deepseek-v4-pro[1m]"
+    "NEXUS_PROVIDER": "anthropic",
+    "NEXUS_MODEL": "deepseek-v4-pro[1m]",
+    "NEXUS_QUARK_MODEL": "deepseek-v4-pro[1m]",
+    "NEXUS_ATOM_MODEL": "deepseek-v4-flash[1m]",
+    "NEXUS_ELECTRON_MODEL": "deepseek-v4-flash[1m]"
   },
   "model": "deepseek-v4-pro[1m]"
 }
 ```
 
+> 只配 `NEXUS_MODEL` 时，三角色自动跟随它（单模型兼容）。
 > ⚠️ Token **不要**加 `sk-` 前缀。修改后重启 `nexus` 生效。
 > API Token 找管理员分配（团队成员见内部文档）。
 
