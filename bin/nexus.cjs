@@ -1,10 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Nexus launcher — manages config isolation and spawns the main Nexus Code process.
 //   Settings use NEXUS_* keys. The launcher bridges: NEXUS_* env vars for our code,
 //   ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk).
 //
-//   Runtime requirement: bun >= 1.3.5 (the project package manager).
-//   If you see "bun: command not found", install bun: https://bun.sh
+//   Runs on Node.js (npm-installed bin always has node); the actual runtime is
+//   bun >= 1.3.5 — if bun is missing we print install guidance below instead of
+//   dying with an opaque OS error.
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
 const { homedir } = require('os')
 const { delimiter, dirname, join, resolve } = require('path')
@@ -67,7 +68,8 @@ const defaultSettings = {
     API_TIMEOUT_MS: '3000000',
     NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
     NEXUS_MODEL: 'deepseek-v4-pro[1m]',
-    NEXUS_SUBAGENT_MODEL: 'deepseek-v4-flash[1m]',
+    // 注意: 不写 NEXUS_SUBAGENT_MODEL 默认值到 settings.json —
+    // launcher 缺省时跟随 NEXUS_MODEL，保证非 DeepSeek 厂商子代理可用。
   },
   model: 'deepseek-v4-pro[1m]',
   deepseek: { effort: 'max' },
@@ -102,6 +104,11 @@ if (!existsSync(settingsPath)) {
           current.env?.NEXUS_BASE_URL || current.env?.ANTHROPIC_BASE_URL || defaultSettings.env.NEXUS_BASE_URL,
       },
       model: current.model ?? defaultSettings.model,
+      // 写入 deepseek.effort 默认值，与回退逻辑一致，避免升级前后 effort 静默变化
+      deepseek: {
+        ...defaultSettings.deepseek,
+        ...(current.deepseek || {}),
+      },
     }
     writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
   } catch {
@@ -142,11 +149,12 @@ process.env.NEXUS_ATOM_MODEL =
 process.env.NEXUS_ELECTRON_MODEL =
   settings?.env?.NEXUS_ELECTRON_MODEL || process.env.NEXUS_MODEL
 
-// 子代理模型: NEXUS_SUBAGENT_MODEL (新) + CLAUDE_CODE_SUBAGENT_MODEL (旧键兼容)
+// 子代理模型: NEXUS_SUBAGENT_MODEL (新) + CLAUDE_CODE_SUBAGENT_MODEL (旧键兼容)。
+// 缺省时跟随 NEXUS_MODEL（与三角色一致），保证非 DeepSeek 厂商（如 GLM）子代理可用。
 process.env.NEXUS_SUBAGENT_MODEL =
   settings?.env?.NEXUS_SUBAGENT_MODEL ||
   settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL ||
-  'deepseek-v4-flash[1m]'
+  process.env.NEXUS_MODEL
 process.env.CLAUDE_CODE_SUBAGENT_MODEL = process.env.NEXUS_SUBAGENT_MODEL
 
 // Auth: wipe inherited tokens (conflict warnings), set NEXUS_API_KEY.
@@ -165,7 +173,8 @@ if (configuredKey) {
 
 // Effort
 const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
-const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || 'medium'
+// 回退与 defaultSettings.deepseek.effort 一致，避免同一机器升级前后 effort 静默变化
+const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || defaultSettings.deepseek.effort
 process.env.CLAUDE_CODE_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
 
 // General env defaults

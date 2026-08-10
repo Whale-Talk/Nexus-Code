@@ -27,7 +27,7 @@
 |------|------|------|
 | Quark | 深度推理 | `deepseek-v4-pro[1m]`, 1M 上下文 |
 | Atom | 日常主力 | `deepseek-v4-flash[1m]`, 1M 上下文 |
-| Electron | 极速模式 | `deepseek-v4-flash` |
+| Electron | 极速模式 | `deepseek-v4-flash[1m]` |
 
 `atom/quark/electron` 别名直达，`--model glm-5.2` 等任意 relay 支持模型一键切换。
 
@@ -59,20 +59,46 @@
 
 ---
 
-## 🚀 快速开始
+## 🚀 安装教程
 
-### 安装
+### 0. 环境准备
+
+Linux / WSL2，安装 [Bun](https://bun.sh)（≥1.3.5）：
 
 ```bash
-git clone --depth 1 --branch release/v1.0.3 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
-cd ~/nexus
-bun install       # 需要 Bun ≥ 1.3.5
-bun link          # 全局注册 nexus 命令
+curl -fsSL https://bun.sh/install | bash
+# 重启终端或执行 source ~/.bashrc
+bun --version   # 应输出 1.3.x
 ```
 
-### 配置
+> ⚠️ 提示 `bun: command not found` 时，把 `~/.bun/bin` 加入 PATH：
+> ```bash
+> echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
 
-首次启动自动引导配置；或手动编辑 `~/.nexus/settings.json`：
+### 1. 安装（3 步）
+
+```bash
+# 第 1 步：克隆固定发布分支
+git clone --depth 1 --branch release/v1.0.4 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
+cd ~/nexus
+
+# 第 2 步：安装依赖（约 15 秒）
+bun install
+
+# 第 3 步：全局注册 nexus 命令
+bun link
+```
+
+验证：
+
+```bash
+nexus --version   # 应输出 1.0.4
+```
+
+### 2. 配置 API 密钥
+
+首次启动自动创建 `~/.nexus/settings.json`；或手动编辑：
 
 ```json
 {
@@ -85,20 +111,51 @@ bun link          # 全局注册 nexus 命令
 }
 ```
 
-> ⚠️ Token **不要**加 `sk-` 前缀。
+> ⚠️ Token **不要**加 `sk-` 前缀。修改后重启 `nexus` 生效。
+> API Token 找管理员分配（团队成员见内部文档）。
 
-### 启动 / 升级
+### 3. 三角色模型
+
+| 角色 | 说明 | 默认模型 | 别名 |
+|------|------|---------|------|
+| **Quark** | 深度推理 | `deepseek-v4-pro[1m]` (1M) | `nexus --model quark` |
+| **Atom** | 日常主力 | `deepseek-v4-flash[1m]` (1M) | `nexus --model atom` |
+| **Electron** | 极速模式 | `deepseek-v4-flash[1m]` | `nexus --model electron` |
+
+三角色未配置时自动跟随 `NEXUS_MODEL`；支持 GLM 等任意厂商（见 `NEXUS_PROVIDER`）。
+
+### 4. 常用命令
+
+| 操作 | 命令 |
+|------|------|
+| 启动 | `nexus` |
+| 查看版本 | `nexus --version` |
+| 指定模型 | `nexus --model deepseek-v4-flash[1m]` |
+| 继续上次对话 | `nexus -c` |
+| 恢复指定会话 | `nexus -r` |
+| 对话中切模型 | `/model` |
+
+### 5. 升级
 
 ```bash
-nexus                    # 启动
-
-cd ~/nexus               # 升级
+cd ~/nexus
 git pull origin main
 bun install
-nexus
+nexus --version   # 确认版本号变化
 ```
 
 > 会话历史与配置在 `~/.nexus/`，升级不影响任何数据。
+
+### 6. 常见问题
+
+| 问题 | 解决 |
+|------|------|
+| `nexus: command not found` | `~/.bun/bin` 不在 PATH，见步骤 0 |
+| 启动报 `bun: command not found` | Bun 未安装，见步骤 0 |
+| 401 "Invalid token" | Token 加了 `sk-` 前缀，去掉 |
+| 403 | Token 失效，联系管理员 |
+| 回复很慢 | 高峰期限流，切 `--model electron` |
+| `/deep`、`/ralph` 等 OMC 命令没有 | 项目根 `.nexus/skills/` 缺失，重新 clone |
 
 ---
 
@@ -115,7 +172,7 @@ src/                        # 核心源码
 ├── agents/                 # OMC 专业代理（20 个）
 └── ...
 bin/nexus.cjs               # 启动器（配置隔离 + 环境桥接）
-.claude/                    # OMC 技能/代理定义
+.nexus/                     # OMC 技能/代理定义
 .github/                    # CI/CD（5 门禁 + release 自动化）
 ```
 

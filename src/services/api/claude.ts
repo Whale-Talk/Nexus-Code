@@ -44,7 +44,7 @@ import {
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { getNexusConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
@@ -316,6 +316,14 @@ async function getStreamingAdapter(): Promise<import('./provider/types.js').Prov
   if (provider === 'openai-compatible') {
     openAICompatAdapter ??= await createOpenAICompatibleProvider().then(m => m.adapter)
     return openAICompatAdapter
+  }
+  if (provider !== 'anthropic') {
+    // Fail fast on misspelled/misconfigured providers instead of silently
+    // falling back to the anthropic adapter (which would 4xx against relays).
+    throw new Error(
+      `NEXUS_PROVIDER 非法值: "${provider}"。支持: "anthropic" | "openai-compatible"。` +
+        `请在 ${getNexusConfigHomeDir()}/settings.json 的 env.NEXUS_PROVIDER 修正。`,
+    )
   }
   return anthropicProviderAdapter
 }

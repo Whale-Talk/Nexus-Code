@@ -61,7 +61,7 @@ import {
 // ============================================================================
 
 export interface OpenAICompatibleAdapterOptions {
-  /** 后端 base URL — 必须带 /v1 后缀 (如 http://192.168.77.162:8080/v1/) */
+  /** 后端 base URL — 裸域名自动补 /v1；含路径时按完整路径使用（如智谱 /api/paas/v4） */
   baseURL: string
   /** Relay API key — new-api 会剥 sk- 前缀查库, 原样透传即可 */
   apiKey?: string
@@ -76,16 +76,25 @@ export interface OpenAICompatibleAdapterOptions {
 }
 
 /**
+ * 归一化 openai-compatible baseURL（供适配器与测试共用）：
+ * - 裸域名/根路径（无路径段）→ 自动补 /v1（relay 场景，与 anthropic 归一化对称）
+ * - 含路径 → 原样使用，用户负责完整 API 前缀（如智谱 /api/paas/v4）
+ */
+export function normalizeOpenAICompatibleBaseURL(baseURL: string): string {
+  const trimmed = baseURL.replace(/\/+$/, '')
+  // 仅当 URL 无路径段（裸域名或根路径）时补 /v1 — 有路径就信任用户配置
+  const isBareOrigin = /^[a-z]+:\/\/[^/]+$/i.test(trimmed)
+  return (isBareOrigin ? `${trimmed}/v1` : trimmed) + '/'
+}
+
+/**
  * 创建 OpenAI-compatible ProviderAdapter。
- * baseURL 处理: openai-compatible 会拼 `${baseURL}chat/completions`,
- * 若 baseURL 未以 / 结尾则自动补全（Zhipu 的 /api/paas/v4 等也支持）。
+ * 请求路径 = normalizeOpenAICompatibleBaseURL(baseURL) + 'chat/completions'
  */
 export function createOpenAICompatibleAdapter(
   options: OpenAICompatibleAdapterOptions,
 ): ProviderAdapter {
-  const baseURL = options.baseURL.endsWith('/')
-    ? options.baseURL
-    : options.baseURL + '/'
+  const baseURL = normalizeOpenAICompatibleBaseURL(options.baseURL)
 
   const provider = createOpenAICompatible({
     name: options.name ?? 'openai-compatible',

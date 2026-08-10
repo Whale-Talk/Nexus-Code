@@ -664,8 +664,18 @@ export async function processMemoryFile(
   result.push(memoryFile)
 
   for (const resolvedIncludePath of resolvedIncludePaths) {
-    const isExternal = !pathInOriginalCwd(resolvedIncludePath)
+    // Security: resolve symlinks BEFORE the external-boundary check, so a
+    // repo-committed symlink (e.g. `idrsa -> ~/.ssh/id_rsa`) can't smuggle
+    // host files past the includeExternal gate.
+    const { resolvedPath: realIncludePath } = safeResolvePath(
+      getFsImplementation(),
+      resolvedIncludePath,
+    )
+    const isExternal = !pathInOriginalCwd(realIncludePath)
     if (isExternal && !includeExternal) {
+      logForDebugging(
+        `[memory] Skipped external @include via symlink: ${resolvedIncludePath} → ${realIncludePath}`,
+      )
       continue
     }
 
@@ -909,17 +919,19 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .nexus/rules/*.md files (Project)
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
-            type: 'Project',
-            processedPaths,
-            includeExternal,
-            conditionalRule: false,
-          })),
-        )
+        // Try reading rules/*.md files (Project) — primary .nexus, legacy .claude
+        for (const dirName of ['.nexus', '.claude']) {
+          const rulesDir = join(dir, dirName, 'rules')
+          result.push(
+            ...(await processMdRules({
+              rulesDir,
+              type: 'Project',
+              processedPaths,
+              includeExternal,
+              conditionalRule: false,
+            })),
+          )
+        }
       }
 
       // Try reading NEXUS.local.md (Local) - only if localSettings is enabled
@@ -963,17 +975,19 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .nexus/rules/*.md files from the additional directory
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
-            type: 'Project',
-            processedPaths,
-            includeExternal,
-            conditionalRule: false,
-          })),
-        )
+        // Try reading rules/*.md files from the additional directory (primary .nexus, legacy .claude)
+        for (const dirName of ['.nexus', '.claude']) {
+          const rulesDir = join(dir, dirName, 'rules')
+          result.push(
+            ...(await processMdRules({
+              rulesDir,
+              type: 'Project',
+              processedPaths,
+              includeExternal,
+              conditionalRule: false,
+            })),
+          )
+        }
       }
     }
 
@@ -1274,9 +1288,10 @@ export async function getMemoryFilesForNestedDirectory(
     )
   }
 
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = join(dir, '.nexus', 'rules')
+  const legacyRulesDir = join(dir, '.claude', 'rules')
 
-  // Process project unconditional .nexus/rules/*.md files, which were not eagerly loaded
+  // Process project unconditional rules/*.md files (primary .nexus), which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
   const unconditionalProcessedPaths = new Set(processedPaths)
   result.push(
@@ -1322,7 +1337,8 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  const rulesDir = join(dir, '.claude', 'rules')
+  // Primary .nexus/rules; legacy .claude/rules merged via both passes
+  const rulesDir = join(dir, '.nexus', 'rules')
   return processConditionedMdRules(
     targetPath,
     rulesDir,
@@ -1432,10 +1448,11 @@ export function isMemoryFilePath(filePath: string): boolean {
     return true
   }
 
-  // .md files in .nexus/rules/ directories
+  // .md files in rules/ directories (primary .nexus, legacy .claude)
   if (
     name.endsWith('.md') &&
-    filePath.includes(`${sep}.claude${sep}rules${sep}`)
+    (filePath.includes(`${sep}.nexus${sep}rules${sep}`) ||
+      filePath.includes(`${sep}.claude${sep}rules${sep}`))
   ) {
     return true
   }

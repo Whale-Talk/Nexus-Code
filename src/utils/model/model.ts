@@ -489,6 +489,12 @@ export function parseUserSpecifiedModel(
       case 'quark':
       case 'opus':
         return withAliasSuffix(getDefaultOpusModel(), has1mTag)
+      case 'deepseek':
+        // 家族别名: 跟随 NEXUS_MODEL (默认 DeepSeek 模型)
+        return withAliasSuffix(getDefaultMainLoopModel(), has1mTag)
+      case 'flash':
+        // 快速模型: 跟随 Atom (日常主力)
+        return withAliasSuffix(getDefaultSonnetModel(), has1mTag)
       case 'best':
         return getBestModel()
       default:

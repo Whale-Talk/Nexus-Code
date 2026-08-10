@@ -55,10 +55,12 @@ import type { ProviderAdapter } from './provider/index.js'
  *
  * Vertex AI:
  * - Model-specific region variables (highest priority):
- *   - VERTEX_REGION_CLAUDE_3_5_ELECTRON: Region for Claude 3.5 Electron model
- *   - VERTEX_REGION_CLAUDE_ELECTRON_4_5: Region for Claude Electron 4.5 model
- *   - VERTEX_REGION_CLAUDE_3_5_ATOM: Region for Claude 3.5 Atom model
- *   - VERTEX_REGION_CLAUDE_3_7_ATOM: Region for Claude 3.7 Atom model
+ *   - VERTEX_REGION_CLAUDE_3_5_HAIKU: Region for Claude 3.5 Haiku model
+ *   - VERTEX_REGION_CLAUDE_3_5_SONNET: Region for Claude 3.5 Sonnet model
+ *   - VERTEX_REGION_CLAUDE_3_7_SONNET: Region for Claude 3.7 Sonnet model
+ *   - VERTEX_REGION_CLAUDE_4_1_OPUS: Region for Claude Opus 4.1 model
+ *   (full list in src/utils/envUtils.ts — model IDs are upstream Anthropic names,
+ *    NOT the Nexus quark/atom/electron aliases)
  * - CLOUD_ML_REGION: Optional. The default GCP region to use for all models
  *   If specific model region not specified above
  * - NEXUS_VERTEX_PROJECT_ID: Required. Your GCP project ID

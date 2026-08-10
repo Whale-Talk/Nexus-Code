@@ -22,7 +22,9 @@ export const getGlobalClaudeFile = memoize((): string => {
   }
 
   const filename = `.claude${fileSuffixForOauthConfig()}.json`
-  return join(process.env.CLAUDE_CONFIG_DIR || homedir(), filename)
+  // Unify with getNexusConfigHomeDir: without CLAUDE_CONFIG_DIR both resolve to
+  // ~/.nexus, so dev mode (`bun run dev`) and launcher mode share config state.
+  return join(process.env.CLAUDE_CONFIG_DIR || getNexusConfigHomeDir(), filename)
 })
 
 const hasInternetAccess = memoize(async (): Promise<boolean> => {
