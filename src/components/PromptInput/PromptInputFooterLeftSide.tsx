@@ -350,7 +350,7 @@ function ModeIndicator({
         {permissionModeTitle(currentMode)} 已开启
         {shouldShowModeHint && <Text dimColor>
             {' '}
-            <KeyboardShortcutHint shortcut={modeCycleShortcut} action="cycle" parens />
+            <KeyboardShortcutHint shortcut={modeCycleShortcut} action="切换" parens />
           </Text>}
       </Text> : null;
 

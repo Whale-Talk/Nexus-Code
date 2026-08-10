@@ -36,7 +36,7 @@ export function CtrlOToExpand() {
   }
   let t0;
   if ($[0] !== expandShortcut) {
-    t0 = <Text dimColor={true}><KeyboardShortcutHint shortcut={expandShortcut} action="expand" parens={true} /></Text>;
+    t0 = <Text dimColor={true}><KeyboardShortcutHint shortcut={expandShortcut} action="展开" parens={true} /></Text>;
     $[0] = expandShortcut;
     $[1] = t0;
   } else {

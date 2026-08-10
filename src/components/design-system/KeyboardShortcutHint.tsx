@@ -55,10 +55,11 @@ export function KeyboardShortcutHint(t0) {
     t3 = $[2];
   }
   const shortcutText = t3;
+  // Nexus: 中文格式 "{shortcut} {action}" — action 由调用方传中文 (如 "切换")
   if (parens) {
     let t4;
     if ($[3] !== action || $[4] !== shortcutText) {
-      t4 = <Text>({shortcutText} to {action})</Text>;
+      t4 = <Text>({shortcutText} {action})</Text>;
       $[3] = action;
       $[4] = shortcutText;
       $[5] = t4;
@@ -69,7 +70,7 @@ export function KeyboardShortcutHint(t0) {
   }
   let t4;
   if ($[6] !== action || $[7] !== shortcutText) {
-    t4 = <Text>{shortcutText} to {action}</Text>;
+    t4 = <Text>{shortcutText} {action}</Text>;
     $[6] = action;
     $[7] = shortcutText;
     $[8] = t4;

@@ -297,7 +297,7 @@ export function ThemePicker(t0) {
     }
     let t28;
     if ($[50] !== exitState || $[51] !== hideEscToCancel) {
-      t28 = !hideEscToCancel && <Box><Text dimColor={true} italic={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="select" /><KeyboardShortcutHint shortcut="Esc" action="cancel" /></Byline>}</Text></Box>;
+      t28 = !hideEscToCancel && <Box><Text dimColor={true} italic={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="选择" /><KeyboardShortcutHint shortcut="Esc" action="取消" /></Byline>}</Text></Box>;
       $[50] = exitState;
       $[51] = hideEscToCancel;
       $[52] = t28;
