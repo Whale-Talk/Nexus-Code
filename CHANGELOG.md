@@ -22,6 +22,10 @@
   - 新增 pre-flight 检查：启动前检测 bun 是否可用，缺失时打印安装引导
   - 新增 `scripts/postinstall.cjs`：安装后自动检测 PATH 配置，按场景给出指南
   - `spawn` ENOENT 时给出 "bun was removed or PATH changed" 清晰提示
+- **`CLAUDE_CODE_SUBAGENT_MODEL` → `NEXUS_SUBAGENT_MODEL` 改名**（settings.json 不再出现 CLAUDE 字样）：
+  - launcher 默认值 + 透传、`agent.ts` 读取、`managedEnvConstants.ts` 保护列表
+  - 旧键保留兼容回退（`NEXUS_SUBAGENT_MODEL || CLAUDE_CODE_SUBAGENT_MODEL`）
+  - launcher 同时同步设置 `CLAUDE_CODE_SUBAGENT_MODEL` 以兼容 SDK 内部读取
 
 ---
 

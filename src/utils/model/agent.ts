@@ -40,8 +40,11 @@ export function getAgentModel(
   toolSpecifiedModel?: ModelAlias,
   permissionMode?: PermissionMode,
 ): string {
-  if (process.env.CLAUDE_CODE_SUBAGENT_MODEL) {
-    return parseUserSpecifiedModel(process.env.CLAUDE_CODE_SUBAGENT_MODEL)
+  // NEXUS_SUBAGENT_MODEL (new) with CLAUDE_CODE_SUBAGENT_MODEL (legacy) fallback
+  const subagentModel =
+    process.env.NEXUS_SUBAGENT_MODEL || process.env.CLAUDE_CODE_SUBAGENT_MODEL
+  if (subagentModel) {
+    return parseUserSpecifiedModel(subagentModel)
   }
 
   // Extract Bedrock region prefix from parent model to inherit for subagents.
