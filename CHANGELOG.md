@@ -5,6 +5,26 @@
 
 ---
 
+## [1.0.2] - 2026-08-10
+
+### 变更
+- **CLAUDE.md → NEXUS.md 全量改名**：86 文件跨层级迁移
+  - 核心模块 `claudemd.ts` → `nexusmd.ts`（内存文件发现/加载/注入）
+  - 导出符号：`getClaudeMds` → `getNexusMds` 等 15+ 符号全量改名
+  - 组件 `ClaudeMdExternalIncludesDialog` → `NexusMdExternalIncludesDialog`
+  - 用户可见文案：`/init` 提示词、新手引导、remember 技能、insights、设置描述
+  - 旧 `claudemd.ts` 保留为重导出 shim，`isMemoryFilePath` 兼容识别旧 `CLAUDE.md` 文件名
+  - 遥测事件名和 `CLAUDE_CODE_*` 环境变量有意保留不变
+
+### 修复
+- **安装后 "nexus: command not found"**（3 项修复）：
+  - shebang `#!/usr/bin/env node` → `#!/usr/bin/env bun`（消除 Node.js 依赖，项目本身 bun-first）
+  - 新增 pre-flight 检查：启动前检测 bun 是否可用，缺失时打印安装引导
+  - 新增 `scripts/postinstall.cjs`：安装后自动检测 PATH 配置，按场景给出指南
+  - `spawn` ENOENT 时给出 "bun was removed or PATH changed" 清晰提示
+
+---
+
 ## [1.0.1] - 2026-08-09
 
 ### 新增
@@ -79,6 +99,7 @@
 | 0.1.0 | 2026-08-08 | 项目初始化 + 还原源码 + Nexus 品牌化 |
 | 0.2.0 | 2026-08-09 | CICD 基建 + SDK 替换 + 单元测试 |
 | 1.0.1 | 2026-08-09 | 多厂商适配 + GLM + 本地搜索 + 中文 UI |
+| 1.0.2 | 2026-08-10 | CLAUDE.md→NEXUS.md 全量改名 + 安装问题修复 |
 
 ## 附录: 文档索引
 

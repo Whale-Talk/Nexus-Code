@@ -1,6 +1,6 @@
-# CLAUDE.md
+# NEXUS.md
 
-This file provides guidance to Nexus Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Nexus Code when working with code in this repository.
 
 ## Quick Commands
 
