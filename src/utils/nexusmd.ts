@@ -2,8 +2,8 @@
  * Files are loaded in the following order:
  *
  * 1. Managed memory (eg. /etc/claude-code/NEXUS.md) - Global instructions for all users
- * 2. User memory (~/.claude/NEXUS.md) - Private global instructions for all projects
- * 3. Project memory (NEXUS.md, .claude/NEXUS.md, and .claude/rules/*.md in project roots) - Instructions checked into the codebase
+ * 2. User memory (~/.nexus/NEXUS.md) - Private global instructions for all projects
+ * 3. Project memory (NEXUS.md, .claude/NEXUS.md, and .nexus/rules/*.md in project roots) - Instructions checked into the codebase
  * 4. Local memory (NEXUS.local.md in project roots) - Private project-specific instructions
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
@@ -13,7 +13,7 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - NEXUS.md, .claude/NEXUS.md, and all .md files in .claude/rules/ are checked in each directory for Project memory
+ * - NEXUS.md, .claude/NEXUS.md, and all .md files in .nexus/rules/ are checked in each directory for Project memory
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -50,13 +50,13 @@ import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   getCurrentProjectConfig,
-  getManagedClaudeRulesDir,
+  getManagedNexusRulesDir,
   getMemoryPath,
-  getUserClaudeRulesDir,
+  getUserNexusRulesDir,
 } from './config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import { getNexusConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
@@ -410,7 +410,7 @@ function handleMemoryFileReadError(error: unknown, filePath: string): void {
     // Don't log the full file path to avoid PII/security issues
     logEvent('tengu_claude_md_permission_error', {
       is_access_error: 1,
-      has_home_dir: filePath.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+      has_home_dir: filePath.includes(getNexusConfigHomeDir()) ? 1 : 0,
     })
   }
 }
@@ -685,7 +685,7 @@ export async function processMemoryFile(
 }
 
 /**
- * Processes all .md files in the .claude/rules/ directory and its subdirectories
+ * Processes all .md files in the .nexus/rules/ directory and its subdirectories
  * @param rulesDir The path to the rules directory
  * @param type Type of memory file (User, Project, Local)
  * @param processedPaths Set of already processed file paths
@@ -780,7 +780,7 @@ export async function processMdRules({
     if (error instanceof Error && error.message.includes('EACCES')) {
       logEvent('tengu_claude_rules_md_permission_error', {
         is_access_error: 1,
-        has_home_dir: rulesDir.includes(getClaudeConfigHomeDir()) ? 1 : 0,
+        has_home_dir: rulesDir.includes(getNexusConfigHomeDir()) ? 1 : 0,
       })
     }
     return []
@@ -810,8 +810,8 @@ export const getMemoryFiles = memoize(
         join(dirname(getMemoryPath('Managed')), 'CLAUDE.md'), 'Managed', processedPaths, includeExternal,
       )),
     )
-    // Process Managed .claude/rules/*.md files
-    const managedClaudeRulesDir = getManagedClaudeRulesDir()
+    // Process Managed .nexus/rules/*.md files
+    const managedClaudeRulesDir = getManagedNexusRulesDir()
     result.push(
       ...(await processMdRules({
         rulesDir: managedClaudeRulesDir,
@@ -833,8 +833,8 @@ export const getMemoryFiles = memoize(
           join(dirname(getMemoryPath('User')), 'CLAUDE.md'), 'User', processedPaths, true,
         )),
       )
-      // Process User ~/.claude/rules/*.md files
-      const userClaudeRulesDir = getUserClaudeRulesDir()
+      // Process User ~/.nexus/rules/*.md files
+      const userClaudeRulesDir = getUserNexusRulesDir()
       result.push(
         ...(await processMdRules({
           rulesDir: userClaudeRulesDir,
@@ -857,9 +857,9 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .claude/worktrees/<name>/ from `claude -w`), the upward walk passes
+    // .nexus/worktrees/<name>/ from `claude -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
-    // checked-in files like NEXUS.md and .claude/rules/*.md, so the same
+    // checked-in files like NEXUS.md and .nexus/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from
     // directories above the worktree but within the main repo — the worktree
     // already has its own checkout. NEXUS.local.md is gitignored so it only
@@ -905,7 +905,7 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/rules/*.md files (Project)
+        // Try reading .nexus/rules/*.md files (Project)
         const rulesDir = join(dir, '.claude', 'rules')
         result.push(
           ...(await processMdRules({
@@ -959,7 +959,7 @@ export const getMemoryFiles = memoize(
           )),
         )
 
-        // Try reading .claude/rules/*.md files from the additional directory
+        // Try reading .nexus/rules/*.md files from the additional directory
         const rulesDir = join(dir, '.claude', 'rules')
         result.push(
           ...(await processMdRules({
@@ -1205,8 +1205,8 @@ export async function getManagedAndUserConditionalRules(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process Managed conditional .claude/rules/*.md files
-  const managedClaudeRulesDir = getManagedClaudeRulesDir()
+  // Process Managed conditional .nexus/rules/*.md files
+  const managedClaudeRulesDir = getManagedNexusRulesDir()
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
@@ -1218,8 +1218,8 @@ export async function getManagedAndUserConditionalRules(
   )
 
   if (isSettingSourceEnabled('userSettings')) {
-    // Process User conditional .claude/rules/*.md files
-    const userClaudeRulesDir = getUserClaudeRulesDir()
+    // Process User conditional .nexus/rules/*.md files
+    const userClaudeRulesDir = getUserNexusRulesDir()
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
@@ -1272,7 +1272,7 @@ export async function getMemoryFilesForNestedDirectory(
 
   const rulesDir = join(dir, '.claude', 'rules')
 
-  // Process project unconditional .claude/rules/*.md files, which were not eagerly loaded
+  // Process project unconditional .nexus/rules/*.md files, which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
   const unconditionalProcessedPaths = new Set(processedPaths)
   result.push(
@@ -1285,7 +1285,7 @@ export async function getMemoryFilesForNestedDirectory(
     })),
   )
 
-  // Process project conditional .claude/rules/*.md files
+  // Process project conditional .nexus/rules/*.md files
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
@@ -1329,7 +1329,7 @@ export async function getConditionalRulesForCwdLevelDirectory(
 }
 
 /**
- * Processes all .md files in the .claude/rules/ directory and its subdirectories,
+ * Processes all .md files in the .nexus/rules/ directory and its subdirectories,
  * filtering to only include files with frontmatter paths that match the target path
  * @param targetPath The file path to match against frontmatter glob patterns
  * @param rulesDir The path to the rules directory
@@ -1417,7 +1417,7 @@ export async function shouldShowNexusMdExternalIncludesWarning(): Promise<boolea
 }
 
 /**
- * Check if a file path is a memory file (NEXUS.md, NEXUS.local.md, or .claude/rules/*.md)
+ * Check if a file path is a memory file (NEXUS.md, NEXUS.local.md, or .nexus/rules/*.md)
  */
 export function isMemoryFilePath(filePath: string): boolean {
   const name = basename(filePath)
@@ -1428,7 +1428,7 @@ export function isMemoryFilePath(filePath: string): boolean {
     return true
   }
 
-  // .md files in .claude/rules/ directories
+  // .md files in .nexus/rules/ directories
   if (
     name.endsWith('.md') &&
     filePath.includes(`${sep}.claude${sep}rules${sep}`)

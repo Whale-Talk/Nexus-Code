@@ -116,9 +116,9 @@ function checkDangerousRemovalPaths(
  * `!arg.startsWith('-')` filtering drops these, causing path validation to be
  * silently skipped for attack payloads like:
  *
- *   rm -- -/../.claude/settings.local.json
+ *   rm -- -/../.nexus/settings.local.json
  *
- * Here `-/../.claude/settings.local.json` starts with `-` so the naive filter
+ * Here `-/../.nexus/settings.local.json` starts with `-` so the naive filter
  * drops it, validation sees zero paths, returns passthrough, and the file is
  * deleted without a prompt. With `--` handling, the path IS extracted and
  * validated (blocked by isClaudeConfigFilePath / pathInAllowedWorkingPath).
@@ -630,12 +630,12 @@ function validateCommandPaths(
   // SECURITY: Block write operations in compound commands containing 'cd'
   // This prevents bypassing path safety checks via directory changes before operations.
   // Example attack: cd .claude/ && mv test.txt settings.json
-  // This would bypass the check for .claude/settings.json because paths are resolved
+  // This would bypass the check for .nexus/settings.json because paths are resolved
   // relative to the original CWD, not accounting for the cd's effect.
   //
   // ALTERNATIVE APPROACH: Instead of blocking all writes with cd, we could track the
   // effective CWD through the command chain (e.g., after "cd .claude/", subsequent
-  // commands would be validated with CWD=".claude/"). This would be more permissive
+  // commands would be validated with CWD=".nexus/"). This would be more permissive
   // but requires careful handling of:
   // - Relative paths (cd ../foo)
   // - Special cd targets (cd ~, cd -, cd with no args)
