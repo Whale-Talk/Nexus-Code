@@ -801,13 +801,13 @@ export const getMemoryFiles = memoize(
       false
 
     // Process Managed file first (always loaded - policy settings)
-    const managedNexusMd = getMemoryPath('Managed')
+    // Primary: NEXUS.md (via getMemoryPath), legacy fallback: CLAUDE.md
     result.push(
       ...(await processMemoryFile(
-        managedNexusMd,
-        'Managed',
-        processedPaths,
-        includeExternal,
+        getMemoryPath('Managed'), 'Managed', processedPaths, includeExternal,
+      )),
+      ...(await processMemoryFile(
+        join(dirname(getMemoryPath('Managed')), 'CLAUDE.md'), 'Managed', processedPaths, includeExternal,
       )),
     )
     // Process Managed .claude/rules/*.md files
@@ -823,14 +823,14 @@ export const getMemoryFiles = memoize(
     )
 
     // Process User file (only if userSettings is enabled)
+    // Primary: NEXUS.md (via getMemoryPath), legacy fallback: CLAUDE.md
     if (isSettingSourceEnabled('userSettings')) {
-      const userNexusMd = getMemoryPath('User')
       result.push(
         ...(await processMemoryFile(
-          userNexusMd,
-          'User',
-          processedPaths,
-          true, // User memory can always include external files
+          getMemoryPath('User'), 'User', processedPaths, true,
+        )),
+        ...(await processMemoryFile(
+          join(dirname(getMemoryPath('User')), 'CLAUDE.md'), 'User', processedPaths, true,
         )),
       )
       // Process User ~/.claude/rules/*.md files
@@ -885,24 +885,23 @@ export const getMemoryFiles = memoize(
 
       // Try reading NEXUS.md (Project) - only if projectSettings is enabled
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        const projectPath = join(dir, 'NEXUS.md')
+        // Primary: NEXUS.md, legacy fallback: CLAUDE.md
         result.push(
           ...(await processMemoryFile(
-            projectPath,
-            'Project',
-            processedPaths,
-            includeExternal,
+            join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+          )),
+          ...(await processMemoryFile(
+            join(dir, 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading .claude/NEXUS.md (Project)
-        const dotClaudePath = join(dir, '.claude', 'NEXUS.md')
+        // Try reading .claude/NEXUS.md + .claude/CLAUDE.md (legacy)
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
+            join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+          )),
+          ...(await processMemoryFile(
+            join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
@@ -921,13 +920,13 @@ export const getMemoryFiles = memoize(
 
       // Try reading NEXUS.local.md (Local) - only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, 'NEXUS.local.md')
+        // Primary: NEXUS.local.md, legacy fallback: CLAUDE.local.md
         result.push(
           ...(await processMemoryFile(
-            localPath,
-            'Local',
-            processedPaths,
-            includeExternal,
+            join(dir, 'NEXUS.local.md'), 'Local', processedPaths, includeExternal,
+          )),
+          ...(await processMemoryFile(
+            join(dir, 'CLAUDE.local.md'), 'Local', processedPaths, includeExternal,
           )),
         )
       }
@@ -940,25 +939,23 @@ export const getMemoryFiles = memoize(
     if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
       const additionalDirs = getAdditionalDirectoriesForNexusMd()
       for (const dir of additionalDirs) {
-        // Try reading NEXUS.md from the additional directory
-        const projectPath = join(dir, 'NEXUS.md')
+        // Primary: NEXUS.md, legacy fallback: CLAUDE.md
         result.push(
           ...(await processMemoryFile(
-            projectPath,
-            'Project',
-            processedPaths,
-            includeExternal,
+            join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+          )),
+          ...(await processMemoryFile(
+            join(dir, 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading .claude/NEXUS.md from the additional directory
-        const dotClaudePath = join(dir, '.claude', 'NEXUS.md')
+        // Try reading .claude/NEXUS.md + .claude/CLAUDE.md (legacy)
         result.push(
           ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
+            join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+          )),
+          ...(await processMemoryFile(
+            join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
@@ -1253,33 +1250,23 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (NEXUS.md and .claude/NEXUS.md)
+  // Process project memory files (NEXUS.md + CLAUDE.md legacy, .claude/NEXUS.md + .claude/CLAUDE.md)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'NEXUS.md')
     result.push(
-      ...(await processMemoryFile(
-        projectPath,
-        'Project',
-        processedPaths,
-        false,
-      )),
+      ...(await processMemoryFile(join(dir, 'NEXUS.md'), 'Project', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, 'CLAUDE.md'), 'Project', processedPaths, false)),
     )
-    const dotClaudePath = join(dir, '.claude', 'NEXUS.md')
     result.push(
-      ...(await processMemoryFile(
-        dotClaudePath,
-        'Project',
-        processedPaths,
-        false,
-      )),
+      ...(await processMemoryFile(join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, false)),
     )
   }
 
-  // Process local memory file (NEXUS.local.md)
+  // Process local memory file (NEXUS.local.md + CLAUDE.local.md legacy)
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'NEXUS.local.md')
     result.push(
-      ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, 'NEXUS.local.md'), 'Local', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, 'CLAUDE.local.md'), 'Local', processedPaths, false)),
     )
   }
 
