@@ -59,9 +59,9 @@ export type SettingsSyncUploadResult = {
  * Keys used for sync entries
  */
 export const SYNC_KEYS = {
-  USER_SETTINGS: '~/.claude/settings.json',
-  USER_MEMORY: '~/.claude/NEXUS.md',
+  USER_SETTINGS: '~/.nexus/settings.json',
+  USER_MEMORY: '~/.nexus/NEXUS.md',
   projectSettings: (projectId: string) =>
-    `projects/${projectId}/.claude/settings.local.json`,
+    `projects/${projectId}/.nexus/settings.local.json`,
   projectMemory: (projectId: string) => `projects/${projectId}/NEXUS.local.md`,
 } as const

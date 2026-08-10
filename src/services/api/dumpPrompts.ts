@@ -9,7 +9,7 @@ import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { dirname, join } from 'path'
 import { getSessionId } from 'src/bootstrap/state.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getNexusConfigHomeDir } from '../../utils/envUtils.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 
 function hashString(str: string): string {
@@ -64,7 +64,7 @@ export function addApiRequestToCache(requestData: unknown): void {
 
 export function getDumpPromptsPath(agentIdOrSessionId?: string): string {
   return join(
-    getClaudeConfigHomeDir(),
+    getNexusConfigHomeDir(),
     'dump-prompts',
     `${agentIdOrSessionId ?? getSessionId()}.jsonl`,
   )
