@@ -1,6 +1,6 @@
 {
   "name": "@while_talk/nexus-code",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": false,
   "description": "Nexus — Claude Code restored with multi-agent capabilities and configurable backend.",
   "license": "MIT",
@@ -8,6 +8,7 @@
   "main": "src/dev-entry.ts",
   "files": [
     "bin/",
+    "scripts/",
     "src/",
     "shims/",
     "vendor/",
@@ -36,7 +37,8 @@
     "test": "bun test",
     "typecheck": "bun run .github/scripts/typecheck-baseline.ts",
     "typecheck:raw": "bunx tsc --noEmit",
-    "audit:check": "bun run .github/scripts/audit-baseline.ts"
+    "audit:check": "bun run .github/scripts/audit-baseline.ts",
+    "postinstall": "node scripts/postinstall.cjs || true"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.36",

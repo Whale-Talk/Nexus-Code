@@ -17,8 +17,8 @@ export type Step = {
 }
 
 export function getSteps(): Step[] {
-  const hasClaudeMd = getFsImplementation().existsSync(
-    join(getCwd(), 'CLAUDE.md'),
+  const hasNexusMd = getFsImplementation().existsSync(
+    join(getCwd(), 'NEXUS.md'),
   )
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
 
@@ -31,9 +31,9 @@ export function getSteps(): Step[] {
       isEnabled: isWorkspaceDirEmpty,
     },
     {
-      key: 'claudemd',
-      text: '运行 /init 创建 CLAUDE.md 文件，获取 Nexus Code 使用说明',
-      isComplete: hasClaudeMd,
+      key: 'nexusmd',
+      text: '运行 /init 创建 NEXUS.md 文件，获取 Nexus Code 使用说明',
+      isComplete: hasNexusMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
     },

@@ -1,12 +1,54 @@
-#!/usr/bin/env node
-// Nexus launcher — Node.js entry point that manages config isolation and spawns bun.
+#!/usr/bin/env bun
+// Nexus launcher — manages config isolation and spawns the main Nexus Code process.
 //   Settings use NEXUS_* keys. The launcher bridges: NEXUS_* env vars for our code,
 //   ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk).
+//
+//   Runtime requirement: bun >= 1.3.5 (the project package manager).
+//   If you see "bun: command not found", install bun: https://bun.sh
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
 const { homedir } = require('os')
 const { delimiter, dirname, join, resolve } = require('path')
 const { spawn } = require('child_process')
 const { randomUUID } = require('crypto')
+
+// --- Pre-flight: ensure bun is available ---
+function checkBunAvailable() {
+  const bunBinary = process.env.BUN_BINARY || 'bun'
+  // Quick PATH lookup via `which`-style check
+  const paths = (process.env.PATH || '').split(delimiter)
+  for (const p of paths) {
+    const candidate = join(p, bunBinary)
+    try {
+      if (existsSync(candidate)) return true
+    } catch {}
+  }
+  // Also try the common bun install path
+  try {
+    const home = homedir()
+    if (existsSync(join(home, '.bun', 'bin', bunBinary))) return true
+  } catch {}
+  return false
+}
+
+if (!checkBunAvailable()) {
+  console.error([
+    '',
+    '\x1b[1;31m❌ bun is not installed or not in PATH.\x1b[0m',
+    '',
+    'Nexus Code requires bun >= 1.3.5 as its runtime.',
+    '',
+    'Install bun:',
+    '  \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+    '',
+    'After installation, restart your terminal or run:',
+    '  \x1b[1msource ~/.bashrc\x1b[0m  (bash)',
+    '  \x1b[1msource ~/.zshrc\x1b[0m   (zsh)',
+    '',
+    'Then try: \x1b[1mnexus\x1b[0m',
+    '',
+  ].join('\n'))
+  process.exit(1)
+}
 
 const projectDir = resolve(dirname(__dirname))
 const originalCwd = process.cwd() // user's launch directory
@@ -159,7 +201,20 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 child.on('error', (err) => {
-  console.error(`Failed to start Nexus: ${err.message}`)
+  if (err.code === 'ENOENT') {
+    console.error([
+      '',
+      '\x1b[1;31m❌ Failed to launch bun runtime.\x1b[0m',
+      '',
+      `Reason: ${err.message}`,
+      '',
+      'This usually means bun was removed or the PATH changed after Nexus was installed.',
+      'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+      '',
+    ].join('\n'))
+  } else {
+    console.error(`Failed to start Nexus: ${err.message}`)
+  }
   process.exit(1)
 })
 
