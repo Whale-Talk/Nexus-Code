@@ -237,23 +237,46 @@ async function exaSearch(
       }
     }
     if (results.length === 0) return null
-    // Exa 结果解析: "Title: X\nURL: Y\nHighlights:\n...\n\n---\nTitle: Z..."
-    // 拆分为结构化条目 [title | url | 摘要], 让模型明确识别为搜索结果
+    const joined = results.join('\n\n')
+
+    // 尝试 JSON 解析 (Parallel 格式): {"results":[{url,title,excerpts}]}
     const entries: string[] = []
-    const blocks = results.join('\n\n').split(/\n(?=Title: )/g)
-    for (const block of blocks) {
-      const titleMatch = block.match(/Title:\s*([^\n]+)/)
-      const urlMatch = block.match(/URL:\s*([^\n]+)/)
-      const highlights = block.replace(/Title:[^\n]*\n/, '').replace(/URL:[^\n]*\n/, '')
-        .replace(/Published:[^\n]*\n/, '').replace(/Author:[^\n]*\n/, '')
-        .replace(/^Highlights:\s*/, '').trim()
-      if (titleMatch || urlMatch) {
-        entries.push(
-          `- **${titleMatch?.[1]?.trim() ?? 'Untitled'}**\n  URL: ${urlMatch?.[1]?.trim() ?? ''}\n  ${highlights.slice(0, 800)}`,
-        )
+    for (const block of results) {
+      try {
+        const parsed = JSON.parse(block)
+        const hits = parsed?.results ?? []
+        if (Array.isArray(hits) && hits.length > 0) {
+          for (const h of hits) {
+            if (h?.url) {
+              entries.push(
+                `- **${h.title ?? 'Untitled'}**\n  URL: ${h.url}\n  ${(h.excerpts ?? []).join(' ').slice(0, 800)}`,
+              )
+            }
+          }
+          break
+        }
+      } catch {
+        // 非 JSON — 走 Exa 文本解析
       }
     }
-    if (entries.length === 0) return results.join('\n\n')
+
+    // Exa 文本格式: "Title: X\nURL: Y\nHighlights:\n..."
+    if (entries.length === 0) {
+      const blocks = joined.split(/\n(?=Title: )/g)
+      for (const block of blocks) {
+        const titleMatch = block.match(/Title:\s*([^\n]+)/)
+        const urlMatch = block.match(/URL:\s*([^\n]+)/)
+        const highlights = block.replace(/Title:[^\n]*\n/, '').replace(/URL:[^\n]*\n/, '')
+          .replace(/Published:[^\n]*\n/, '').replace(/Author:[^\n]*\n/, '')
+          .replace(/^Highlights:\s*/, '').trim()
+        if (titleMatch || urlMatch) {
+          entries.push(
+            `- **${titleMatch?.[1]?.trim() ?? 'Untitled'}**\n  URL: ${urlMatch?.[1]?.trim() ?? ''}\n  ${highlights.slice(0, 800)}`,
+          )
+        }
+      }
+    }
+    if (entries.length === 0) return joined
     return `Found ${entries.length} search results:\n\n` + entries.join('\n\n')
   } finally {
     clearTimeout(timer)
