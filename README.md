@@ -64,9 +64,9 @@
 ### 安装
 
 ```bash
-git clone --depth 1 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
+git clone --depth 1 --branch release/v1.0.3 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
 cd ~/nexus
-bun install       # 需要 Bun ≥ 1.3.5、Node.js ≥ 24
+bun install       # 需要 Bun ≥ 1.3.5
 bun link          # 全局注册 nexus 命令
 ```
 
