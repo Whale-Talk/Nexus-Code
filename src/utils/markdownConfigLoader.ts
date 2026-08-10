@@ -301,6 +301,8 @@ export const loadMarkdownFilesForSubdir = memoize(
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
     const userDir = join(getNexusConfigHomeDir(), subdir)
+    // Legacy fallback: OMC installs to ~/.claude/<subdir> before the .nexus migration
+    const legacyUserDir = join(dirname(getNexusConfigHomeDir()), '.claude', subdir)
     const managedDir = join(getManagedFilePath(), '.nexus', subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
@@ -343,16 +345,17 @@ export const loadMarkdownFilesForSubdir = memoize(
           source: 'policySettings' as const,
         })),
       ),
-      // Conditionally load user files
+      // Conditionally load user files (primary ~/.nexus + legacy ~/.claude)
       isSettingSourceEnabled('userSettings') &&
       !(subdir === 'agents' && isRestrictedToPluginOnly('agents'))
-        ? loadMarkdownFiles(userDir).then(_ =>
-            _.map(file => ({
-              ...file,
-              baseDir: userDir,
-              source: 'userSettings' as const,
-            })),
-          )
+        ? Promise.all([
+            loadMarkdownFiles(userDir).then(_ =>
+              _.map(file => ({ ...file, baseDir: userDir, source: 'userSettings' as const })),
+            ),
+            loadMarkdownFiles(legacyUserDir).then(_ =>
+              _.map(file => ({ ...file, baseDir: legacyUserDir, source: 'userSettings' as const })),
+            ),
+          ]).then(([a, b]) => [...a, ...b])
         : Promise.resolve([]),
       // Conditionally load project files from all directories up to home
       isSettingSourceEnabled('projectSettings') &&
