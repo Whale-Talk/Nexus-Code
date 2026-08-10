@@ -5,6 +5,16 @@
 
 ---
 
+## [1.0.3] - 2026-08-10
+
+### 变更
+- **`CLAUDE_CODE_SUBAGENT_MODEL` → `NEXUS_SUBAGENT_MODEL` 改名**（settings.json 不再出现 CLAUDE 字样）：
+  - launcher 默认值 + 透传、`agent.ts` 读取、`managedEnvConstants.ts` 保护列表
+  - 旧键保留兼容回退（`NEXUS_SUBAGENT_MODEL || CLAUDE_CODE_SUBAGENT_MODEL`）
+  - launcher 同时同步设置 `CLAUDE_CODE_SUBAGENT_MODEL` 以兼容 SDK 内部读取
+
+---
+
 ## [1.0.2] - 2026-08-10
 
 ### 变更
@@ -100,6 +110,7 @@
 | 0.2.0 | 2026-08-09 | CICD 基建 + SDK 替换 + 单元测试 |
 | 1.0.1 | 2026-08-09 | 多厂商适配 + GLM + 本地搜索 + 中文 UI |
 | 1.0.2 | 2026-08-10 | CLAUDE.md→NEXUS.md 全量改名 + 安装问题修复 |
+| 1.0.3 | 2026-08-10 | NEXUS_SUBAGENT_MODEL 环境变量改名 |
 
 ## 附录: 文档索引
 
