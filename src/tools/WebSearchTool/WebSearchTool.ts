@@ -214,7 +214,24 @@ async function exaSearch(
       }
     }
     if (results.length === 0) return null
-    return results.join('\n\n')
+    // Exa 结果解析: "Title: X\nURL: Y\nHighlights:\n...\n\n---\nTitle: Z..."
+    // 拆分为结构化条目 [title | url | 摘要], 让模型明确识别为搜索结果
+    const entries: string[] = []
+    const blocks = results.join('\n\n').split(/\n(?=Title: )/g)
+    for (const block of blocks) {
+      const titleMatch = block.match(/Title:\s*([^\n]+)/)
+      const urlMatch = block.match(/URL:\s*([^\n]+)/)
+      const highlights = block.replace(/Title:[^\n]*\n/, '').replace(/URL:[^\n]*\n/, '')
+        .replace(/Published:[^\n]*\n/, '').replace(/Author:[^\n]*\n/, '')
+        .replace(/^Highlights:\s*/, '').trim()
+      if (titleMatch || urlMatch) {
+        entries.push(
+          `- **${titleMatch?.[1]?.trim() ?? 'Untitled'}**\n  URL: ${urlMatch?.[1]?.trim() ?? ''}\n  ${highlights.slice(0, 800)}`,
+        )
+      }
+    }
+    if (entries.length === 0) return results.join('\n\n')
+    return `Found ${entries.length} search results:\n\n` + entries.join('\n\n')
   } finally {
     clearTimeout(timer)
   }
@@ -326,6 +343,7 @@ export const WebSearchTool = buildTool({
     // Exa MCP 免费可用, 任何模型 (DeepSeek/GLM/中转站) 都能搜。
     try {
       const exaResult = await exaSearch(query)
+      try { require('fs').appendFileSync('/tmp/nexus-exa.log', `query=${query} | result=${exaResult ? 'OK(' + exaResult.length + ')' : 'NULL'}\n`) } catch {}
       if (exaResult) {
         return {
           data: {
@@ -336,6 +354,7 @@ export const WebSearchTool = buildTool({
         }
       }
     } catch (e) {
+      try { require('fs').appendFileSync('/tmp/nexus-exa.log', `query=${query} | ERROR: ${e}\n`) } catch {}
       logError(`[WebSearch] Exa search failed, falling back to server: ${e}`)
     }
 
@@ -485,19 +504,20 @@ export const WebSearchTool = buildTool({
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     const { query, results } = output
+    try { require('fs').appendFileSync('/tmp/nexus-exa.log', `mapToolResult: query=${query} | results=${results?.length} | size=${JSON.stringify(results ?? []).length}\n`) } catch {}
 
     let formattedOutput = `Web search results for query: "${query}"\n\n`
 
     // Process the results array - it can contain both string summaries and search result objects.
     // Guard against null/undefined entries that can appear after JSON round-tripping
     // (e.g., from compaction or transcript deserialization).
-    ;(results ?? []).forEach(result => {
+    ;(results ?? []).forEach((result, idx) => {
       if (result == null) {
         return
       }
       if (typeof result === 'string') {
-        // Text summary
-        formattedOutput += result + '\n\n'
+        // Text summary — 明确标注是搜索返回的结果, 防止模型误判 "Did 0 searches"
+        formattedOutput += `Search result ${idx + 1}:\n${result}\n\n`
       } else {
         // Search result with links
         if (result.content?.length > 0) {
