@@ -168,6 +168,58 @@ function makeOutputFromSearchResponse(
   }
 }
 
+// Exa MCP 搜索 — provider-independent 本地搜索 (opencode 同款方案)。
+// 直接 POST Exa MCP, 无 key 可用。返回格式化文本 (标题/URL/摘要)。
+async function exaSearch(
+  query: string,
+  numResults = 5,
+): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 25000)
+  try {
+    const res = await fetch('https://mcp.exa.ai/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'web_search_exa',
+          arguments: { query, numResults },
+        },
+      }),
+      signal: controller.signal,
+    })
+    const text = await res.text()
+    if (!res.ok) return null
+
+    // SSE 解析: event: message / data: {result: {content: [{type:'text', text}]}}
+    const results: string[] = []
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('data:')) continue
+      try {
+        const d = JSON.parse(line.slice(5).trim())
+        const content = d?.result?.content ?? []
+        for (const c of content) {
+          if (c?.type === 'text' && typeof c.text === 'string') {
+            results.push(c.text)
+          }
+        }
+      } catch {
+        // 跳过非 JSON data 行
+      }
+    }
+    if (results.length === 0) return null
+    return results.join('\n\n')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const WebSearchTool = buildTool({
   name: WEB_SEARCH_TOOL_NAME,
   searchHint: 'search the web for current information',
@@ -269,6 +321,24 @@ export const WebSearchTool = buildTool({
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
     const startTime = performance.now()
     const { query } = input
+
+    // Nexus: 优先本地 Exa 搜索 (厂商无关) — 不依赖模型 API 的服务端 web search。
+    // Exa MCP 免费可用, 任何模型 (DeepSeek/GLM/中转站) 都能搜。
+    try {
+      const exaResult = await exaSearch(query)
+      if (exaResult) {
+        return {
+          data: {
+            query,
+            results: [exaResult],
+            durationSeconds: (performance.now() - startTime) / 1000,
+          },
+        }
+      }
+    } catch (e) {
+      logError(`[WebSearch] Exa search failed, falling back to server: ${e}`)
+    }
+
     const userMessage = createUserMessage({
       content: 'Perform a web search for the query: ' + query,
     })
