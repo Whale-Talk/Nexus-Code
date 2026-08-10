@@ -74,6 +74,7 @@ export function ModelPicker(t0) {
     t3 = $[3];
   }
   const modelOptions = t3;
+  try { require('fs').appendFileSync('/tmp/modelpicker-debug.log', `initial=${JSON.stringify(initial)} | options=[${modelOptions.map(o => o.value).join('|')}] | match=${modelOptions.some(opt => opt.value === initial)}\n`) } catch {}
   let t4;
   bb0: {
     if (initial !== null && !modelOptions.some(opt => opt.value === initial)) {
