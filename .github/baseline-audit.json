@@ -171,16 +171,6 @@
   },
   {
     "pkg": "fast-uri",
-    "adv": 1117870,
-    "severity": "high"
-  },
-  {
-    "pkg": "fast-uri",
-    "adv": 1117884,
-    "severity": "high"
-  },
-  {
-    "pkg": "fast-uri",
     "adv": 1124064,
     "severity": "high"
   },
@@ -192,6 +182,16 @@
   {
     "pkg": "fast-uri",
     "adv": 1138395,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1138948,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1138950,
     "severity": "high"
   },
   {
