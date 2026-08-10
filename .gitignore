@@ -19,3 +19,6 @@ coverage/
 
 .omc/
 dist-check/proxy/
+
+# Local proxy scripts (may contain API keys)
+proxy/
