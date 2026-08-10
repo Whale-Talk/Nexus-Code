@@ -1,0 +1,231 @@
+#!/usr/bin/env bun
+// Nexus launcher — manages config isolation and spawns the main Nexus Code process.
+//   Settings use NEXUS_* keys. The launcher bridges: NEXUS_* env vars for our code,
+//   ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk).
+//
+//   Runtime requirement: bun >= 1.3.5 (the project package manager).
+//   If you see "bun: command not found", install bun: https://bun.sh
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
+const { homedir } = require('os')
+const { delimiter, dirname, join, resolve } = require('path')
+const { spawn } = require('child_process')
+const { randomUUID } = require('crypto')
+
+// --- Pre-flight: ensure bun is available ---
+function checkBunAvailable() {
+  const bunBinary = process.env.BUN_BINARY || 'bun'
+  // Quick PATH lookup via `which`-style check
+  const paths = (process.env.PATH || '').split(delimiter)
+  for (const p of paths) {
+    const candidate = join(p, bunBinary)
+    try {
+      if (existsSync(candidate)) return true
+    } catch {}
+  }
+  // Also try the common bun install path
+  try {
+    const home = homedir()
+    if (existsSync(join(home, '.bun', 'bin', bunBinary))) return true
+  } catch {}
+  return false
+}
+
+if (!checkBunAvailable()) {
+  console.error([
+    '',
+    '\x1b[1;31m❌ bun is not installed or not in PATH.\x1b[0m',
+    '',
+    'Nexus Code requires bun >= 1.3.5 as its runtime.',
+    '',
+    'Install bun:',
+    '  \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+    '',
+    'After installation, restart your terminal or run:',
+    '  \x1b[1msource ~/.bashrc\x1b[0m  (bash)',
+    '  \x1b[1msource ~/.zshrc\x1b[0m   (zsh)',
+    '',
+    'Then try: \x1b[1mnexus\x1b[0m',
+    '',
+  ].join('\n'))
+  process.exit(1)
+}
+
+const projectDir = resolve(dirname(__dirname))
+const originalCwd = process.cwd() // user's launch directory
+const configDir = join(homedir(), '.nexus')
+const settingsPath = join(configDir, 'settings.json')
+
+// --- Default settings (NEXUS_* keys) ---
+const defaultSettings = {
+  $schema: 'https://json.schemastore.org/claude-code-settings.json',
+  env: {
+    DISABLE_TELEMETRY: '1',
+    DISABLE_ERROR_REPORTING: '1',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
+    MCP_TIMEOUT: '60000',
+    API_TIMEOUT_MS: '3000000',
+    NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
+    NEXUS_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_SUBAGENT_MODEL: 'deepseek-v4-flash[1m]',
+  },
+  model: 'deepseek-v4-pro[1m]',
+  deepseek: { effort: 'max' },
+  // Nexus: accept bypass-permissions warning once so it never shows again.
+  skipDangerousModePermissionPrompt: true,
+}
+
+// Backward compat: also accept old ANTHROPIC_* keys
+function resolveEnvKey(settings, newKey, oldKey) {
+  let env = settings?.env || {}
+  return env[newKey] || env[oldKey]
+}
+
+function readJson(p, fallback) {
+  try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return fallback }
+}
+
+// --- Initialize config directory ---
+mkdirSync(configDir, { recursive: true })
+
+if (!existsSync(settingsPath)) {
+  writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2) + '\n', { mode: 0o600 })
+} else {
+  try {
+    const current = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const merged = {
+      ...current,
+      env: {
+        ...defaultSettings.env,
+        ...(current.env || {}),
+        NEXUS_BASE_URL:
+          current.env?.NEXUS_BASE_URL || current.env?.ANTHROPIC_BASE_URL || defaultSettings.env.NEXUS_BASE_URL,
+      },
+      model: current.model ?? defaultSettings.model,
+    }
+    writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
+  } catch {
+    // Keep user settings intact on parse error
+  }
+}
+
+// --- Auth: resolve API key (NEXUS_API_KEY, with backward compat) ---
+function resolveApiKey() {
+  try {
+    const s = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const key = s?.env?.NEXUS_API_KEY || s?.env?.ANTHROPIC_API_KEY
+    if (typeof key === 'string' && key.trim()) return key.trim()
+  } catch {}
+  return undefined
+}
+
+// --- Spawn env setup ---
+process.env.CLAUDE_CONFIG_DIR = configDir
+process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
+
+const settings = readJson(settingsPath, {})
+
+// Bridge: set NEXUS_* for our code
+process.env.NEXUS_BASE_URL =
+  resolveEnvKey(settings, 'NEXUS_BASE_URL', 'ANTHROPIC_BASE_URL') || defaultSettings.env.NEXUS_BASE_URL
+process.env.NEXUS_MODEL =
+  resolveEnvKey(settings, 'NEXUS_MODEL', 'ANTHROPIC_MODEL') || settings?.model || defaultSettings.model
+// 通用透传: 用户配置的 NEXUS_PROVIDER + 三角色模型 ID（任意厂商均可）。
+// 兼容只配一个模型: 角色缺省时跟随 NEXUS_MODEL; 都不配才用 DeepSeek 默认。
+process.env.NEXUS_PROVIDER = settings?.env?.NEXUS_PROVIDER || 'anthropic'
+process.env.NEXUS_MODEL = process.env.NEXUS_MODEL || defaultSettings.model
+// 三角色: 只读 NEXUS_*_MODEL (不再回退 ANTHROPIC_DEFAULT_* — 旧键会绕过 NEXUS_MODEL 兜底)
+process.env.NEXUS_QUARK_MODEL =
+  settings?.env?.NEXUS_QUARK_MODEL || process.env.NEXUS_MODEL
+process.env.NEXUS_ATOM_MODEL =
+  settings?.env?.NEXUS_ATOM_MODEL || process.env.NEXUS_MODEL
+process.env.NEXUS_ELECTRON_MODEL =
+  settings?.env?.NEXUS_ELECTRON_MODEL || process.env.NEXUS_MODEL
+
+// 子代理模型: NEXUS_SUBAGENT_MODEL (新) + CLAUDE_CODE_SUBAGENT_MODEL (旧键兼容)
+process.env.NEXUS_SUBAGENT_MODEL =
+  settings?.env?.NEXUS_SUBAGENT_MODEL ||
+  settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL ||
+  'deepseek-v4-flash[1m]'
+process.env.CLAUDE_CODE_SUBAGENT_MODEL = process.env.NEXUS_SUBAGENT_MODEL
+
+// Auth: wipe inherited tokens (conflict warnings), set NEXUS_API_KEY.
+// @ai-sdk/anthropic takes apiKey explicitly (adapter passes NEXUS_API_KEY),
+// so no ANTHROPIC_* bridge is needed for our request path. Cloud backends
+// (Bedrock/Foundry/Vertex) in client.ts keep their own SDK env vars.
+process.env.ANTHROPIC_AUTH_TOKEN = ''
+process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
+delete process.env.ANTHROPIC_AUTH_TOKEN
+delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+
+const configuredKey = resolveApiKey()
+if (configuredKey) {
+  process.env.NEXUS_API_KEY = configuredKey
+}
+
+// Effort
+const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
+const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || 'medium'
+process.env.CLAUDE_CODE_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
+
+// General env defaults
+process.env.DISABLE_TELEMETRY ||= '1'
+process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
+process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
+
+// Conversation tracking header
+process.env.CLAUDE_CONVERSATION_ID ||= randomUUID()
+
+// Nexus: always show the full welcome logo (custom ASCII art)
+process.env.CLAUDE_CODE_FORCE_FULL_LOGO = '1'
+
+// --- Launch ---
+const bun = process.env.BUN_BINARY || 'bun'
+const userArgs = process.argv.slice(2)
+const hasPermissionFlag = userArgs.some(a =>
+  a.startsWith('--permission-mode') || a === '--dangerously-skip-permissions'
+)
+const args = [
+  'run',
+  join(projectDir, 'src/dev-entry.ts'),
+  ...(hasPermissionFlag ? [] : ['--permission-mode', 'bypassPermissions']),
+  ...userArgs,
+]
+const child = spawn(bun, args, {
+  cwd: originalCwd,
+  env: process.env,
+  stdio: 'inherit',
+})
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    try { child.kill(signal) } catch {}
+    setTimeout(() => process.exit(128), 1000).unref()
+  })
+}
+
+child.on('error', (err) => {
+  if (err.code === 'ENOENT') {
+    console.error([
+      '',
+      '\x1b[1;31m❌ Failed to launch bun runtime.\x1b[0m',
+      '',
+      `Reason: ${err.message}`,
+      '',
+      'This usually means bun was removed or the PATH changed after Nexus was installed.',
+      'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+      '',
+    ].join('\n'))
+  } else {
+    console.error(`Failed to start Nexus: ${err.message}`)
+  }
+  process.exit(1)
+})
+
+child.on('exit', (code, sig) => {
+  if (sig) {
+    process.exitCode = 128
+    process.kill(process.pid, sig)
+  }
+  process.exit(code ?? 1)
+})

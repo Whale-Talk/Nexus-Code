@@ -1,0 +1,467 @@
+[
+  {
+    "pkg": "@anthropic-ai/sdk",
+    "adv": 1117064,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "@anthropic-ai/sdk",
+    "adv": 1119428,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "@hono/node-server",
+    "adv": 1116281,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "@hono/node-server",
+    "adv": 1124006,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "@opentelemetry/core",
+    "adv": 1120821,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1116673,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117574,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117576,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117577,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117580,
+    "severity": "low"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117581,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117583,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117587,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117589,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117591,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117593,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1117595,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1118607,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1119404,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120125,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120547,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120643,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120645,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120647,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120649,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120650,
+    "severity": "high"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1120652,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123882,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123885,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123957,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123959,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123971,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "axios",
+    "adv": 1123973,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "body-parser",
+    "adv": 1123976,
+    "severity": "low"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1124064,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1130720,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1138395,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1138948,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1138950,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-xml-builder",
+    "adv": 1118965,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-xml-parser",
+    "adv": 1117911,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "follow-redirects",
+    "adv": 1116560,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "form-data",
+    "adv": 1120743,
+    "severity": "high"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1116244,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1116277,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1116279,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1116280,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1117087,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1117915,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1118963,
+    "severity": "low"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1118964,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1118982,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1118983,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1120082,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1120083,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1120084,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1120085,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1121418,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1123997,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1123998,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1123999,
+    "severity": "high"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1124000,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1124001,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1124005,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1124009,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1124010,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1130733,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1138771,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1138772,
+    "severity": "low"
+  },
+  {
+    "pkg": "hono",
+    "adv": 1138773,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "ip-address",
+    "adv": 1118827,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "ip-address",
+    "adv": 1130722,
+    "severity": "high"
+  },
+  {
+    "pkg": "lodash-es",
+    "adv": 1115805,
+    "severity": "high"
+  },
+  {
+    "pkg": "lodash-es",
+    "adv": 1115809,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "qs",
+    "adv": 1119502,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "shell-quote",
+    "adv": 1120422,
+    "severity": "critical"
+  },
+  {
+    "pkg": "shell-quote",
+    "adv": 1123944,
+    "severity": "high"
+  },
+  {
+    "pkg": "tmp",
+    "adv": 1109537,
+    "severity": "low"
+  },
+  {
+    "pkg": "tmp",
+    "adv": 1120654,
+    "severity": "high"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121187,
+    "severity": "high"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121241,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121244,
+    "severity": "high"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121247,
+    "severity": "high"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121254,
+    "severity": "low"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1121428,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1130715,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1130718,
+    "severity": "high"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1130726,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1130729,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1130731,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "undici",
+    "adv": 1137242,
+    "severity": "low"
+  },
+  {
+    "pkg": "ws",
+    "adv": 1119108,
+    "severity": "moderate"
+  },
+  {
+    "pkg": "ws",
+    "adv": 1123259,
+    "severity": "high"
+  }
+]

@@ -1,0 +1,93 @@
+# Nexus CI — L0-L4 门禁，PR + main 推送双触发。
+# 5 个独立 job 恒运行（无 paths-filter/skip 条件，避免 required-check 卡死陷阱）。
+# 本地可复现: 每一步都对应 package.json scripts / .github/scripts 下脚本。
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # L0 — 密钥扫描
+  security:
+    name: Security (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # gitleaks-action v3 需要商业 license — 改用 CLI 直接扫描（免费, 无 license 要求）
+      - name: Gitleaks secret scan
+        run: |
+          curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          /tmp/gitleaks detect --source . --redact --verbose --no-banner --config .gitleaks.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # L1 — 安装健康 + 导入图冒烟 + 锁文件漂移
+  install:
+    name: Install & health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup bun + install
+        uses: ./.github/actions/setup-bun-install
+      - name: Import graph smoke (dev-entry loads)
+        run: bun run version
+      - name: Lockfile drift check
+        run: |
+          git diff --exit-code bun.lock && echo "✓ bun.lock 无漂移" || {
+            echo "::error::bun.lock 与 package.json 不一致 — 运行 bun install 后提交 bun.lock"
+            exit 1
+          }
+
+  # L2 — 类型检查（存量错误签名基线门，非严格类型门）。
+  # 注: 无 build:check — 分发方式是 clone+bun run（无 bundle 产物），
+  # 全量 bun build 被可选动态依赖（sharp/AWS SDK 等）与断链阻断，
+  # 编译健康已由 install job 的导入图冒烟 + tsc + bun test 三重覆盖。
+  static:
+    name: Static (typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup bun + install
+        uses: ./.github/actions/setup-bun-install
+      - name: Typecheck (baseline gate)
+        run: bun run typecheck
+
+  # L3 — 单元测试
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup bun + install
+        uses: ./.github/actions/setup-bun-install
+      - name: Run tests
+        run: bun run test
+
+  # L4 — 依赖漏洞基线（只拦新增 critical/high）
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup bun + install
+        uses: ./.github/actions/setup-bun-install
+      - name: Audit baseline check
+        run: bun run audit:check
