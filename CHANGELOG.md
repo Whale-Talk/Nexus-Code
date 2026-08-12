@@ -5,6 +5,28 @@
 
 ---
 
+## [1.0.5] - 2026-08-11
+
+### 新增
+- **OMN (Oh My Nexus) — 关键词原生触发**：官方 oh-my-claudecode keyword-detector 全量移植为 Nexus 内置模块，不再依赖 CC 插件 hooks
+  - `src/utils/omn/keywordDetector.ts`：14 种模式检测（cancel/ralph/autopilot/ultrawork/ccg/ralplan/deep-interview/ai-slop-cleaner/tdd/code-review/security-review/ultrathink/deepsearch/analyze）
+  - `src/utils/omn/invocation.ts`：紧凑技能引导块（不内联 SKILL.md，防 token 爆炸）
+  - `src/utils/omn/state.ts`：`.omc/state/` 模式状态激活/清理（原子写入）
+  - `processUserInput` 挂载：命中关键词 → 注入引导文本 + 激活状态
+  - 意图过滤：提问/诊断/引用对比不触发（"什么是 ralph" 不会启动 ralph）
+  - 系统回声剥离：粘贴 [RALPH LOOP]/[MAGIC KEYWORD] 历史输出不会重新触发
+  - 清洗：代码块/URL/路径/XML/角色块/diff 中的关键词不误触发
+  - 中英文意图模式（中文诊断/追问/对比补齐）
+  - Kill switch：`DISABLE_OMC=1` / `NEXUS_DISABLE_OMN=1` / `OMC_SKIP_HOOKS=keyword-detector`
+
+### 修复
+- 技能 typeahead 重复（去重从 inode 改为按名称：legacy 回退目录是物理副本，inode 去重失效）
+
+### 文档
+- README：OMN 编排层说明 + 关键词触发行为 + kill switch
+
+---
+
 ## [1.0.4] - 2026-08-11
 
 ### 修复（全项目 5 维审查发现）
@@ -129,6 +151,7 @@
 | 1.0.2 | 2026-08-10 | CLAUDE.md→NEXUS.md 全量改名 + 安装问题修复 |
 | 1.0.3 | 2026-08-10 | NEXUS_SUBAGENT_MODEL 环境变量改名 |
 | 1.0.4 | 2026-08-11 | 全项目审查修复（回退对称/安全/启动器/文档重构） |
+| 1.0.5 | 2026-08-11 | OMN 关键词原生触发 + 技能去重修复 |
 
 ## 附录: 文档索引
 

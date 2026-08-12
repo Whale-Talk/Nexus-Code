@@ -1,9 +1,9 @@
 import { feature } from 'bun:bundle'
 import { statSync } from 'fs'
-import { lstat, readdir, readFile, realpath, stat } from 'fs/promises'
+import { readdir, readFile, realpath, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
-import { dirname, join, resolve, sep } from 'path'
+import { basename, dirname, join, resolve, sep } from 'path'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -156,21 +156,6 @@ export function parseSlashCommandToolsFromFrontmatter(
  * @param filePath - Path to the file
  * @returns A string identifier "device:inode" or null if file can't be identified
  */
-async function getFileIdentity(filePath: string): Promise<string | null> {
-  try {
-    const stats = await lstat(filePath, { bigint: true })
-    // Some filesystems (NFS, FUSE, network mounts) report dev=0 and ino=0
-    // for all files, which would cause every file to look like a duplicate.
-    // Return null to skip deduplication for these unreliable identities.
-    if (stats.dev === 0n && stats.ino === 0n) {
-      return null
-    }
-    return `${stats.dev}:${stats.ino}`
-  } catch {
-    return null
-  }
-}
-
 /**
  * Compute the stop boundary for getProjectDirsUpToHome's upward walk.
  *
@@ -387,35 +372,31 @@ export const loadMarkdownFilesForSubdir = memoize(
     // This prevents the same file from appearing multiple times when ~/.nexus is
     // symlinked to a directory within the project hierarchy, causing the same
     // physical file to be discovered through different paths.
-    const fileIdentities = await Promise.all(
-      allFiles.map(file => getFileIdentity(file.filePath)),
-    )
-
-    const seenFileIds = new Map<string, SettingSource>()
+    // Dedup by basename (name.ext), not inode. Legacy-fallback dirs
+    // (~/.claude/<subdir> vs ~/.nexus/<subdir>) hold physical copies, not
+    // symlinks — inode dedup can't catch them, and every agent/command
+    // would appear once per source directory. First occurrence wins;
+    // allFiles order encodes source priority (managed > user primary >
+    // user legacy > project).
+    const seenNames = new Set<string>()
     const deduplicatedFiles: MarkdownFile[] = []
 
-    for (const [i, file] of allFiles.entries()) {
-      const fileId = fileIdentities[i] ?? null
-      if (fileId === null) {
-        // If we can't identify the file, include it (fail open)
-        deduplicatedFiles.push(file)
-        continue
-      }
-      const existingSource = seenFileIds.get(fileId)
-      if (existingSource !== undefined) {
+    for (const file of allFiles) {
+      const name = basename(file.filePath)
+      if (seenNames.has(name)) {
         logForDebugging(
-          `Skipping duplicate file '${file.filePath}' from ${file.source} (same inode already loaded from ${existingSource})`,
+          `Skipping duplicate file '${file.filePath}' from ${file.source} (same basename already loaded)`,
         )
         continue
       }
-      seenFileIds.set(fileId, file.source)
+      seenNames.add(name)
       deduplicatedFiles.push(file)
     }
 
     const duplicatesRemoved = allFiles.length - deduplicatedFiles.length
     if (duplicatesRemoved > 0) {
       logForDebugging(
-        `Deduplicated ${duplicatesRemoved} files in ${subdir} (same inode via symlinks or hard links)`,
+        `Deduplicated ${duplicatesRemoved} files in ${subdir} (same basename)`,
       )
     }
 

@@ -36,11 +36,15 @@
 - main 分支保护 + strict checks + enforce_admins
 - tag 一键发布 → GitHub Release 自动生成
 
-### 🤖 OMC 多 Agent 编排
-内置 oh-my-claudecode 编排层：
+### 🤖 OMN (Oh My Nexus) 多 Agent 编排
+oh-my-claudecode 编排层已**全量原生化**为 OMN 内置模块（无需外部插件）：
 - **37 个技能**：autopilot / ralph / team / ultrawork / ralplan / deep-interview 等
 - **20 个专业代理**：executor / architect / critic / explore / debugger / security-reviewer / test-engineer 等
-- 关键词自动触发（如 "ralph" → 持久执行循环，"team" → 并行协调）
+- **关键词原生触发**（v1.0.5+）：对话直接输入触发，不再依赖 CC 插件 hooks
+  - "ralph 修这个 bug" → 持久执行循环；"autopilot 构建 xx" → 全自主执行
+  - "什么是 ralph？" → **不触发**（意图过滤，提问不会误启动工作流）
+  - 粘贴历史输出 → **不触发**（系统回声剥离，防自我强化循环）
+  - Kill switch：`DISABLE_OMC=1` / `NEXUS_DISABLE_OMN=1` / `OMC_SKIP_HOOKS=keyword-detector`
 
 ### 🚀 全新用户引导
 - 无 API key 时自动进入**配置表单**（输入服务地址 + 密钥），替代 OAuth 登录
@@ -80,7 +84,7 @@ bun --version   # 应输出 1.3.x
 
 ```bash
 # 第 1 步：克隆固定发布分支
-git clone --depth 1 --branch release/v1.0.4 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
+git clone --depth 1 --branch release/v1.0.5 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
 cd ~/nexus
 
 # 第 2 步：安装依赖（约 15 秒）
@@ -93,7 +97,7 @@ bun link
 验证：
 
 ```bash
-nexus --version   # 应输出 1.0.4
+nexus --version   # 应输出 1.0.5
 ```
 
 ### 2. 配置 API 密钥
@@ -160,7 +164,7 @@ nexus --version   # 确认版本号变化
 | 401 "Invalid token" | Token 加了 `sk-` 前缀，去掉 |
 | 403 | Token 失效，联系管理员 |
 | 回复很慢 | 高峰期限流，切 `--model electron` |
-| `/deep`、`/ralph` 等 OMC 命令没有 | 项目根 `.nexus/skills/` 缺失，重新 clone |
+| `/deep`、`/ralph` 等 OMN 命令没有 | 项目根 `.nexus/skills/` 缺失，重新 clone |
 
 ---
 
@@ -173,11 +177,11 @@ src/                        # 核心源码
 ├── commands/               # 斜杠命令（含 /nexus-config）
 ├── services/               # API / MCP / analytics
 ├── components/             # 终端 UI 组件（React + Ink）
-├── skills/                 # OMC 技能（37 个）
-├── agents/                 # OMC 专业代理（20 个）
+├── skills/                 # OMN 技能（37 个）
+├── agents/                 # OMN 专业代理（20 个）
 └── ...
 bin/nexus.cjs               # 启动器（配置隔离 + 环境桥接）
-.nexus/                     # OMC 技能/代理定义
+.nexus/                     # OMN 技能/代理定义
 .github/                    # CI/CD（5 门禁 + release 自动化）
 ```
 
@@ -190,7 +194,7 @@ bin/nexus.cjs               # 启动器（配置隔离 + 环境桥接）
 | 运行时 | Bun 1.3.14, TypeScript ESM |
 | AI SDK | ai@7.0.58 + @ai-sdk/anthropic@4.0.36 + @ai-sdk/openai-compatible@3.0.27 |
 | SDK import | 118 → 1 文件 |
-| 单元测试 | 68 |
+| 单元测试 | 92 |
 | typecheck 基线 | 708 签名（只拦新增） |
-| OMC 技能 / 代理 | 37 / 20 |
+| OMN 技能 / 代理 | 37 / 20 |
 | 分支保护 | 5 checks required |
