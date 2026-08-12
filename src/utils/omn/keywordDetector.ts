@@ -28,11 +28,14 @@ export type OmnModeName =
   | 'deepsearch'
   | 'analyze'
 
+/** 需写 .omc/state 状态文件的模式（与 state.ts 的 OmnStateName 一致） */
+export type OmnStateMode = 'ralph' | 'autopilot' | 'ultrawork' | 'ralplan'
+
 export type SkillMatch = { name: OmnModeName; args: string }
 
 export type OmnDetectionResult = {
   /** 需写状态文件的模式（按优先级排序） */
-  stateActivations: OmnModeName[]
+  stateActivations: OmnStateMode[]
   /** 直接注入上下文的模式消息（ultrathink/tdd/deepsearch 等） */
   modeMessages: string[]
   /** 最终要引导的技能（已 resolveConflicts） */
@@ -715,14 +718,14 @@ export function detectOmnKeywords(rawPrompt: string): OmnDetectionResult {
 
   // cancel 清理状态，无技能引导
   if (resolved.length > 0 && resolved[0].name === 'cancel') {
-    return { stateActivations: ['cancel'], modeMessages: [], skills: [], cancelled: true }
+    return { stateActivations: [], modeMessages: [], skills: [], cancelled: true }
   }
 
   // 需写状态文件的模式（官方语义：ralph/autopilot/ultrawork/ralplan）
-  const stateModes: OmnModeName[] = ['ralph', 'autopilot', 'ultrawork', 'ralplan']
-  const stateActivations = resolved.filter(m =>
-    stateModes.includes(m.name as OmnModeName),
-  ).map(m => m.name)
+  const stateModes: readonly OmnStateMode[] = ['ralph', 'autopilot', 'ultrawork', 'ralplan']
+  const stateActivations: OmnStateMode[] = resolved.filter(m =>
+    (stateModes as readonly string[]).includes(m.name),
+  ).map(m => m.name as OmnStateMode)
 
   // ralph 联动 ultrawork（官方语义）
   const hasRalph = resolved.some(m => m.name === 'ralph')
