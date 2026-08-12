@@ -545,7 +545,7 @@ async function processUserInputBase(
 
       if (invocationParts.length > 0) {
         logEvent('tengu_omn_keyword', {
-          skills: omnResult.cancelled
+          omn_skills: omnResult.cancelled
             ? 'cancel'
             : omnResult.skills.map(s => s.name).join(','),
         })
