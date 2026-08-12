@@ -1,4 +1,3 @@
-import { realpath } from 'fs/promises'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import {
@@ -115,14 +114,6 @@ export function estimateSkillFrontmatterTokens(skill: Command): number {
  * some virtual/container/NFS filesystems, or precision loss on ExFAT).
  * See: https://github.com/Whale-Talk/Nexus-Code
  */
-async function getFileIdentity(filePath: string): Promise<string | null> {
-  try {
-    return await realpath(filePath)
-  } catch {
-    return null
-  }
-}
-
 // Internal type to track skill with its file path for deduplication
 type SkillWithPath = {
   skill: Command
@@ -731,50 +722,33 @@ export const getSkillDirCommands = memoize(
       ...legacyCommands,
     ]
 
-    // Deduplicate by resolved path (handles symlinks and duplicate parent directories)
-    // Pre-compute file identities in parallel (realpath calls are independent),
-    // then dedup synchronously (order-dependent first-wins)
-    const fileIds = await Promise.all(
-      allSkillsWithPaths.map(({ skill, filePath }) =>
-        skill.type === 'prompt'
-          ? getFileIdentity(filePath)
-          : Promise.resolve(null),
-      ),
-    )
-
-    const seenFileIds = new Map<
-      string,
-      SettingSource | 'builtin' | 'mcp' | 'plugin' | 'bundled'
-    >()
+    // Dedup by skill NAME, not file identity. Legacy-fallback dirs
+    // (~/.claude/skills vs ~/.nexus/skills) hold physical copies, not
+    // symlinks — dev:ino dedup can't catch them, and every skill would
+    // appear once per source directory in the typeahead.
+    // Order in allSkillsWithPaths encodes priority (managed > user primary >
+    // user legacy > project > additional > legacy commands): first wins.
+    const seenNames = new Set<string>()
     const deduplicatedSkills: Command[] = []
 
-    for (let i = 0; i < allSkillsWithPaths.length; i++) {
-      const entry = allSkillsWithPaths[i]
+    for (const entry of allSkillsWithPaths) {
       if (entry === undefined || entry.skill.type !== 'prompt') continue
       const { skill } = entry
 
-      const fileId = fileIds[i]
-      if (fileId === null || fileId === undefined) {
-        deduplicatedSkills.push(skill)
-        continue
-      }
-
-      const existingSource = seenFileIds.get(fileId)
-      if (existingSource !== undefined) {
+      if (seenNames.has(skill.name)) {
         logForDebugging(
-          `Skipping duplicate skill '${skill.name}' from ${skill.source} (same file already loaded from ${existingSource})`,
+          `Skipping duplicate skill '${skill.name}' from ${skill.source} (same name already loaded)`,
         )
         continue
       }
-
-      seenFileIds.set(fileId, skill.source)
+      seenNames.add(skill.name)
       deduplicatedSkills.push(skill)
     }
 
     const duplicatesRemoved =
       allSkillsWithPaths.length - deduplicatedSkills.length
     if (duplicatesRemoved > 0) {
-      logForDebugging(`Deduplicated ${duplicatesRemoved} skills (same file)`)
+      logForDebugging(`Deduplicated ${duplicatesRemoved} skills (same name)`)
     }
 
     // Separate conditional skills (with paths frontmatter) from unconditional ones
