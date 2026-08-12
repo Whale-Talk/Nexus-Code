@@ -544,11 +544,6 @@ async function processUserInputBase(
       invocationParts.push(...omnResult.modeMessages)
 
       if (invocationParts.length > 0) {
-        logEvent('tengu_omn_keyword', {
-          omn_skills: omnResult.cancelled
-            ? 'cancel'
-            : omnResult.skills.map(s => s.name).join(','),
-        })
         inputString = `${invocationParts.join('\n\n')}\n\n---\n\n${inputString}`
       }
     }
