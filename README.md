@@ -67,7 +67,7 @@ oh-my-claudecode 编排层已**全量原生化**为 OMN 内置模块（无需外
 
 ### 0. 环境准备
 
-Linux / WSL2，安装 [Bun](https://bun.sh)（≥1.3.5）：
+**Linux / WSL2**，安装 [Bun](https://bun.sh)（≥1.3.5）：
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
@@ -79,6 +79,28 @@ bun --version   # 应输出 1.3.x
 > ```bash
 > echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
+
+**Windows 原生**（v1.0.5+ 支持），安装 bun：
+
+```powershell
+npm install -g bun
+# 或: powershell -c "irm bun.sh/install.ps1 | iex"
+bun --version   # 应输出 1.3.x
+```
+
+> ⚠️ npm 安装的 bun 可执行文件在 `%APPDATA%\npm\node_modules\bun\bin\bun.exe`，不在 PATH。
+> 需要把以下两个目录加入系统 PATH（设置 → 系统 → 高级系统设置 → 环境变量）：
+>
+> ```
+> %USERPROFILE%\.bun\bin
+> %APPDATA%\npm\node_modules\bun\bin
+> ```
+>
+> 或 PowerShell 一键添加（当前用户）：
+> ```powershell
+> setx PATH "$env:PATH;%USERPROFILE%\.bun\bin;%APPDATA%\npm\node_modules\bun\bin"
+> ```
+> 然后**重启终端**。启动器会自动定位 `bun.exe`（含 PATH 外常见安装位置探测），无需手动配置 `BUN_BINARY`。
 
 ### 1. 安装（3 步）
 
@@ -159,8 +181,9 @@ nexus --version   # 确认版本号变化
 
 | 问题 | 解决 |
 |------|------|
-| `nexus: command not found` | `~/.bun/bin` 不在 PATH，见步骤 0 |
+| `nexus: command not found` | `~/.bun/bin`（Windows: `%USERPROFILE%\.bun\bin`）不在 PATH，见步骤 0 |
 | 启动报 `bun: command not found` | Bun 未安装，见步骤 0 |
+| Windows 报 `spawn bun ENOENT` | npm 装 bun 的可执行文件不在 PATH，见步骤 0 的 Windows 说明 |
 | 401 "Invalid token" | Token 加了 `sk-` 前缀，去掉 |
 | 403 | Token 失效，联系管理员 |
 | 回复很慢 | 高峰期限流，切 `--model electron` |
