@@ -16,7 +16,7 @@
   },
   {
     "pkg": "@hono/node-server",
-    "adv": 1124006,
+    "adv": 1139322,
     "severity": "moderate"
   },
   {
@@ -181,17 +181,17 @@
   },
   {
     "pkg": "fast-uri",
-    "adv": 1138395,
-    "severity": "high"
-  },
-  {
-    "pkg": "fast-uri",
     "adv": 1138948,
     "severity": "high"
   },
   {
     "pkg": "fast-uri",
-    "adv": 1138950,
+    "adv": 1139454,
+    "severity": "high"
+  },
+  {
+    "pkg": "fast-uri",
+    "adv": 1139457,
     "severity": "high"
   },
   {
