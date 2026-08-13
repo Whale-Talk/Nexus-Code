@@ -5,6 +5,20 @@
 
 ---
 
+## [1.0.6] - 2026-08-13
+
+### 修复
+- **Windows 原生环境适配**（按 Windows 适配问题报告逐项修复）：
+  - `checkBunAvailable` → `resolveBunBinary()`：按平台解析扩展名（win32 检查 `bun.exe`/`bun.cmd`，POSIX 裸名）
+  - 搜索范围扩至 PATH + `~/.bun/bin` + npm bun bin（Windows npm 安装的 bun 不在 PATH）
+  - `BUN_BINARY` 语义统一：绝对路径直接使用，裸名经搜索目录解析
+  - `spawn` 改用解析后的绝对路径（`spawn bun ENOENT` 根因修复）
+  - 报错信息平台化（Windows 提示 `npm install -g bun`）
+  - postinstall：PATH 分隔符用 `path.delimiter`（修复硬编码 `:`）；Windows PATH 配置提示（setx 一键命令）
+  - README：Windows 原生安装章节 + FAQ
+
+---
+
 ## [1.0.5] - 2026-08-11
 
 ### 新增
@@ -152,6 +166,7 @@
 | 1.0.3 | 2026-08-10 | NEXUS_SUBAGENT_MODEL 环境变量改名 |
 | 1.0.4 | 2026-08-11 | 全项目审查修复（回退对称/安全/启动器/文档重构） |
 | 1.0.5 | 2026-08-11 | OMN 关键词原生触发 + 技能去重修复 |
+| 1.0.6 | 2026-08-13 | Windows 原生环境适配（bun 定位 + PATH） |
 
 ## 附录: 文档索引
 
