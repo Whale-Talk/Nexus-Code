@@ -8,30 +8,64 @@
 //   dying with an opaque OS error.
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
 const { homedir } = require('os')
-const { delimiter, dirname, join, resolve } = require('path')
+const { delimiter, dirname, isAbsolute, join, resolve } = require('path')
 const { spawn } = require('child_process')
 const { randomUUID } = require('crypto')
 
-// --- Pre-flight: ensure bun is available ---
-function checkBunAvailable() {
-  const bunBinary = process.env.BUN_BINARY || 'bun'
-  // Quick PATH lookup via `which`-style check
-  const paths = (process.env.PATH || '').split(delimiter)
-  for (const p of paths) {
-    const candidate = join(p, bunBinary)
-    try {
-      if (existsSync(candidate)) return true
-    } catch {}
+// --- Pre-flight: locate a spawnable bun binary ---
+// Windows (npm-installed bun) notes:
+//   - real binary is node_modules/bun/bin/bun.exe (NOT on PATH)
+//   - npm dir contains an extensionless shell shim named `bun` — existsSync
+//     finds it but spawn cannot execute it
+//   - so on win32 we only accept .exe/.cmd; elsewhere the bare name.
+function bunCandidateNames(base) {
+  const names = [base]
+  if (process.platform === 'win32') {
+    // PATHEXT-style resolution — prefer .exe over .cmd (spawn handles both,
+    // but .exe avoids the cmd.exe wrapper)
+    names.push(`${base}.exe`, `${base}.cmd`)
   }
-  // Also try the common bun install path
-  try {
-    const home = homedir()
-    if (existsSync(join(home, '.bun', 'bin', bunBinary))) return true
-  } catch {}
-  return false
+  return names
 }
 
-if (!checkBunAvailable()) {
+function bunSearchDirs() {
+  const dirs = (process.env.PATH || '').split(delimiter).filter(Boolean)
+  const home = homedir()
+  // Common install locations outside PATH (npm-installed bun on Windows,
+  // bun.sh installer on POSIX)
+  dirs.push(
+    join(home, '.bun', 'bin'),
+    join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'bun', 'bin'),
+    join(home, 'AppData', 'Roaming', 'npm'),
+  )
+  return dirs
+}
+
+/**
+ * Resolve the bun executable to an absolute path spawnable via child_process.
+ * BUN_BINARY semantics: absolute path → used as-is; bare name → resolved via
+ * PATH + common install dirs with platform-appropriate extensions.
+ * Returns null when no executable is found.
+ */
+function resolveBunBinary() {
+  const configured = process.env.BUN_BINARY || 'bun'
+  const bases = isAbsolute(configured) ? [configured] : bunCandidateNames(configured)
+  const dirs = isAbsolute(configured) ? [''] : bunSearchDirs()
+  for (const dir of dirs) {
+    for (const base of bases) {
+      const candidate = dir ? join(dir, base) : base
+      try {
+        if (existsSync(candidate)) return candidate
+      } catch {}
+    }
+  }
+  return null
+}
+
+const bunBinaryPath = resolveBunBinary()
+
+if (bunBinaryPath === null) {
+  const win32 = process.platform === 'win32'
   console.error([
     '',
     '\x1b[1;31m❌ bun is not installed or not in PATH.\x1b[0m',
@@ -39,11 +73,23 @@ if (!checkBunAvailable()) {
     'Nexus Code requires bun >= 1.3.5 as its runtime.',
     '',
     'Install bun:',
-    '  \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+    win32
+      ? '  \x1b[1mnpm install -g bun\x1b[0m   (Windows)\n  \x1b[1mpowershell -c "irm bun.sh/install.ps1 | iex"\x1b[0m'
+      : '  \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
     '',
-    'After installation, restart your terminal or run:',
-    '  \x1b[1msource ~/.bashrc\x1b[0m  (bash)',
-    '  \x1b[1msource ~/.zshrc\x1b[0m   (zsh)',
+    win32
+      ? [
+          'If bun is installed but not found, add these to your PATH (Settings → System → Environment Variables):',
+          `  \x1b[1m%USERPROFILE%\\.bun\\bin\x1b[0m`,
+          `  \x1b[1m%APPDATA%\\npm\\node_modules\\bun\\bin\x1b[0m`,
+          '',
+          'Then restart your terminal and try again.',
+        ].join('\n')
+      : [
+          'After installation, restart your terminal or run:',
+          '  \x1b[1msource ~/.bashrc\x1b[0m  (bash)',
+          '  \x1b[1msource ~/.zshrc\x1b[0m   (zsh)',
+        ].join('\n'),
     '',
     'Then try: \x1b[1mnexus\x1b[0m',
     '',
@@ -189,7 +235,10 @@ process.env.CLAUDE_CONVERSATION_ID ||= randomUUID()
 process.env.CLAUDE_CODE_FORCE_FULL_LOGO = '1'
 
 // --- Launch ---
-const bun = process.env.BUN_BINARY || 'bun'
+// spawn the resolved absolute path — never a bare name, so Windows
+// npm-shim (extensionless shell script) can't be picked up by mistake
+// and .exe/.cmd resolution doesn't depend on PATH ordering.
+const bun = bunBinaryPath
 const userArgs = process.argv.slice(2)
 const hasPermissionFlag = userArgs.some(a =>
   a.startsWith('--permission-mode') || a === '--dangerously-skip-permissions'
@@ -215,6 +264,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 child.on('error', (err) => {
   if (err.code === 'ENOENT') {
+    const win32 = process.platform === 'win32'
     console.error([
       '',
       '\x1b[1;31m❌ Failed to launch bun runtime.\x1b[0m',
@@ -222,7 +272,9 @@ child.on('error', (err) => {
       `Reason: ${err.message}`,
       '',
       'This usually means bun was removed or the PATH changed after Nexus was installed.',
-      'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+      win32
+        ? 'Reinstall bun: \x1b[1mnpm install -g bun\x1b[0m  (Windows)'
+        : 'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
       '',
     ].join('\n'))
   } else {
