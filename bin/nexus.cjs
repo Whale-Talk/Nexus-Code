@@ -192,7 +192,7 @@ process.stdin.on("end", () => {
 
     let line = \`\${G}🤖 \${model}\${R} \${cwLabel}\`;
     if (dir) line += \` | 📁 \${dir}\`;
-    if (pct > 0 || cur > 0) line += \` | \${C}⚡️ \${pct}% · \${curLabel} tokens\${R}\`;
+    line += \` | \${C}⚡️ \${pct}% · \${curLabel} tokens\${R}\`;
     if (five !== undefined) line += \` | \${O}5h:\${Math.round(five)}%\${R}\`;
     if (seven !== undefined) line += \` | \${O}7d:\${Math.round(seven)}%\${R}\`;
     console.log(line);
