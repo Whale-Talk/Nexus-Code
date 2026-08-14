@@ -1,6 +1,10 @@
 import pkg from '../package.json'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { dirname, extname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
+
+// ESM 无内置 __dirname — 本文件位于项目根的 src/ 下
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 type MacroConfig = {
   VERSION: string
@@ -66,8 +70,12 @@ function hasResolvableTarget(basePath: string): boolean {
 
 function collectMissingRelativeImports(): MissingImport[] {
   const files: string[] = []
-  scanFiles(resolve('src'), files)
-  scanFiles(resolve('vendor'), files)
+  // 扫描 Nexus 自身的 src/vendor（项目根 = 本文件向上两级），
+  // 而非 process.cwd()——否则在任意项目目录启动会把用户项目的
+  // src 误判为 Nexus 源码（如 PX4 的 pymavlink 报 missing imports）。
+  const projectRoot = resolve(__dirname, '..')
+  scanFiles(join(projectRoot, 'src'), files)
+  scanFiles(join(projectRoot, 'vendor'), files)
   const missing: MissingImport[] = []
   const seen = new Set<string>()
   const pattern =
@@ -131,8 +139,9 @@ if (missingImports.length > 0) {
   console.log(`missing relative imports: ${missingImports.length}`)
   console.log('')
   console.log('Top missing modules:')
+  const projectRoot = resolve(__dirname, '..')
   for (const item of missingImports.slice(0, 20)) {
-    console.log(`- ${item.importer.replace(`${process.cwd()}/`, '')} -> ${item.specifier}`)
+    console.log(`- ${item.importer.replace(`${projectRoot}/`, '')} -> ${item.specifier}`)
   }
   console.log('')
   console.log('The original app entry is still blocked by missing restored sources.')
