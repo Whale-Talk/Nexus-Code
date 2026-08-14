@@ -44,15 +44,21 @@ function bunSearchDirs() {
  * Resolve the bun executable to an absolute path spawnable via child_process.
  * BUN_BINARY semantics: absolute path → used as-is; bare name → resolved via
  * PATH + common install dirs with platform-appropriate extensions.
+ *
+ * Loop order is candidates-outer × dirs-inner: a bun.exe in ANY directory
+ * beats a bun.cmd in an EARLIER PATH directory. (v1.0.7's dirs-outer order
+ * let %APPDATA%\npm\bun.cmd shadow node_modules\bun\bin\bun.exe → spawn EINVAL.)
  * Returns null when no executable is found.
  */
 function resolveBunBinary() {
   const configured = process.env.BUN_BINARY || 'bun'
-  const bases = isAbsolute(configured) ? [configured] : bunCandidateNames(configured)
-  const dirs = isAbsolute(configured) ? [''] : bunSearchDirs()
-  for (const dir of dirs) {
-    for (const base of bases) {
-      const candidate = dir ? join(dir, base) : base
+  if (isAbsolute(configured)) {
+    try { return existsSync(configured) ? configured : null } catch { return null }
+  }
+  const dirs = bunSearchDirs()
+  for (const base of bunCandidateNames(configured)) {
+    for (const dir of dirs) {
+      const candidate = join(dir, base)
       try {
         if (existsSync(candidate)) return candidate
       } catch {}
@@ -252,6 +258,10 @@ const child = spawn(bun, args, {
   cwd: originalCwd,
   env: process.env,
   stdio: 'inherit',
+  // .cmd shim 兜底: Windows 上 CreateProcess 无法直接执行 .cmd，
+  // 需要经 cmd.exe 包装（Node 的 shell 模式会自动转义参数）。
+  // 循环反转后 .cmd 只在完全没有 bun.exe 时才命中，属最后手段。
+  shell: process.platform === 'win32' && /\.cmd$/i.test(bun),
 })
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
