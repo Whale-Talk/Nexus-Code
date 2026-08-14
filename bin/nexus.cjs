@@ -167,6 +167,42 @@ if (!existsSync(settingsPath)) {
   }
 }
 
+// --- Default statusline (POSIX only) ---
+// 未配置 statusLine 时写入默认命令（显示模型/目录/上下文用量），
+// 否则状态栏不渲染。Windows 原生不适用 sh 脚本，留给 statusline-setup 配置。
+const STATUSLINE_COMMAND_PATH = join(configDir, 'statusline-command.sh')
+const STATUSLINE_COMMAND = `#!/bin/sh
+# Nexus 默认状态栏 — node 解析 stdin JSON（无 jq 依赖）
+node -e '
+let data = "";
+process.stdin.on("data", c => data += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(data);
+    const model = j.model?.display_name ?? "";
+    const dir = (j.workspace?.current_dir ?? "").split("/").pop();
+    const pct = Math.round(j.context_window?.used_percentage ?? 0);
+    console.log(\`🤖 \${model} | 📁 \${dir} | ⚡️ \${pct}%\`);
+  } catch {}
+});
+'
+`
+if (process.platform !== 'win32') {
+  try {
+    const current = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    if (!current.statusLine) {
+      writeFileSync(STATUSLINE_COMMAND_PATH, STATUSLINE_COMMAND, { mode: 0o755 })
+      current.statusLine = {
+        type: 'command',
+        command: STATUSLINE_COMMAND_PATH,
+      }
+      writeFileSync(settingsPath, JSON.stringify(current, null, 2) + '\n', { mode: 0o600 })
+    }
+  } catch {
+    // best-effort: statusline 失败不阻塞启动
+  }
+}
+
 // --- Auth: resolve API key (NEXUS_API_KEY, with backward compat) ---
 function resolveApiKey() {
   try {
