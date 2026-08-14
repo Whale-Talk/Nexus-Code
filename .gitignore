@@ -22,3 +22,5 @@ dist-check/proxy/
 
 # Local proxy scripts (may contain API keys)
 proxy/
+# ripgrep 二进制（从 claude-agent-sdk vendor 复制，不提交）
+vendor/ripgrep/
