@@ -5,6 +5,15 @@
 
 ---
 
+## [1.0.9] - 2026-08-14
+
+### 修复
+- **默认状态栏自动写入**：`statusLine` 未配置时状态栏完全不渲染（WSL 本地只显示权限 footer）。
+  launcher 现在自动写入 `~/.nexus/statusline-command.sh`（node 解析 stdin JSON，无 jq 依赖）
+  + settings.json 的 statusLine 条目。Windows 跳过（sh 不兼容，由 statusline-setup 配置）
+
+---
+
 ## [1.0.8] - 2026-08-14
 
 ### 修复
@@ -191,6 +200,7 @@
 | 1.0.6 | 2026-08-13 | Windows 原生环境适配（bun 定位 + PATH） |
 | 1.0.7 | 2026-08-13 | Windows bun 候选顺序修复（shim 遮蔽） |
 | 1.0.8 | 2026-08-14 | Windows 跨目录遮蔽修复（spawn EINVAL） |
+| 1.0.9 | 2026-08-14 | 默认状态栏自动写入 |
 
 ## 附录: 文档索引
 
