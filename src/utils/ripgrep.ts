@@ -4,6 +4,7 @@ import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
+import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { isInBundledMode } from './bundledMode.js'
 import { logForDebugging } from './debug.js'
@@ -55,7 +56,22 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     }
   }
 
-  const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
+  // 项目根 = src/utils 向上两级（dev 模式直跑 src；发布包同为 包根/src/utils）
+  const projectRoot = path.resolve(__dirname, '..', '..')
+  // 候选根目录: 项目自部署 vendor/ → npm 依赖 claude-agent-sdk 自带 vendor
+  const rgRootCandidates = [
+    path.join(projectRoot, 'vendor', 'ripgrep'),
+    path.join(
+      projectRoot,
+      'node_modules',
+      '@anthropic-ai',
+      'claude-agent-sdk',
+      'vendor',
+      'ripgrep',
+    ),
+  ]
+  const rgRoot =
+    rgRootCandidates.find(r => existsSync(r)) ?? rgRootCandidates[0]
   const command =
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
