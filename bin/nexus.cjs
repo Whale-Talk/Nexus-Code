@@ -172,17 +172,30 @@ if (!existsSync(settingsPath)) {
 // 否则状态栏不渲染。Windows 原生不适用 sh 脚本，留给 statusline-setup 配置。
 const STATUSLINE_COMMAND_PATH = join(configDir, 'statusline-command.sh')
 const STATUSLINE_COMMAND = `#!/bin/sh
-# Nexus 默认状态栏 — node 解析 stdin JSON（无 jq 依赖）
+# Nexus 默认状态栏 — 绿色模型名+上下文窗口 · 青色当前用量 · 橙色限额
 node -e '
 let data = "";
 process.stdin.on("data", c => data += c);
 process.stdin.on("end", () => {
   try {
     const j = JSON.parse(data);
+    const G = "\\x1b[32m", C = "\\x1b[36m", O = "\\x1b[33m", R = "\\x1b[0m";
     const model = j.model?.display_name ?? "";
-    const dir = (j.workspace?.current_dir ?? "").split("/").pop();
+    const cw = j.context_window?.context_window_size ?? 0;
+    const cwLabel = cw >= 1000000 ? \`\${Math.round(cw/1000000)}M\` : \`\${Math.round(cw/1000)}k\`;
+    const cur = j.context_window?.current_usage ?? 0;
+    const curLabel = cur >= 1000000 ? \`\${(cur/1000000).toFixed(1)}M\` : \`\${(cur/1000).toFixed(1)}k\`;
     const pct = Math.round(j.context_window?.used_percentage ?? 0);
-    console.log(\`🤖 \${model} | 📁 \${dir} | ⚡️ \${pct}%\`);
+    const dir = (j.workspace?.current_dir ?? "").split("/").pop();
+    const five = j.rate_limits?.five_hour?.used_percentage;
+    const seven = j.rate_limits?.seven_day?.used_percentage;
+
+    let line = \`\${G}🤖 \${model}\${R} \${cwLabel}\`;
+    if (dir) line += \` | 📁 \${dir}\`;
+    if (pct > 0 || cur > 0) line += \` | \${C}⚡️ \${pct}% · \${curLabel} tokens\${R}\`;
+    if (five !== undefined) line += \` | \${O}5h:\${Math.round(five)}%\${R}\`;
+    if (seven !== undefined) line += \` | \${O}7d:\${Math.round(seven)}%\${R}\`;
+    console.log(line);
   } catch {}
 });
 '
