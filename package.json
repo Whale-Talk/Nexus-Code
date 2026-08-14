@@ -1,6 +1,6 @@
 {
   "name": "@while_talk/nexus-code",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "private": false,
   "description": "Nexus — Claude Code restored with multi-agent capabilities and configurable backend.",
   "license": "MIT",
