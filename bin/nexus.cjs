@@ -17,15 +17,14 @@ const { randomUUID } = require('crypto')
 //   - real binary is node_modules/bun/bin/bun.exe (NOT on PATH)
 //   - npm dir contains an extensionless shell shim named `bun` — existsSync
 //     finds it but spawn cannot execute it
-//   - so on win32 we only accept .exe/.cmd; elsewhere the bare name.
+//   - so on win32 executable extensions come FIRST (.exe > .cmd) and the bare
+//     name LAST — otherwise the shim shadows the real binary whenever
+//     %APPDATA%\npm precedes node_modules\bun\bin on PATH (the default).
 function bunCandidateNames(base) {
-  const names = [base]
   if (process.platform === 'win32') {
-    // PATHEXT-style resolution — prefer .exe over .cmd (spawn handles both,
-    // but .exe avoids the cmd.exe wrapper)
-    names.push(`${base}.exe`, `${base}.cmd`)
+    return [`${base}.exe`, `${base}.cmd`, base]
   }
-  return names
+  return [base]
 }
 
 function bunSearchDirs() {
@@ -265,16 +264,31 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 child.on('error', (err) => {
   if (err.code === 'ENOENT') {
     const win32 = process.platform === 'win32'
+    // 区分两种情况：解析到的路径是裸名（无扩展名 shim，spawn 无法执行）
+    // 还是 bun 真的不存在。裸名命中通常意味着 PATH 里只有 npm shim，
+    // 需要把 bun.exe 所在目录加入 PATH 或设置 BUN_BINARY。
+    const isBareName =
+      win32 && !/\.(exe|cmd)$/i.test(bunBinaryPath || '')
     console.error([
       '',
       '\x1b[1;31m❌ Failed to launch bun runtime.\x1b[0m',
       '',
       `Reason: ${err.message}`,
+      isBareName
+        ? `Located '${bunBinaryPath}', but Windows cannot execute extensionless shims.`
+        : 'bun was not found or was removed after Nexus was installed.',
       '',
-      'This usually means bun was removed or the PATH changed after Nexus was installed.',
-      win32
-        ? 'Reinstall bun: \x1b[1mnpm install -g bun\x1b[0m  (Windows)'
-        : 'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
+      isBareName
+        ? [
+            'Fix options:',
+            '  1. Add the real binary dir to PATH:',
+            '     \x1b[1m%APPDATA%\\npm\\node_modules\\bun\\bin\x1b[0m',
+            '  2. Or set BUN_BINARY to the absolute path:',
+            '     \x1b[1msetx BUN_BINARY "%APPDATA%\\npm\\node_modules\\bun\\bin\\bun.exe"\x1b[0m',
+          ].join('\n')
+        : win32
+          ? 'Reinstall bun: \x1b[1mnpm install -g bun\x1b[0m  (Windows)'
+          : 'Reinstall bun: \x1b[1mcurl -fsSL https://bun.sh/install | bash\x1b[0m',
       '',
     ].join('\n'))
   } else {
