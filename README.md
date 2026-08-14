@@ -80,7 +80,7 @@ bun --version   # 应输出 1.3.x
 > echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
-**Windows 原生**（v1.0.5+ 支持），安装 bun：
+**Windows 原生**（v1.0.6 起支持），安装 bun：
 
 ```powershell
 npm install -g bun
@@ -106,7 +106,7 @@ bun --version   # 应输出 1.3.x
 
 ```bash
 # 第 1 步：克隆固定发布分支
-git clone --depth 1 --branch release/v1.0.5 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
+git clone --depth 1 --branch release/v1.0.6 https://github.com/NexusAir-Technologies/agent_NexusCode.git ~/nexus
 cd ~/nexus
 
 # 第 2 步：安装依赖（约 15 秒）
@@ -119,7 +119,7 @@ bun link
 验证：
 
 ```bash
-nexus --version   # 应输出 1.0.5
+nexus --version   # 应输出 1.0.6
 ```
 
 ### 2. 配置 API 密钥
