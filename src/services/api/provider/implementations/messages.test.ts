@@ -108,3 +108,42 @@ test('Messages reads fragmented SSE, thinking signatures, tool calls, and usage 
     expect(events.at(-2)).toMatchObject({ type:'message_delta', delta:{stop_reason:'tool_use'}, usage:{output_tokens:7} })
   } finally { await server.stop(true) }
 })
+
+const officialCases = [
+  { baseURL: 'https://api.deepseek.com/anthropic', model: 'deepseek-flash',
+    disabled: { type: 'disabled' }, enabled: { type: 'enabled' }, effort: 'high', tokenHeader: 'x-api-key' },
+  { baseURL: 'https://api.moonshot.ai/anthropic', model: 'kimi-k3.1-pro',
+    disabled: undefined, enabled: undefined, effort: 'high', always: true, tokenHeader: 'authorization' },
+  { baseURL: 'https://api.xiaomimimo.com/anthropic', model: 'mimo-v2.6-pro',
+    disabled: { type: 'disabled' }, enabled: { type: 'enabled' }, effort: undefined, tokenHeader: 'authorization' },
+  { baseURL: 'https://open.bigmodel.cn/api/anthropic', model: 'glm-5.3',
+    disabled: undefined, enabled: undefined, effort: undefined, always: true, tokenHeader: 'x-api-key' },
+] as const
+
+for (const fixture of officialCases) {
+  test(`Messages applies ${fixture.model} controls to both request paths`, async () => {
+    const requests: { body: Record<string, unknown>; headers: Headers }[] = []
+    const transport = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(fixture.baseURL + '/v1/messages')
+      const body = JSON.parse(String(init?.body))
+      requests.push({ body, headers: new Headers(init?.headers) })
+      const message = { id: 'sample', type: 'message', role: 'assistant', model: fixture.model, content: [], usage }
+      if (!body.stream) return Response.json(message)
+      const events = [{ type: 'message_start', message }, { type: 'message_stop' }]
+      return new Response(events.map(event => 'data: ' + JSON.stringify(event) + '\n\n').join(''),
+        { headers: { 'content-type': 'text/event-stream' } })
+    }, globalThis.fetch)
+    const adapter = createMessagesAdapter({ baseURL: fixture.baseURL, apiKey: 'test-only', fetch: transport })
+    const request = { ...baseRequest, model: fixture.model, effort: 'medium', temperature: 0.5 } as const
+    await adapter.generateText({ ...request, reasoning: { mode: 'off' } })
+    await Array.fromAsync(await adapter.streamText({ ...request, reasoning: { mode: 'budget', tokens: 256 } }))
+    const [off, on] = requests
+    expect(off!.body.thinking).toEqual(fixture.disabled)
+    expect(on!.body.thinking).toEqual(fixture.enabled)
+    expect(off!.body.output_config).toEqual('always' in fixture && fixture.effort ? { effort: fixture.effort } : undefined)
+    expect(on!.body.output_config).toEqual(fixture.effort ? { effort: fixture.effort } : undefined)
+    expect(off!.headers.get(fixture.tokenHeader)).toBe(fixture.tokenHeader === 'authorization' ? 'Bearer test-only' : 'test-only')
+    expect(off!.headers.get(fixture.tokenHeader === 'authorization' ? 'x-api-key' : 'authorization')).toBeNull()
+    expect(on!.body.temperature).toBeUndefined()
+  })
+}

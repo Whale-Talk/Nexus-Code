@@ -7,7 +7,7 @@ import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/index.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import {
-  convertEffortValueToLevel, getDefaultEffortForModel, modelSupportsEffort, modelSupportsMaxEffort,
+  convertEffortValueToLevel, getDefaultEffortForModel, getSupportedEffortLevels,
   resolvePickerEffortPersistence, toPersistableEffort, type EffortLevel,
 } from '../utils/effort.js'
 import { isFastModeAvailable, isFastModeCooldown, isFastModeEnabled } from '../utils/fastMode.js'
@@ -21,6 +21,7 @@ import { Byline } from './design-system/Byline.js'
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js'
 import { Pane } from './design-system/Pane.js'
 import { effortLevelToSymbol } from './EffortIndicator.js'
+import { clampReasoningEffort } from '../services/api/provider/reasoning.js'
 import { RoleModelSettings } from './RoleModelSettings.js'
 
 export type Props = {
@@ -80,19 +81,17 @@ function SessionModelPicker({
   const focusedOption = options.find(option => optionId(option) === focused)
   const focusedSetting = focusedOption?.role ?? focusedOption?.value
   const resolved = focusedSetting ? parseUserSpecifiedModel(focusedSetting) : getDefaultMainLoopModel()
-  const supportsEffort = !!focusedOption && modelSupportsEffort(resolved)
-  const supportsMax = supportsEffort && modelSupportsMaxEffort(resolved)
+  const levels = focusedOption ? getSupportedEffortLevels(resolved) : []
   const defaultEffort = defaultEffortFor(resolved)
   const [effort, setEffort] = useState<EffortLevel | undefined>(() =>
     effortValue === undefined ? undefined : convertEffortValueToLevel(effortValue),
   )
   const [changedEffort, setChangedEffort] = useState(false)
   const selectedEffort = effort ?? defaultEffort
-  const displayEffort = selectedEffort === 'max' && !supportsMax ? 'high' : selectedEffort
+  const displayEffort = clampReasoningEffort(selectedEffort, levels)
 
   function changeEffort(offset: number) {
-    if (!supportsEffort) return
-    const levels: EffortLevel[] = supportsMax ? ['low', 'medium', 'high', 'max'] : ['low', 'medium', 'high']
+    if (!displayEffort) return
     const index = levels.indexOf(displayEffort)
     setEffort(levels[(index + offset + levels.length) % levels.length])
     setChangedEffort(true)
@@ -110,14 +109,14 @@ function SessionModelPicker({
     const setting = option.role ?? option.value
     const model = setting ? parseUserSpecifiedModel(setting) : getDefaultMainLoopModel()
     const level = effort ?? defaultEffortFor(model)
-    const pickedEffort = changedEffort && modelSupportsEffort(model)
+    const pickedEffort = changedEffort ? clampReasoningEffort(level, getSupportedEffortLevels(model)) : undefined
     logEvent('nexus_model_command_menu_effort', {
-      effort: level as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      effort: (pickedEffort ?? level) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
     if (!skipSettingsWrite) {
       const priorPersisted = getSettingsForSource('userSettings')?.effortLevel
-      const next = resolvePickerEffortPersistence(level, defaultEffortFor(model),
-        priorPersisted, pickedEffort)
+      const next = resolvePickerEffortPersistence(pickedEffort ?? level, defaultEffortFor(model),
+        priorPersisted, pickedEffort !== undefined)
       const persistable = toPersistableEffort(next)
       if (pickedEffort && persistable !== priorPersisted &&
         (persistable === 'low' || persistable === 'medium' || persistable === 'high' || persistable === 'max')) {
@@ -126,7 +125,7 @@ function SessionModelPicker({
       setAppState(prev => ({ ...prev, effortValue: next }))
     }
     // Save the role itself. Its channel binding can change while the session is open.
-    onSelect(setting, pickedEffort ? level : undefined)
+    onSelect(setting, pickedEffort)
   }
 
   const compact = columns < 68
@@ -142,7 +141,7 @@ function SessionModelPicker({
       defaultValue={current ? optionId(current) : undefined} onFocus={setFocused}
       onChange={select} onCancel={onCancel} layout={compact ? 'compact-vertical' : 'compact'}
       visibleOptionCount={Math.max(3, Math.min(8, Math.floor((rows - 10) / (compact ? 2 : 1))))} />
-    {supportsEffort && <Box marginTop={1}>
+    {displayEffort && <Box marginTop={1}>
       <Text dimColor>{effortLevelToSymbol(displayEffort)} {capitalize(displayEffort)} 思考强度
         {displayEffort === defaultEffort ? '（默认）' : ''} · ← → 调整</Text>
     </Box>}

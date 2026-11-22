@@ -3,10 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getContextWindowForModel, getModelMaxOutputTokens } from './context.js'
-import { modelSupportsEffort, modelSupportsMaxEffort } from './effort.js'
+import { getSupportedEffortLevels, modelSupportsEffort, modelSupportsMaxEffort } from './effort.js'
 import { isFastModeSupportedByModel } from './fastMode.js'
 import { calculateCostFromTokens, getModelPricingString } from './modelCost.js'
-import { modelSupportsAdaptiveThinking, modelSupportsThinking } from './thinking.js'
+import { getThinkingAvailability, modelSupportsAdaptiveThinking, modelSupportsThinking } from './thinking.js'
+import { SettingsSchema } from './settings/types.js'
 import { modelSupportsToolReference } from './toolSearch.js'
 
 test('two channels using the same model ID keep separate limits, capabilities and prices', () => {
@@ -27,6 +28,10 @@ test('two channels using the same model ID keep separate limits, capabilities an
         id, contextWindow: 65536, maxOutputTokens: 2048,
         capabilities: { thinking: false, effort: false, fastMode: false, toolReference: false },
       }] },
+      official: { protocol: 'openai-compatible', baseURL: 'https://api.z.ai/api/paas/v4',
+        models: [{ id: 'glm-5.3' }, { id: 'glm-5.2' }] },
+      relay: { protocol: 'openai-compatible', baseURL: 'https://relay.example/v1',
+        models: [{ id: 'glm-5.3' }, { id: 'glm-5.2', reasoningDialect: 'glm' }] },
     },
   }
   try {
@@ -40,6 +45,11 @@ test('two channels using the same model ID keep separate limits, capabilities an
     expect(modelSupportsAdaptiveThinking(alpha)).toBe(false)
     expect(modelSupportsMaxEffort(alpha)).toBe(true)
     expect(modelSupportsEffort(beta)).toBe(false)
+    expect(getThinkingAvailability('official::glm-5.3')).toBe('always')
+    expect(getSupportedEffortLevels('official::glm-5.3')).toEqual(['low', 'high', 'max'])
+    expect(getThinkingAvailability('relay::glm-5.3')).toBe('unsupported')
+    expect(getThinkingAvailability('relay::glm-5.2')).toBe('toggle')
+    expect(getSupportedEffortLevels('relay::glm-5.2')).toEqual(['high', 'max'])
     expect(isFastModeSupportedByModel('quark')).toBe(false)
     expect(isFastModeSupportedByModel('atom')).toBe(true)
     expect(modelSupportsToolReference(alpha)).toBe(true)
@@ -53,4 +63,8 @@ test('two channels using the same model ID keep separate limits, capabilities an
     else process.env.NEXUS_CONFIG_DIR = previous
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('max effort is saved in production settings for models that offer it', () => {
+  expect(SettingsSchema().parse({ effortLevel: 'max' }).effortLevel).toBe('max')
 })

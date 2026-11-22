@@ -113,7 +113,7 @@ import { calculateUSDCost } from 'src/utils/modelCost.js'
 import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
-  modelSupportsThinking,
+  getThinkingAvailability,
   type ThinkingConfig,
 } from 'src/utils/thinking.js'
 import {
@@ -226,9 +226,9 @@ async function createProviderStream(
   params: RequestParams,
   opts: { signal?: AbortSignal },
 ): Promise<ProviderStreamResult> {
-  const { adapter, model, source } = resolveProviderRoute(params.model)
+  const { adapter, model, source, reasoningDialect } = resolveProviderRoute(params.model)
   const stream = await adapter.streamText(
-    { ...params, model },
+    { ...params, model, reasoningDialect },
     opts.signal,
   )
   const iterator = stream[Symbol.asyncIterator]()
@@ -281,9 +281,9 @@ async function createProviderRequest(
   params: RequestParams,
   opts: { signal: AbortSignal },
 ): Promise<ProviderAssistantMessage> {
-  const { adapter, model, source } = resolveProviderRoute(normalizeModelStringForAPI(params.model))
+  const { adapter, model, source, reasoningDialect } = resolveProviderRoute(normalizeModelStringForAPI(params.model))
   const result = await adapter.generateText(
-    { ...params, model },
+    { ...params, model, reasoningDialect },
     opts.signal,
   )
   tagResponseRoute(result.data, source)
@@ -393,6 +393,7 @@ export async function verifyApiKey(
       async () => route.adapter,
       adapter => adapter.generateText({
         model: route.model,
+        reasoningDialect: route.reasoningDialect,
         messages: [{ role: 'user', content: 'test' }],
         maxOutputTokens: 1,
         reasoning: { mode: 'off' },
@@ -1234,13 +1235,16 @@ async function* queryModel(
       options.maxOutputTokensOverride ||
       getMaxOutputTokensForModel(options.model)
 
-    const hasThinking =
+    const wantsThinking =
       thinkingConfig.type !== 'disabled' &&
       !isEnvTruthy(process.env.NEXUS_DISABLE_THINKING)
+    const thinkingAvailability = getThinkingAvailability(options.model)
     let reasoning: ModelRequest['reasoning']
 
-    // Apply only reasoning features supported by this channel/model pair.
-    if (hasThinking && modelSupportsThinking(options.model)) {
+    // Omitting thinking lets the service apply its default, which may be on.
+    if (thinkingAvailability === 'toggle' && !wantsThinking) {
+      reasoning = { mode: 'off' }
+    } else if (thinkingAvailability === 'toggle') {
       if (
         !isEnvTruthy(process.env.NEXUS_DISABLE_ADAPTIVE_THINKING) &&
         modelSupportsAdaptiveThinking(options.model)
@@ -1279,7 +1283,7 @@ async function* queryModel(
     }
     // Only send temperature when thinking is disabled — the API requires
     // temperature: 1 when thinking is enabled, which is already the default.
-    const temperature = !hasThinking
+    const temperature = !wantsThinking && thinkingAvailability !== 'always'
       ? (options.temperatureOverride ?? 1)
       : undefined
 

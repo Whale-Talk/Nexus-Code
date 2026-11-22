@@ -5,6 +5,7 @@ import { z } from 'zod/v4'
 import { getNexusConfigHomeDir } from '../../../utils/envUtils.js'
 import { MODEL_ROLES as roles, type ModelRole } from '../../../utils/model/roles.js'
 import { updateUserJsonAtomically } from '../../../utils/settings/atomicUserJson.js'
+import { reasoningDialects } from './reasoning.js'
 
 const protocolSchema = z.enum(['messages', 'openai-compatible'])
 export type ProviderKind = z.infer<typeof protocolSchema>
@@ -59,6 +60,7 @@ export const channelSchema = z.looseObject({
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
     capabilities: capabilitySchema.optional(),
+    reasoningDialect: z.enum(reasoningDialects).optional(),
     pricing: pricingSchema.optional(),
   })).min(1),
 })

@@ -88,7 +88,8 @@ import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { findThinkingTriggerPositions, getRainbowColor, getThinkingAvailability, getThinkingToggleUnavailableReason, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { isEnvTruthy } from '../../utils/envUtils.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
 import { BridgeDialog } from '../BridgeDialog.js';
@@ -1337,8 +1338,13 @@ function PromptInput({
 
   // Handler for chat:thinkingToggle - toggle thinking mode
   const handleThinkingToggle = useCallback(() => {
+    const unavailable = getThinkingToggleUnavailableReason(mainLoopModel);
+    if (unavailable) {
+      addNotification({ key: 'thinking-unavailable', text: unavailable, priority: 'immediate', timeoutMs: 3000 });
+      return;
+    }
     setShowThinkingToggle(prev => !prev);
-  }, []);
+  }, [addNotification, mainLoopModel]);
 
   // Handler for chat:cycleMode - cycle through permission modes
   const handleCycleMode = useCallback(() => {
@@ -1857,7 +1863,9 @@ function PromptInput({
   // Show effort notification on startup and when effort changes.
   // Suppressed in brief/assistant mode — the value reflects the local
   // client's effort, not the connected agent's.
-  const effortNotificationText = briefOwnsGap ? undefined : getEffortNotificationText(effortValue, mainLoopModel);
+  const thinkingIsOff = getThinkingAvailability(mainLoopModel) === 'toggle' &&
+    (thinkingEnabled === false || isEnvTruthy(process.env.NEXUS_DISABLE_THINKING));
+  const effortNotificationText = briefOwnsGap || thinkingIsOff ? undefined : getEffortNotificationText(effortValue, mainLoopModel);
   useEffect(() => {
     if (!effortNotificationText) {
       removeNotification('effort-level');
@@ -1969,7 +1977,7 @@ function PromptInput({
     addNotification({
       key: 'thinking-toggled-hotkey',
       jsx: <Text color={enabled ? 'suggestion' : undefined} dimColor={!enabled}>
-            Thinking {enabled ? 'on' : 'off'}
+            思考模式已{enabled ? '开启' : '关闭'}
           </Text>,
       priority: 'immediate',
       timeoutMs: 3000
@@ -1981,11 +1989,11 @@ function PromptInput({
 
   // Memoize the thinking toggle element
   const thinkingToggleElement = useMemo(() => {
-    if (!showThinkingToggle) return null;
+    if (!showThinkingToggle || getThinkingToggleUnavailableReason(mainLoopModel)) return null;
     return <Box flexDirection="column" marginTop={1}>
         <ThinkingToggle currentValue={thinkingEnabled ?? true} onSelect={handleThinkingSelect} onCancel={handleThinkingCancel} isMidConversation={messages.some(m => m.type === 'assistant')} />
       </Box>;
-  }, [showThinkingToggle, thinkingEnabled, handleThinkingSelect, handleThinkingCancel, messages.length]);
+  }, [showThinkingToggle, thinkingEnabled, handleThinkingSelect, handleThinkingCancel, messages.length, mainLoopModel]);
 
   // Portal dialog to DialogOverlay in fullscreen so it escapes the bottom
   // slot's overflowY:hidden clip (same pattern as SuggestionsOverlay).

@@ -2,7 +2,8 @@
 import type { Theme } from './theme.js'
 import { feature } from 'bun:bundle'
 import { getFeatureValue } from '../services/analytics/featureFlags.js'
-import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getModelCapabilityOverride, getModelReasoningProfile, hasModelThinkingToggle } from './model/modelSupportOverrides.js'
+import { isEnvTruthy } from './envUtils.js'
 import { getSettingsWithErrors } from './settings/settings.js'
 
 export type ThinkingConfig =
@@ -89,6 +90,19 @@ export function modelSupportsThinking(model: string): boolean {
 
 export function modelSupportsAdaptiveThinking(model: string): boolean {
   return getModelCapabilityOverride(model, 'adaptiveThinking') === true
+}
+
+export function getThinkingAvailability(model: string): 'toggle' | 'always' | 'unsupported' {
+  if (getModelReasoningProfile(model)?.thinking === 'always' ||
+      getModelCapabilityOverride(model, 'alwaysOnThinking') === true) return 'always'
+  return modelSupportsThinking(model) && hasModelThinkingToggle(model) ? 'toggle' : 'unsupported'
+}
+
+export function getThinkingToggleUnavailableReason(model: string): string | undefined {
+  const availability = getThinkingAvailability(model)
+  if (availability === 'always') return '始终开启（模型要求）'
+  if (availability === 'unsupported') return '当前渠道未提供思考开关'
+  if (isEnvTruthy(process.env.NEXUS_DISABLE_THINKING)) return '已由环境变量关闭'
 }
 
 export function shouldEnableThinkingByDefault(): boolean {

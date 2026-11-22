@@ -123,7 +123,6 @@ const defaultSettings = {
     // 子代理模型由角色选定，兼容用户显式设置的 NEXUS_SUBAGENT_MODEL。
   },
   model: 'deepseek-v4-pro[1m]',
-  deepseek: { effort: 'max' },
 }
 
 
@@ -151,11 +150,6 @@ if (!existsSync(settingsPath)) {
         NEXUS_MODEL: configuredModel,
       },
       model: current.model ?? configuredModel,
-      // 写入 deepseek.effort 默认值，与回退逻辑一致，避免升级前后 effort 静默变化
-      deepseek: {
-        ...defaultSettings.deepseek,
-        ...(current.deepseek || {}),
-      },
     }
     if (JSON.stringify(current) !== JSON.stringify(merged)) {
       writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
@@ -260,12 +254,6 @@ const configuredKey = resolveApiKey()
 if (configuredKey) {
   process.env.NEXUS_API_KEY = configuredKey
 }
-
-// Effort
-const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
-// 回退与 defaultSettings.deepseek.effort 一致，避免同一机器升级前后 effort 静默变化
-const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || defaultSettings.deepseek.effort
-process.env.NEXUS_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
 
 // General env defaults
 process.env.DISABLE_TELEMETRY ||= '1'

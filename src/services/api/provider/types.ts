@@ -1,3 +1,5 @@
+import type { ReasoningDialect } from './reasoning.js'
+
 export interface TextContentBlock {
   type: 'text'
   text: string
@@ -102,6 +104,7 @@ export interface ModelRequest {
   tools?: ToolDefinition[]
   toolChoice?: ToolChoice
   reasoning?: { mode: 'budget'; tokens: number } | { mode: 'adaptive' | 'off' }
+  reasoningDialect?: ReasoningDialect
   outputFormat?: JSONOutputFormat
   effort?: 'low' | 'medium' | 'high' | 'max'
   userId?: string
