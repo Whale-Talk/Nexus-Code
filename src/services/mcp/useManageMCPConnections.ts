@@ -42,10 +42,7 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import {
-  dedupClaudeAiMcpServers,
-  doesEnterpriseMcpConfigExist,
-  filterMcpServersByPolicy,
-  getClaudeCodeMcpConfigs,
+  getNexusCodeMcpConfigs,
   isMcpServerDisabled,
   setMcpServerEnabled,
 } from 'src/services/mcp/config.js'
@@ -76,10 +73,6 @@ import {
   createChannelPermissionCallbacks,
   isChannelPermissionRelayEnabled,
 } from './channelPermissions.js'
-import {
-  clearClaudeAIMcpConfigsCache,
-  fetchClaudeAIMcpConfigsIfEligible,
-} from './claudeai.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
 import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
@@ -147,7 +140,7 @@ export function useManageMCPConnections(
   const store = useAppStateStore()
   const _authVersion = useAppState(s => s.authVersion)
   // Incremented by /reload-plugins (refreshActivePlugins) to pick up newly
-  // enabled plugin MCP servers. getClaudeCodeMcpConfigs() reads loadAllPlugins()
+  // enabled plugin MCP servers. getNexusCodeMcpConfigs() reads loadAllPlugins()
   // which has been cleared by refreshActivePlugins, so the effects below see
   // fresh plugin data on re-run.
   const _pluginReconnectKey = useAppState(s => s.mcp.pluginReconnectKey)
@@ -467,7 +460,7 @@ export function useManageMCPConnections(
             }
           }
 
-          // Channel push: notifications/claude/channel → enqueue().
+          // Channel push: notifications/nexus/channel → enqueue().
           // Gate decides whether to register the handler; connection stays
           // up either way (allowedMcpServers controls that).
           if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
@@ -478,7 +471,7 @@ export function useManageMCPConnections(
             )
             const entry = findChannelEntry(client.name, getAllowedChannels())
             // Plugin identifier for telemetry — log name@marketplace for any
-            // plugin-kind entry (same tier as tengu_plugin_installed, which
+            // plugin-kind entry (same tier as nexus_plugin_installed, which
             // logs arbitrary plugin_id+marketplace_name ungated). server-kind
             // names are MCP-server-name tier; those are opt-in-only elsewhere
             // (see isAnalyticsToolDetailsLoggingEnabled in metadata.ts) and
@@ -489,7 +482,7 @@ export function useManageMCPConnections(
                 : undefined
             // Skip capability-miss — every non-channel MCP server trips it.
             if (gate.action === 'register' || gate.kind !== 'capability') {
-              logEvent('tengu_mcp_channel_gate', {
+              logEvent('nexus_mcp_channel_gate', {
                 registered: gate.action === 'register',
                 skip_kind:
                   gate.action === 'skip'
@@ -510,9 +503,9 @@ export function useManageMCPConnections(
                     const { content, meta } = notification.params
                     logMCPDebug(
                       client.name,
-                      `notifications/claude/channel: ${content.slice(0, 80)}`,
+                      `notifications/nexus/channel: ${content.slice(0, 80)}`,
                     )
-                    logEvent('tengu_mcp_channel_message', {
+                    logEvent('nexus_mcp_channel_message', {
                       content_length: content.length,
                       meta_key_count: Object.keys(meta ?? {}).length,
                       entry_kind:
@@ -532,13 +525,13 @@ export function useManageMCPConnections(
                 )
                 // Permission-reply handler — separate event, separate
                 // capability. Only registers if the server declares
-                // claude/channel/permission (same opt-in check as the send
+                // nexus/channel/permission (same opt-in check as the send
                 // path in interactiveHandler.ts). Server parses the user's
                 // reply and emits {request_id, behavior}; no regex on our
                 // side, text in the general channel can't accidentally match.
                 if (
                   client.capabilities?.experimental?.[
-                    'claude/channel/permission'
+                    'nexus/channel/permission'
                   ] !== undefined
                 ) {
                   client.client.setNotificationHandler(
@@ -553,7 +546,7 @@ export function useManageMCPConnections(
                         ) ?? false
                       logMCPDebug(
                         client.name,
-                        `notifications/claude/channel/permission: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
+                        `notifications/nexus/channel/permission: ${request_id} → ${behavior} (${resolved ? 'matched pending' : 'no pending entry — stale or unknown ID'})`,
                       )
                     },
                   )
@@ -566,7 +559,7 @@ export function useManageMCPConnections(
                 // the gate says skip but the earlier handler keeps enqueuing.
                 // Map.delete — safe when never registered.
                 client.client.removeNotificationHandler(
-                  'notifications/claude/channel',
+                  'notifications/nexus/channel',
                 )
                 client.client.removeNotificationHandler(
                   CHANNEL_PERMISSION_METHOD,
@@ -597,7 +590,7 @@ export function useManageMCPConnections(
                     gate.kind === 'disabled'
                       ? 'Channels are not currently available'
                       : gate.kind === 'auth'
-                        ? 'Channels require claude.ai authentication · run /login'
+                        ? '此托管通知渠道已停用；可在 /mcp 连接服务。'
                         : gate.kind === 'policy'
                           ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
                           : gate.reason
@@ -634,21 +627,21 @@ export function useManageMCPConnections(
                   if (previousToolsPromise) {
                     previousToolsPromise.then(
                       (previousTools: Tool[]) => {
-                        logEvent('tengu_mcp_list_changed', {
+                        logEvent('nexus_mcp_list_changed', {
                           type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                           previousCount: previousTools.length,
                           newCount,
                         })
                       },
                       () => {
-                        logEvent('tengu_mcp_list_changed', {
+                        logEvent('nexus_mcp_list_changed', {
                           type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                           newCount,
                         })
                       },
                     )
                   } else {
-                    logEvent('tengu_mcp_list_changed', {
+                    logEvent('nexus_mcp_list_changed', {
                       type: 'tools' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                       newCount,
                     })
@@ -672,7 +665,7 @@ export function useManageMCPConnections(
                   client.name,
                   `Received prompts/list_changed notification, refreshing prompts`,
                 )
-                logEvent('tengu_mcp_list_changed', {
+                logEvent('nexus_mcp_list_changed', {
                   type: 'prompts' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
                 try {
@@ -710,7 +703,7 @@ export function useManageMCPConnections(
                   client.name,
                   `Received resources/list_changed notification, refreshing resources`,
                 )
-                logEvent('tengu_mcp_list_changed', {
+                logEvent('nexus_mcp_list_changed', {
                   type: 'resources' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
                 })
                 try {
@@ -766,14 +759,13 @@ export function useManageMCPConnections(
   // Re-runs on session change (/clear) and on /reload-plugins (pluginReconnectKey).
   // On plugin reload, also disconnects stale plugin MCP servers (scope 'dynamic')
   // that no longer appear in configs — prevents ghost tools from disabled plugins.
-  // Skip claude.ai dedup here to avoid blocking on the network fetch; the connect
   // useEffect below runs immediately after and dedups before connecting.
   const sessionId = getSessionId()
   useEffect(() => {
     async function initializeServersAsPending() {
       const { servers: existingConfigs, errors: mcpErrors } = isStrictMcpConfig
         ? { servers: {}, errors: [] }
-        : await getClaudeCodeMcpConfigs(dynamicMcpConfig)
+        : await getNexusCodeMcpConfigs(dynamicMcpConfig)
       const configs = { ...existingConfigs, ...dynamicMcpConfig }
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
@@ -854,37 +846,20 @@ export function useManageMCPConnections(
   ])
 
   // Load MCP configs and connect to servers
-  // Two-phase loading: Nexus Code configs first (fast), then claude.ai configs (may be slow)
   useEffect(() => {
     let cancelled = false
 
     async function loadAndConnectMcpConfigs() {
-      // Clear claude.ai MCP cache so we fetch fresh configs with current auth
-      // state. This is important when authVersion changes (e.g., after login/
-      // logout). Kick off the fetch now so it overlaps with loadAllPlugins()
-      // inside getClaudeCodeMcpConfigs; it's awaited only at the dedup step.
-      // Phase 2 below awaits the same promise — no second network call.
-      let claudeaiPromise: Promise<Record<string, ScopedMcpServerConfig>>
-      if (isStrictMcpConfig || doesEnterpriseMcpConfigExist()) {
-        claudeaiPromise = Promise.resolve({})
-      } else {
-        clearClaudeAIMcpConfigsCache()
-        claudeaiPromise = fetchClaudeAIMcpConfigsIfEligible()
-      }
-
-      // Phase 1: Load Nexus Code configs. Plugin MCP servers that duplicate a
-      // --mcp-config entry or a claude.ai connector are suppressed here so they
-      // don't connect alongside the connector in Phase 2.
-      const { servers: claudeCodeConfigs, errors: mcpErrors } =
+      const { servers: nexusCodeConfigs, errors: mcpErrors } =
         isStrictMcpConfig
           ? { servers: {}, errors: [] }
-          : await getClaudeCodeMcpConfigs(dynamicMcpConfig, claudeaiPromise)
+          : await getNexusCodeMcpConfigs(dynamicMcpConfig)
       if (cancelled) return
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
       addErrorsToAppState(setAppState, mcpErrors)
 
-      const configs = { ...claudeCodeConfigs, ...dynamicMcpConfig }
+      const configs = { ...nexusCodeConfigs, ...dynamicMcpConfig }
 
       // Start connecting to Nexus Code servers (don't wait - runs concurrently with Phase 2)
       // Filter out disabled servers to avoid unnecessary connection attempts
@@ -901,92 +876,26 @@ export function useManageMCPConnections(
         )
       })
 
-      // Phase 2: Await claude.ai configs (started above; memoized — no second fetch)
-      let claudeaiConfigs: Record<string, ScopedMcpServerConfig> = {}
-      if (!isStrictMcpConfig) {
-        claudeaiConfigs = filterMcpServersByPolicy(
-          await claudeaiPromise,
-        ).allowed
-        if (cancelled) return
-
-        // Suppress claude.ai connectors that duplicate an enabled manual server.
-        // Keys never collide (`slack` vs `claude.ai Slack`) so the merge below
-        // won't catch this — need content-based dedup by URL signature.
-        if (Object.keys(claudeaiConfigs).length > 0) {
-          const { servers: dedupedClaudeAi } = dedupClaudeAiMcpServers(
-            claudeaiConfigs,
-            configs,
-          )
-          claudeaiConfigs = dedupedClaudeAi
-        }
-
-        if (Object.keys(claudeaiConfigs).length > 0) {
-          // Add claude.ai servers as pending immediately so they show up in UI
-          setAppState(prevState => {
-            const existingServerNames = new Set(
-              prevState.mcp.clients.map(c => c.name),
-            )
-            const newClients = Object.entries(claudeaiConfigs)
-              .filter(([name]) => !existingServerNames.has(name))
-              .map(([name, config]) => ({
-                name,
-                type: isMcpServerDisabled(name)
-                  ? ('disabled' as const)
-                  : ('pending' as const),
-                config,
-              }))
-            if (newClients.length === 0) return prevState
-            return {
-              ...prevState,
-              mcp: {
-                ...prevState.mcp,
-                clients: [...prevState.mcp.clients, ...newClients],
-              },
-            }
-          })
-
-          // Now start connecting (only enabled servers)
-          const enabledClaudeaiConfigs = Object.fromEntries(
-            Object.entries(claudeaiConfigs).filter(
-              ([name]) => !isMcpServerDisabled(name),
-            ),
-          )
-          getMcpToolsCommandsAndResources(
-            onConnectionAttempt,
-            enabledClaudeaiConfigs,
-          ).catch(error => {
-            logMCPError(
-              'useManageMcpConnections',
-              `Failed to get claude.ai MCP resources: ${errorMessage(error)}`,
-            )
-          })
-        }
-      }
-
-      // Log server counts after both phases complete
-      const allConfigs = { ...configs, ...claudeaiConfigs }
       const counts = {
         enterprise: 0,
         global: 0,
         project: 0,
         user: 0,
         plugin: 0,
-        claudeai: 0,
       }
       // Ant-only: collect stdio command basenames to correlate with RSS/FPS
       // metrics. Stdio servers like rust-analyzer can be heavy and we want to
       // know which ones correlate with poor session performance.
       const stdioCommands: string[] = []
-      for (const [name, serverConfig] of Object.entries(allConfigs)) {
+      for (const [name, serverConfig] of Object.entries(configs)) {
         if (serverConfig.scope === 'enterprise') counts.enterprise++
         else if (serverConfig.scope === 'user') counts.global++
         else if (serverConfig.scope === 'project') counts.project++
         else if (serverConfig.scope === 'local') counts.user++
         else if (serverConfig.scope === 'dynamic') counts.plugin++
-        else if (serverConfig.scope === 'claudeai') counts.claudeai++
 
         if (
-          process.env.USER_TYPE === 'ant' &&
+          process.env.NEXUS_BUILD_FLAVOR === 'development' &&
           !isMcpServerDisabled(name) &&
           (serverConfig.type === undefined || serverConfig.type === 'stdio') &&
           'command' in serverConfig
@@ -994,9 +903,9 @@ export function useManageMCPConnections(
           stdioCommands.push(basename(serverConfig.command))
         }
       }
-      logEvent('tengu_mcp_servers', {
+      logEvent('nexus_mcp_servers', {
         ...counts,
-        ...(process.env.USER_TYPE === 'ant' && stdioCommands.length > 0
+        ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && stdioCommands.length > 0
           ? {
               stdio_commands: stdioCommands
                 .sort()

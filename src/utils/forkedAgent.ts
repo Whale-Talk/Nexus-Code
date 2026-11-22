@@ -4,7 +4,7 @@
  * This utility ensures forked agents:
  * 1. Share identical cache-critical params with the parent to guarantee prompt cache hits
  * 2. Track full usage metrics across the entire query loop
- * 3. Log metrics via the tengu_fork_agent_query event when complete
+ * 3. Log metrics via the nexus_fork_agent_query event when complete
  * 4. Isolate mutable state to prevent interference with the main agent loop
  */
 
@@ -18,7 +18,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
-import { accumulateUsage, updateUsage } from '../services/api/claude.js'
+import { accumulateUsage, updateUsage } from '../services/api/inference.js'
 import { EMPTY_USAGE, type NonNullableUsage } from '../services/api/logging.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
@@ -45,13 +45,13 @@ import { createAgentId } from './uuid.js'
 
 /**
  * Parameters that must be identical between the fork and parent API requests
- * to share the parent's prompt cache. The Anthropic API cache key is composed of:
+ * to share the parent's prompt cache. The Provider API cache key is composed of:
  * system prompt, tools, model, messages (prefix), and thinking config.
  *
  * CacheSafeParams carries the first five. Thinking config is derived from the
  * inherited toolUseContext.options.thinkingConfig — but can be inadvertently
  * changed if the fork sets maxOutputTokens, which clamps budget_tokens in
- * claude.ts (but only for older models that do not use adaptive thinking).
+ * nexus.ts (but only for older models that do not use adaptive thinking).
  * See the maxOutputTokens doc on ForkedAgentParams.
  */
 export type CacheSafeParams = {
@@ -95,7 +95,7 @@ export type ForkedAgentParams = {
   overrides?: SubagentContextOverrides
   /**
    * Optional cap on output tokens. CAUTION: setting this changes both max_tokens
-   * AND budget_tokens (via clamping in claude.ts). If the fork uses cacheSafeParams
+   * AND budget_tokens (via clamping in nexus.ts). If the fork uses cacheSafeParams
    * to share the parent's prompt cache, a different budget_tokens will invalidate
    * the cache — thinking config is part of the cache key. Only set this when cache
    * sharing is not a goal (e.g., compact summaries).
@@ -467,7 +467,7 @@ export function createSubagentContext(
  * This function:
  * 1. Uses identical cache-safe params from parent to enable prompt caching
  * 2. Accumulates usage across all query iterations
- * 3. Logs tengu_fork_agent_query with full usage when complete
+ * 3. Logs nexus_fork_agent_query with full usage when complete
  *
  * @example
  * ```typescript
@@ -519,7 +519,7 @@ export async function runForkedAgent({
 
   // Do NOT filterIncompleteToolCalls here — it drops the whole assistant on
   // partial tool batches, orphaning the paired results (API 400). Dangling
-  // tool_uses are repaired downstream by ensureToolResultPairing in claude.ts,
+  // tool_uses are repaired downstream by ensureToolResultPairing in nexus.ts,
   // same as the main thread — identical post-repair prefix keeps the cache hit.
   const initialMessages: Message[] = [...forkContextMessages, ...promptMessages]
 
@@ -626,7 +626,7 @@ export async function runForkedAgent({
 }
 
 /**
- * Logs the tengu_fork_agent_query event with full NonNullableUsage fields.
+ * Logs the nexus_fork_agent_query event with full NonNullableUsage fields.
  */
 function logForkAgentQueryEvent({
   forkLabel,
@@ -653,7 +653,7 @@ function logForkAgentQueryEvent({
       ? totalUsage.cache_read_input_tokens / totalInputTokens
       : 0
 
-  logEvent('tengu_fork_agent_query', {
+  logEvent('nexus_fork_agent_query', {
     // Metadata
     forkLabel:
       forkLabel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

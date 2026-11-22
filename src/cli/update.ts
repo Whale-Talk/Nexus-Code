@@ -15,7 +15,7 @@ import { logForDebugging } from 'src/utils/debug.js'
 import { getDoctorDiagnostic } from 'src/utils/doctorDiagnostic.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
 import {
-  installOrUpdateClaudePackage,
+  installOrUpdateNexusPackage,
   localInstallationExists,
 } from 'src/utils/localInstaller.js'
 import {
@@ -28,7 +28,7 @@ import { gte } from 'src/utils/semver.js'
 import { getInitialSettings } from 'src/utils/settings/settings.js'
 
 export async function update() {
-  logEvent('tengu_update_check', {})
+  logEvent('nexus_update_check', {})
   writeToStdout(`Current version: ${MACRO.VERSION}\n`)
 
   const channel = getInitialSettings()?.autoUpdatesChannel ?? 'latest'
@@ -64,7 +64,7 @@ export async function update() {
       logForDebugging(`update: Warning detected: ${warning.issue}`)
 
       // Don't skip PATH warnings - they're always relevant
-      // The user needs to know that 'which claude' points elsewhere
+      // The user needs to know that 'which nexus' points elsewhere
       logForDebugging(`update: Showing warning: ${warning.issue}`)
 
       writeToStdout(chalk.yellow(`Warning: ${warning.issue}\n`))
@@ -126,7 +126,7 @@ export async function update() {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
-        writeToStdout(chalk.bold('  brew upgrade claude-code') + '\n')
+        writeToStdout(chalk.bold('  brew upgrade nexus-code') + '\n')
       } else {
         writeToStdout('Nexus is up to date!\n')
       }
@@ -150,7 +150,7 @@ export async function update() {
         writeToStdout(`Update available: ${MACRO.VERSION} → ${latest}\n`)
         writeToStdout('\n')
         writeToStdout('To update, run:\n')
-        writeToStdout(chalk.bold('  apk upgrade claude-code') + '\n')
+        writeToStdout(chalk.bold('  apk upgrade nexus-code') + '\n')
       } else {
         writeToStdout('Nexus is up to date!\n')
       }
@@ -252,7 +252,7 @@ export async function update() {
     } catch (error) {
       process.stderr.write('Error: Failed to install native update\n')
       process.stderr.write(String(error) + '\n')
-      process.stderr.write('Try running "claude doctor" for diagnostics\n')
+      process.stderr.write('Try running "nexus doctor" for diagnostics\n')
       await gracefulShutdown(1)
     }
   }
@@ -283,20 +283,11 @@ export async function update() {
     process.stderr.write('  • Network connectivity issues\n')
     process.stderr.write('  • npm registry is unreachable\n')
     process.stderr.write('  • Corporate proxy/firewall blocking npm\n')
-    if (MACRO.PACKAGE_URL && !MACRO.PACKAGE_URL.startsWith('@anthropic')) {
-      process.stderr.write(
-        '  • Internal/development build not published to npm\n',
-      )
-    }
     process.stderr.write('\n')
     process.stderr.write('Try:\n')
     process.stderr.write('  • Check your internet connection\n')
     process.stderr.write('  • Run with --debug flag for more details\n')
-    const packageName =
-      MACRO.PACKAGE_URL ||
-      (process.env.USER_TYPE === 'ant'
-        ? '@anthropic-ai/claude-cli'
-        : '@anthropic-ai/claude-code')
+    const packageName = MACRO.PACKAGE_URL || '@while_talk/nexus-code'
     process.stderr.write(
       `  • Manually check: npm view ${packageName} version\n`,
     )
@@ -360,9 +351,9 @@ export async function update() {
 
   if (useLocalUpdate) {
     logForDebugging(
-      'update: Calling installOrUpdateClaudePackage() for local update',
+      'update: Calling installOrUpdateNexusPackage() for local update',
     )
-    status = await installOrUpdateClaudePackage(channel)
+    status = await installOrUpdateNexusPackage(channel)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
     status = await installGlobalPackage()
@@ -391,7 +382,7 @@ export async function update() {
       } else {
         process.stderr.write('Try running with sudo or fix npm permissions\n')
         process.stderr.write(
-          'Or consider using native installation with: claude install\n',
+          'Or consider using native installation with: nexus install\n',
         )
       }
       await gracefulShutdown(1)
@@ -405,7 +396,7 @@ export async function update() {
         )
       } else {
         process.stderr.write(
-          'Or consider using native installation with: claude install\n',
+          'Or consider using native installation with: nexus install\n',
         )
       }
       await gracefulShutdown(1)

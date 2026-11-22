@@ -15,21 +15,21 @@ import {
 } from './settings/settings.js'
 
 /**
- * `claude ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
+ * `nexus ssh` remote: NEXUS_PROVIDER_UNIX_SOCKET routes auth through a -R forwarded
  * socket to a local proxy, and the launcher sets a handful of placeholder auth
- * env vars that the remote's ~/.claude settings.env MUST NOT clobber (see
- * isAnthropicAuthEnabled). Strip them from any settings-sourced env object.
+ * env vars that the remote's ~/.nexus settings.env MUST NOT clobber (see
+ * isHostedLoginEnabled). Strip them from any settings-sourced env object.
  */
 function withoutSSHTunnelVars(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
-  if (!env || !process.env.ANTHROPIC_UNIX_SOCKET) return env || {}
+  if (!env || !process.env.NEXUS_PROVIDER_UNIX_SOCKET) return env || {}
   const {
-    ANTHROPIC_UNIX_SOCKET: _1,
+    NEXUS_PROVIDER_UNIX_SOCKET: _1,
     NEXUS_BASE_URL: _2,
     NEXUS_API_KEY: _3,
     NEXUS_AUTH_TOKEN: _4,
-    CLAUDE_CODE_OAUTH_TOKEN: _5,
+    NEXUS_OAUTH_TOKEN: _5,
     ...rest
   } = env
   return rest
@@ -37,7 +37,7 @@ function withoutSSHTunnelVars(
 
 /**
  * When the host owns inference routing (sets
- * CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST in spawn env), strip
+ * NEXUS_PROVIDER_MANAGED_BY_HOST in spawn env), strip
  * provider-selection / model-default vars from settings-sourced env so a
  * user's ~/.nexus/settings.json can't redirect requests away from the
  * host-configured provider.
@@ -46,7 +46,7 @@ function withoutHostManagedProviderVars(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
   if (!env) return {}
-  if (!isEnvTruthy(process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST)) {
+  if (!isEnvTruthy(process.env.NEXUS_PROVIDER_MANAGED_BY_HOST)) {
     return env
   }
   const out: Record<string, string> = {}
@@ -125,12 +125,12 @@ export function applySafeConfigEnvironmentVariables(): void {
   // Capture CCD spawn-env keys before any settings.env is applied (once).
   if (ccdSpawnEnvKeys === undefined) {
     ccdSpawnEnvKeys =
-      process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'
+      process.env.NEXUS_ENTRYPOINT === 'nexus-desktop'
         ? new Set(Object.keys(process.env))
         : null
   }
 
-  // Global config (~/.claude.json) is user-controlled. In CCD mode,
+  // Global config (~/.nexus/profile.json) is user-controlled. In CCD mode,
   // filterSettingsEnv strips keys that were in the spawn env snapshot so
   // the desktop host's operational vars (OTEL, etc.) are not overridden.
   Object.assign(process.env, filterSettingsEnv(getGlobalConfig().env))
@@ -149,7 +149,7 @@ export function applySafeConfigEnvironmentVariables(): void {
   }
 
   // Compute remote-managed-settings eligibility now, with userSettings and
-  // flagSettings env applied. Eligibility reads CLAUDE_CODE_USE_BEDROCK,
+  // flagSettings env applied. Eligibility reads NEXUS_USE_BEDROCK,
   // NEXUS_BASE_URL — both settable via settings.env.
   // getSettingsForSource('policySettings') below consults the remote cache,
   // which guards on this. The two-phase structure makes the ordering
@@ -168,7 +168,7 @@ export function applySafeConfigEnvironmentVariables(): void {
   // in the safe allowlist. Only policySettings values are guaranteed to survive
   // unchanged (it has the highest merge priority in both loops) — except
   // provider-routing vars, which filterSettingsEnv strips from every source
-  // when CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST is set.
+  // when NEXUS_PROVIDER_MANAGED_BY_HOST is set.
   const settingsEnv = filterSettingsEnv(getSettings_DEPRECATED()?.env)
   for (const [key, value] of Object.entries(settingsEnv)) {
     if (SAFE_ENV_VARS.has(key.toUpperCase())) {
@@ -180,7 +180,7 @@ export function applySafeConfigEnvironmentVariables(): void {
 /**
  * Apply environment variables from settings to process.env.
  * This applies ALL environment variables (except provider-routing vars when
- * CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST is set — see filterSettingsEnv) and
+ * NEXUS_PROVIDER_MANAGED_BY_HOST is set — see filterSettingsEnv) and
  * should only be called after trust is established. This applies potentially
  * dangerous environment variables such as LD_PRELOAD, PATH, etc.
  */

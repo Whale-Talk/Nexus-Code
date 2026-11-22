@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react'
-import { onGrowthBookRefresh } from '../services/analytics/growthbook.js'
+import { onFeatureFlagsChanged } from '../services/analytics/featureFlags.js'
+import { subscribeModelCatalog } from '../services/api/provider/catalog.js'
 import { useAppState } from '../state/AppState.js'
 import {
   getDefaultMainLoopModelSetting,
@@ -14,7 +15,7 @@ export function useMainLoopModel(): ModelName {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
 
-  // parseUserSpecifiedModel reads tengu_ant_model_override via
+  // parseUserSpecifiedModel reads nexus_ant_model_override via
   // _CACHED_MAY_BE_STALE (in resolveAntModel). Until GB init completes,
   // that's the stale disk cache; after, it's the in-memory remoteEval map.
   // AppState doesn't change when GB init finishes, so we subscribe to the
@@ -23,7 +24,8 @@ export function useMainLoopModel(): ModelName {
   // happens to re-render the component — the API would sample one model
   // while /model (which also re-resolves) displays another.
   const [, forceRerender] = useReducer(x => x + 1, 0)
-  useEffect(() => onGrowthBookRefresh(forceRerender), [])
+  useEffect(() => onFeatureFlagsChanged(forceRerender), [])
+  useEffect(() => subscribeModelCatalog(forceRerender), [])
 
   const model = parseUserSpecifiedModel(
     mainLoopModelForSession ??

@@ -3,6 +3,7 @@ import {
   type Command,
   formatDescriptionWithSource,
   getCommand,
+  getCommandMenuDescription,
   getCommandName,
 } from '../../commands.js'
 import type { SuggestionItem } from '../../components/PromptInput/PromptInputFooterSuggestions.js'
@@ -39,10 +40,9 @@ function getCommandFuse(commands: Command[]): Fuse<CommandSearchItem> {
       const parts = commandName.split(SEPARATORS).filter(Boolean)
 
       return {
-        descriptionKey: (cmd.description ?? '')
-          .split(' ')
-          .map(word => cleanWord(word))
-          .filter(Boolean),
+        // Search the displayed Chinese copy as well as the original provider wording.
+        descriptionKey: [...new Set([getCommandMenuDescription(cmd), cmd.description])]
+          .flatMap(text => (text ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []),
         partKey: parts.length > 1 ? parts : undefined,
         commandName,
         command: cmd,
@@ -272,15 +272,15 @@ function createCommandSuggestionItem(
 
   const isWorkflow = cmd.type === 'prompt' && cmd.kind === 'workflow'
   const fullDescription =
-    (isWorkflow ? cmd.description : formatDescriptionWithSource(cmd)) +
+    (isWorkflow ? getCommandMenuDescription(cmd) : formatDescriptionWithSource(cmd, 'zh')) +
     (cmd.type === 'prompt' && cmd.argNames?.length
-      ? ` (arguments: ${cmd.argNames.join(', ')})`
+      ? `（参数：${cmd.argNames.join('、')}）`
       : '')
 
   return {
     id: getCommandId(cmd),
     displayText: `/${commandName}${aliasText}`,
-    tag: isWorkflow ? 'workflow' : undefined,
+    tag: isWorkflow ? '工作流' : undefined,
     description: fullDescription,
     metadata: cmd,
   }
@@ -536,11 +536,6 @@ export function applyCommandSuggestion(
       onSubmit(newInput, /* isSubmittingSlashCommand */ true)
     }
   }
-}
-
-// Helper function at bottom of file per NEXUS.md
-function cleanWord(word: string) {
-  return word.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 /**

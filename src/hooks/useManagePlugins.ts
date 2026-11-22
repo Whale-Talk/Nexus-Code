@@ -211,7 +211,7 @@ export function useManagePlugins({
         // Kept separate from base metrics so it doesn't flow into
         // logForDiagnosticsNoPII.
         ant_enabled_names:
-          process.env.USER_TYPE === 'ant' && enabled.length > 0
+          process.env.NEXUS_BUILD_FLAVOR === 'development' && enabled.length > 0
             ? (enabled
                 .map(p => p.name)
                 .sort()
@@ -272,15 +272,15 @@ export function useManagePlugins({
       const { ant_enabled_names, ...baseMetrics } = metrics
       const allMetrics = {
         ...baseMetrics,
-        has_custom_plugin_cache_dir: !!process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR,
+        has_custom_plugin_cache_dir: !!process.env.NEXUS_PLUGIN_CACHE_DIR,
       }
-      logEvent('tengu_plugins_loaded', {
+      logEvent('nexus_plugins_loaded', {
         ...allMetrics,
         ...(ant_enabled_names !== undefined && {
           enabled_names: ant_enabled_names,
         }),
       })
-      logForDiagnosticsNoPII('info', 'tengu_plugins_loaded', allMetrics)
+      logForDiagnosticsNoPII('info', 'nexus_plugins_loaded', allMetrics)
     })
   }, [initialPluginLoad, enabled])
 

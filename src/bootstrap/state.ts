@@ -17,7 +17,6 @@ import type { HookCallbackMatcher } from 'src/types/hooks.js'
 // eslint-disable-next-line custom-rules/bootstrap-isolation
 import { randomUUID } from 'src/utils/crypto.js'
 import type { ModelSetting } from 'src/utils/model/model.js'
-import type { ModelStrings } from 'src/utils/model/modelStrings.js'
 import type { SettingSource } from 'src/utils/settings/constants.js'
 import { resetSettingsCache } from 'src/utils/settings/settingsCache.js'
 import type { PluginHookMatcher } from 'src/utils/settings/types.js'
@@ -67,7 +66,6 @@ type State = {
   modelUsage: { [modelName: string]: ModelUsage }
   mainLoopModelOverride: ModelSetting | undefined
   initialMainLoopModel: ModelSetting
-  modelStrings: ModelStrings | null
   isInteractive: boolean
   kairosActive: boolean
   // When true, ensureToolResultPairing throws on mismatch instead of
@@ -131,13 +129,13 @@ type State = {
   useCoworkPlugins: boolean
   // Session-only bypass permissions mode flag (not persisted)
   sessionBypassPermissionsMode: boolean
-  // Session-only flag gating the .claude/scheduled_tasks.json watcher
+  // Session-only flag gating the .nexus/scheduled_tasks.json watcher
   // (useScheduledTasks). Set by cronScheduler.start() when the JSON has
   // entries, or by CronCreateTool. Not persisted.
   scheduledTasksEnabled: boolean
   // Session-only cron tasks created via CronCreate with durable: false.
   // Fire on schedule like file-backed tasks but are never written to
-  // .claude/scheduled_tasks.json — they die with the process. Typed via
+  // .nexus/scheduled_tasks.json — they die with the process. Typed via
   // SessionCronTask below (not importing from cronTasks.ts keeps
   // bootstrap a leaf of the import DAG).
   sessionCronTasks: SessionCronTask[]
@@ -247,7 +245,7 @@ type State = {
   // Read at shutdown to send cache eviction hints to inference.
   lastMainRequestId: string | undefined
   // Timestamp (Date.now()) of the last successful API call completion.
-  // Used to compute timeSinceLastApiCallMs in tengu_api_success for
+  // Used to compute timeSinceLastApiCallMs in nexus_api_success for
   // correlating cache misses with idle time (cache TTL is ~5min).
   lastApiCompletionTimestamp: number | null
   // Set to true after compaction (auto or manual /compact). Consumed by
@@ -296,7 +294,6 @@ function getInitialState(): State {
     modelUsage: {},
     mainLoopModelOverride: undefined,
     initialMainLoopModel: null,
-    modelStrings: null,
     isInteractive: false,
     kairosActive: false,
     strictToolResultPairing: false,
@@ -388,7 +385,7 @@ function getInitialState(): State {
     mainThreadAgentType: undefined,
     // Remote mode
     isRemoteMode: false,
-    ...(process.env.USER_TYPE === 'ant'
+    ...(process.env.NEXUS_BUILD_FLAVOR === 'development'
       ? {
           replBridgeActive: false,
         }
@@ -929,22 +926,6 @@ export function resetStateForTests(): void {
   sessionSwitched.clear()
 }
 
-// You shouldn't use this directly. See src/utils/model/modelStrings.ts::getModelStrings()
-export function getModelStrings(): ModelStrings | null {
-  return STATE.modelStrings
-}
-
-// You shouldn't use this directly. See src/utils/model/modelStrings.ts
-export function setModelStrings(modelStrings: ModelStrings): void {
-  STATE.modelStrings = modelStrings
-}
-
-// Test utility function to reset model strings for re-initialization.
-// Separate from setModelStrings because we only want to accept 'null' in tests.
-export function resetModelStringsForTestingOnly() {
-  STATE.modelStrings = null
-}
-
 export function setMeter(
   meter: Meter,
   createCounter: (name: string, options: MetricOptions) => AttributedCounter,
@@ -952,35 +933,35 @@ export function setMeter(
   STATE.meter = meter
 
   // Initialize all counters using the provided factory
-  STATE.sessionCounter = createCounter('claude_code.session.count', {
+  STATE.sessionCounter = createCounter('nexus_code.session.count', {
     description: 'Count of CLI sessions started',
   })
-  STATE.locCounter = createCounter('claude_code.lines_of_code.count', {
+  STATE.locCounter = createCounter('nexus_code.lines_of_code.count', {
     description:
       "Count of lines of code modified, with the 'type' attribute indicating whether lines were added or removed",
   })
-  STATE.prCounter = createCounter('claude_code.pull_request.count', {
+  STATE.prCounter = createCounter('nexus_code.pull_request.count', {
     description: 'Number of pull requests created',
   })
-  STATE.commitCounter = createCounter('claude_code.commit.count', {
+  STATE.commitCounter = createCounter('nexus_code.commit.count', {
     description: 'Number of git commits created',
   })
-  STATE.costCounter = createCounter('claude_code.cost.usage', {
+  STATE.costCounter = createCounter('nexus_code.cost.usage', {
     description: 'Cost of the Nexus Code session',
     unit: 'USD',
   })
-  STATE.tokenCounter = createCounter('claude_code.token.usage', {
+  STATE.tokenCounter = createCounter('nexus_code.token.usage', {
     description: 'Number of tokens used',
     unit: 'tokens',
   })
   STATE.codeEditToolDecisionCounter = createCounter(
-    'claude_code.code_edit_tool.decision',
+    'nexus_code.code_edit_tool.decision',
     {
       description:
         'Count of code editing tool permission decisions (accept/reject) for Edit, Write, and NotebookEdit tools',
     },
   )
-  STATE.activeTimeCounter = createCounter('claude_code.active_time.total', {
+  STATE.activeTimeCounter = createCounter('nexus_code.active_time.total', {
     description: 'Total active time in seconds',
     unit: 's',
   })
@@ -1233,7 +1214,7 @@ export function setAllowedSettingSources(sources: SettingSource[]): void {
 
 export function preferThirdPartyAuthentication(): boolean {
   // IDE extension should behave as 1P for authentication reasons.
-  return getIsNonInteractiveSession() && STATE.clientType !== 'claude-vscode'
+  return getIsNonInteractiveSession() && STATE.clientType !== 'nexus-vscode'
 }
 
 export function setInlinePlugins(plugins: Array<string>): void {
@@ -1567,10 +1548,10 @@ const MAX_SLOW_OPERATIONS = 10
 const SLOW_OPERATION_TTL_MS = 10000
 
 export function addSlowOperation(operation: string, durationMs: number): void {
-  if (process.env.USER_TYPE !== 'ant') return
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return
   // Skip tracking for editor sessions (user editing a prompt file in $EDITOR)
   // These are intentionally slow since the user is drafting text
-  if (operation.includes('exec') && operation.includes('claude-prompt-')) {
+  if (operation.includes('exec') && operation.includes('nexus-prompt-')) {
     return
   }
   const now = Date.now()

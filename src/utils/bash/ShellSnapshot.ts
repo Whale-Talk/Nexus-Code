@@ -266,7 +266,7 @@ function getUserSnapshotContent(configFile: string): string {
  * Generates Nexus Code specific snapshot content
  * This content is always included regardless of user configuration
  */
-async function getClaudeCodeSnapshotContent(): Promise<string> {
+async function getNexusCodeSnapshotContent(): Promise<string> {
   // Get the appropriate PATH based on platform
   let pathValue = process.env.PATH
   if (getPlatform() === 'windows') {
@@ -357,7 +357,7 @@ async function getSnapshotScript(
       ? // we need to manually force alias expansion in bash - normally `getUserSnapshotContent` takes care of this
         'echo "shopt -s expand_aliases" >> "$SNAPSHOT_FILE"'
       : ''
-  const claudeCodeContent = await getClaudeCodeSnapshotContent()
+  const nexusCodeContent = await getNexusCodeSnapshotContent()
 
   const script = `SNAPSHOT_FILE=${quote([snapshotFilePath])}
       ${configFileExists ? `source "${configFile}" < /dev/null` : '# No user config file to source'}
@@ -373,7 +373,7 @@ async function getSnapshotScript(
 
       ${userContent}
 
-      ${claudeCodeContent}
+      ${nexusCodeContent}
 
       # Exit silently on success, only report errors
       if [ ! -f "$SNAPSHOT_FILE" ]; then
@@ -458,12 +458,12 @@ export const createAndSaveSnapshot = async (
         ['-c', '-l', snapshotScript],
         {
           env: {
-            ...((process.env.CLAUDE_CODE_DONT_INHERIT_ENV
+            ...((process.env.NEXUS_DONT_INHERIT_ENV
               ? {}
               : subprocessEnv()) as typeof process.env),
             SHELL: binShell,
             GIT_EDITOR: 'true',
-            CLAUDECODE: '1',
+            NEXUS_TERMINAL: '1',
           },
           timeout: SNAPSHOT_CREATION_TIMEOUT,
           maxBuffer: 1024 * 1024, // 1MB buffer
@@ -510,7 +510,7 @@ export const createAndSaveSnapshot = async (
                   execError.signal as keyof typeof os.constants.signals
                 ]
               : undefined
-            logEvent('tengu_shell_snapshot_failed', {
+            logEvent('nexus_shell_snapshot_failed', {
               stderr_length: stderr?.length || 0,
               has_error_code: !!execError?.code,
               error_signal_number: signalNumber,
@@ -563,7 +563,7 @@ export const createAndSaveSnapshot = async (
                   `Parent directory does not exist or is not accessible: ${snapshotsDir}`,
                 )
               }
-              logEvent('tengu_shell_unknown_error', {})
+              logEvent('nexus_shell_unknown_error', {})
               resolve(undefined)
             }
           }
@@ -575,7 +575,7 @@ export const createAndSaveSnapshot = async (
         logForDebugging(`Error stack trace: ${error.stack}`)
       }
       logError(error)
-      logEvent('tengu_shell_snapshot_error', {})
+      logEvent('nexus_shell_snapshot_error', {})
       resolve(undefined)
     }
   })

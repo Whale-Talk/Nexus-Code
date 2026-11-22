@@ -8,7 +8,7 @@ import type { Message } from 'src/types/message.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { djb2Hash } from 'src/utils/hash.js'
 import { logError } from 'src/utils/log.js'
-import { getClaudeTempDir } from 'src/utils/permissions/filesystem.js'
+import { getNexusTempDir } from 'src/utils/permissions/filesystem.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import {
@@ -22,7 +22,7 @@ function getCacheBreakDiffPath(): string {
   for (let i = 0; i < 4; i++) {
     suffix += chars[Math.floor(Math.random() * chars.length)]
   }
-  return join(getClaudeTempDir(), `cache-break-${suffix}.diff`)
+  return join(getNexusTempDir(), `cache-break-${suffix}.diff`)
 }
 
 type PreviousState = {
@@ -45,19 +45,18 @@ type PreviousState = {
   /** Sorted beta header list. Diffed to show which headers were added/removed. */
   betas: string[]
   /** AFK_MODE_BETA_HEADER presence — should NOT break cache anymore
-   *  (sticky-on latched in claude.ts). Tracked to verify the fix. */
+   *  (sticky-on latched in nexus.ts). Tracked to verify the fix. */
   autoModeActive: boolean
   /** Overage state flip — should NOT break cache anymore (eligibility is
    *  latched session-stable in should1hCacheTTL). Tracked to verify the fix. */
-  isUsingOverage: boolean
   /** Cache-editing beta header presence — should NOT break cache anymore
-   *  (sticky-on latched in claude.ts). Tracked to verify the fix. */
+   *  (sticky-on latched in nexus.ts). Tracked to verify the fix. */
   cachedMCEnabled: boolean
   /** Resolved effort (env → options → model default). Goes into output_config
-   *  or anthropic_internal.effort_override. */
+   *  or provider_internal.effort_override. */
   effortValue: string
-  /** Hash of getExtraBodyParams() — catches CLAUDE_CODE_EXTRA_BODY and
-   *  anthropic_internal changes. */
+  /** Hash of getExtraBodyParams() — catches NEXUS_EXTRA_BODY and
+   *  provider_internal changes. */
   extraBodyHash: number
   callCount: number
   pendingChanges: PendingChanges | null
@@ -77,7 +76,6 @@ type PendingChanges = {
   globalCacheStrategyChanged: boolean
   betasChanged: boolean
   autoModeChanged: boolean
-  overageChanged: boolean
   cachedMCChanged: boolean
   effortChanged: boolean
   extraBodyChanged: boolean
@@ -119,16 +117,11 @@ const TRACKED_SOURCE_PREFIXES = [
 // and aren't worth alerting on.
 const MIN_CACHE_MISS_TOKENS = 2_000
 
-// Anthropic's server-side prompt cache TTL thresholds to test.
+// Provider's server-side prompt cache TTL thresholds to test.
 // Cache breaks after these durations are likely due to TTL expiration
 // rather than client-side changes.
 const CACHE_TTL_5MIN_MS = 5 * 60 * 1000
 export const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
-
-// Models to exclude from cache break detection (e.g., electron has different caching behavior)
-function isExcludedModel(model: string): boolean {
-  return model.includes('haiku')
-}
 
 /**
  * Returns the tracking key for a querySource, or null if untracked.
@@ -144,7 +137,7 @@ function isExcludedModel(model: string): boolean {
  * are short-lived forked agents where cache break detection provides no
  * value — they run 1-3 turns with a fresh agentId each time, so there's
  * nothing meaningful to compare against. Their cache metrics are still
- * logged via tengu_api_success for analytics.
+ * logged via nexus_api_success for analytics.
  */
 function getTrackingKey(
   querySource: QuerySource,
@@ -234,7 +227,6 @@ export type PromptStateSnapshot = {
   globalCacheStrategy?: string
   betas?: readonly string[]
   autoModeActive?: boolean
-  isUsingOverage?: boolean
   cachedMCEnabled?: boolean
   effortValue?: string | number
   extraBodyParams?: unknown
@@ -256,7 +248,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
       globalCacheStrategy = '',
       betas = [],
       autoModeActive = false,
-      isUsingOverage = false,
       cachedMCEnabled = false,
       effortValue,
       extraBodyParams,
@@ -313,7 +304,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
         globalCacheStrategy,
         betas: sortedBetas,
         autoModeActive,
-        isUsingOverage,
         cachedMCEnabled,
         effortValue: effortStr,
         extraBodyHash,
@@ -340,7 +330,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
       sortedBetas.length !== prev.betas.length ||
       sortedBetas.some((b, i) => b !== prev.betas[i])
     const autoModeChanged = autoModeActive !== prev.autoModeActive
-    const overageChanged = isUsingOverage !== prev.isUsingOverage
     const cachedMCChanged = cachedMCEnabled !== prev.cachedMCEnabled
     const effortChanged = effortStr !== prev.effortValue
     const extraBodyChanged = extraBodyHash !== prev.extraBodyHash
@@ -354,7 +343,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
       globalCacheStrategyChanged ||
       betasChanged ||
       autoModeChanged ||
-      overageChanged ||
       cachedMCChanged ||
       effortChanged ||
       extraBodyChanged
@@ -385,7 +373,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
         globalCacheStrategyChanged,
         betasChanged,
         autoModeChanged,
-        overageChanged,
         cachedMCChanged,
         effortChanged,
         extraBodyChanged,
@@ -419,7 +406,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
     prev.globalCacheStrategy = globalCacheStrategy
     prev.betas = sortedBetas
     prev.autoModeActive = autoModeActive
-    prev.isUsingOverage = isUsingOverage
     prev.cachedMCEnabled = cachedMCEnabled
     prev.effortValue = effortStr
     prev.extraBodyHash = extraBodyHash
@@ -448,9 +434,6 @@ export async function checkResponseForCacheBreak(
 
     const state = previousStateBySource.get(key)
     if (!state) return
-
-    // Skip excluded models (e.g., electron has different caching behavior)
-    if (isExcludedModel(state.model)) return
 
     const prevCacheRead = state.prevCacheReadTokens
     state.prevCacheReadTokens = cacheReadTokens
@@ -546,9 +529,6 @@ export async function checkResponseForCacheBreak(
       if (changes.autoModeChanged) {
         parts.push('auto mode toggled')
       }
-      if (changes.overageChanged) {
-        parts.push('overage state changed (TTL latched, no flip)')
-      }
       if (changes.cachedMCChanged) {
         parts.push('cached microcompact toggled')
       }
@@ -587,7 +567,7 @@ export async function checkResponseForCacheBreak(
       reason = 'unknown cause'
     }
 
-    logEvent('tengu_prompt_cache_break', {
+    logEvent('nexus_prompt_cache_break', {
       systemPromptChanged: changes?.systemPromptChanged ?? false,
       toolSchemasChanged: changes?.toolSchemasChanged ?? false,
       modelChanged: changes?.modelChanged ?? false,
@@ -596,7 +576,6 @@ export async function checkResponseForCacheBreak(
       globalCacheStrategyChanged: changes?.globalCacheStrategyChanged ?? false,
       betasChanged: changes?.betasChanged ?? false,
       autoModeChanged: changes?.autoModeChanged ?? false,
-      overageChanged: changes?.overageChanged ?? false,
       cachedMCChanged: changes?.cachedMCChanged ?? false,
       effortChanged: changes?.effortChanged ?? false,
       extraBodyChanged: changes?.extraBodyChanged ?? false,
@@ -711,7 +690,7 @@ async function writeCacheBreakDiff(
 ): Promise<string | undefined> {
   try {
     const diffPath = getCacheBreakDiffPath()
-    await mkdir(getClaudeTempDir(), { recursive: true })
+    await mkdir(getNexusTempDir(), { recursive: true })
     const patch = createPatch(
       'prompt-state',
       prevContent,

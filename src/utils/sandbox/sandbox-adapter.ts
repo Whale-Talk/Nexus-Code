@@ -54,7 +54,7 @@ import { FILE_EDIT_TOOL_NAME } from 'src/tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from 'src/tools/FileReadTool/prompt.js'
 import { WEB_FETCH_TOOL_NAME } from 'src/tools/WebFetchTool/prompt.js'
 import { errorMessage } from '../errors.js'
-import { getClaudeTempDir } from '../permissions/filesystem.js'
+import { getNexusTempDir } from '../permissions/filesystem.js'
 import type { PermissionRuleValue } from '../permissions/PermissionRule.js'
 import { ripgrepCommand } from '../ripgrep.js'
 
@@ -222,7 +222,7 @@ export function convertToSandboxRuntimeConfig(
   // Extract filesystem paths from Edit and Read rules
   // Always include current directory and Nexus temp directory as writable
   // The temp directory is needed for Shell.ts cwd tracking files
-  const allowWrite: string[] = ['.', getClaudeTempDir()]
+  const allowWrite: string[] = ['.', getNexusTempDir()]
   const denyWrite: string[] = []
   const denyRead: string[] = []
   const allowRead: string[] = []
@@ -240,18 +240,18 @@ export function convertToSandboxRuntimeConfig(
   const cwd = getCwdState()
   const originalCwd = getOriginalCwd()
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'settings.json'))
-    denyWrite.push(resolve(cwd, '.claude', 'settings.local.json'))
+    denyWrite.push(resolve(cwd, '.nexus', 'settings.json'))
+    denyWrite.push(resolve(cwd, '.nexus', 'settings.local.json'))
   }
 
-  // Block writes to .claude/skills in both original and current working directories.
-  // The sandbox-runtime's getDangerousDirectories() protects .claude/commands and
-  // .claude/agents but not .claude/skills. Skills have the same privilege level
+  // Block writes to .nexus/skills in both original and current working directories.
+  // The sandbox-runtime's getDangerousDirectories() protects .nexus/commands and
+  // .nexus/agents but not .nexus/skills. Skills have the same privilege level
   // (auto-discovered, auto-loaded, full Nexus capabilities) so they need the
   // same OS-level sandbox protection.
-  denyWrite.push(resolve(originalCwd, '.claude', 'skills'))
+  denyWrite.push(resolve(originalCwd, '.nexus', 'skills'))
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'skills'))
+    denyWrite.push(resolve(cwd, '.nexus', 'skills'))
   }
 
   // SECURITY: Git's is_git_directory() treats cwd as a bare repo if it has
@@ -393,13 +393,13 @@ let settingsSubscriptionCleanup: (() => void) | undefined
 let worktreeMainRepoPath: string | null | undefined
 
 // Bare-repo files at cwd that didn't exist at config time and should be
-// scrubbed if they appear after a sandboxed command. See anthropics/claude-code#29316.
+// scrubbed if they appear after a sandboxed command. See Whale-Talk/Nexus-Code#29316.
 const bareGitRepoScrubPaths: string[] = []
 
 /**
  * Delete bare-repo files planted at cwd during a sandboxed command, before
  * Nexus's unsandboxed git calls can see them. See the SECURITY block above
- * bareGitRepoFiles. anthropics/claude-code#29316.
+ * bareGitRepoFiles. Whale-Talk/Nexus-Code#29316.
  */
 function scrubBareGitRepoFiles(): void {
   for (const p of bareGitRepoScrubPaths) {
@@ -468,7 +468,7 @@ function getSandboxEnabledSetting(): boolean {
 
 function isAutoAllowBashIfSandboxedEnabled(): boolean {
   const settings = getSettings_DEPRECATED()
-  return settings?.sandbox?.autoAllowBashIfSandboxed ?? true
+  return settings?.sandbox?.autoAllowBashIfSandboxed ?? false
 }
 
 function areUnsandboxedCommandsAllowed(): boolean {
@@ -482,6 +482,22 @@ function isSandboxRequired(): boolean {
     getSandboxEnabledSetting() &&
     (settings?.sandbox?.failIfUnavailable ?? false)
   )
+}
+
+function getShellSandboxBlockReason(willUseSandbox?: boolean): string | undefined {
+  const sandboxEnabled = getSandboxEnabledSetting()
+  const mustUseSandbox = sandboxEnabled && !areUnsandboxedCommandsAllowed()
+  if (willUseSandbox !== true && !mustUseSandbox && !isSandboxRequired()) return
+
+  if (!isSandboxingEnabled()) {
+    const reason = getSandboxUnavailableReason()
+    return reason
+      ? `命令执行隔离不可用，已阻止运行。${reason}`
+      : '命令执行隔离已变更，已阻止运行。请重新发起命令。'
+  }
+  if (mustUseSandbox && willUseSandbox === false) {
+    return '当前沙箱设置要求隔离，已阻止命令在沙箱之外运行。'
+  }
 }
 
 /**
@@ -707,13 +723,15 @@ async function wrapWithSandbox(
   customConfig?: Partial<SandboxRuntimeConfig>,
   abortSignal?: AbortSignal,
 ): Promise<string> {
-  // If sandboxing is enabled, ensure initialization is complete
-  if (isSandboxingEnabled()) {
-    if (initializationPromise) {
-      await initializationPromise
-    } else {
-      throw new Error('Sandbox failed to initialize. ')
-    }
+  // A command selected for isolation must never fall back to the raw shell.
+  const pendingInitialization = initializationPromise
+  if (!pendingInitialization || !isSandboxingEnabled()) {
+    throw new Error('命令执行隔离尚未就绪，已阻止运行。')
+  }
+  await pendingInitialization
+  if (pendingInitialization !== initializationPromise ||
+    !isSandboxingEnabled() || !BaseSandboxManager.getConfig()) {
+    throw new Error('命令执行隔离已变更，已阻止运行。请重新发起命令。')
   }
 
   return BaseSandboxManager.wrapWithSandbox(
@@ -756,39 +774,35 @@ async function initialize(
 
   // Create the initialization promise synchronously (before any await) to prevent
   // race conditions where wrapWithSandbox() is called before the promise is assigned.
-  initializationPromise = (async () => {
-    try {
-      // Resolve worktree main repo path once before building config.
-      // Worktree status doesn't change mid-session, so this is cached for all
-      // subsequent refreshConfig() calls (which must be synchronous to avoid
-      // race conditions where pending requests slip through with stale config).
-      if (worktreeMainRepoPath === undefined) {
-        worktreeMainRepoPath = await detectWorktreeMainRepoPath(getCwdState())
-      }
-
-      const settings = getSettings_DEPRECATED()
-      const runtimeConfig = convertToSandboxRuntimeConfig(settings)
-
-      // Log monitor is automatically enabled for macOS
-      await BaseSandboxManager.initialize(runtimeConfig, wrappedCallback)
-
-      // Subscribe to settings changes to update sandbox config dynamically
-      settingsSubscriptionCleanup = settingsChangeDetector.subscribe(() => {
-        const settings = getSettings_DEPRECATED()
-        const newConfig = convertToSandboxRuntimeConfig(settings)
-        BaseSandboxManager.updateConfig(newConfig)
-        logForDebugging('Sandbox configuration updated from settings change')
-      })
-    } catch (error) {
-      // Clear the promise on error so initialization can be retried
-      initializationPromise = undefined
-
-      // Log error but don't throw - let sandboxing fail gracefully
-      logForDebugging(`Failed to initialize sandbox: ${errorMessage(error)}`)
+  const pendingInitialization = (async () => {
+    // Resolve worktree main repo path once before building config.
+    // Worktree status doesn't change mid-session, so this is cached for all
+    // subsequent refreshConfig() calls (which must be synchronous to avoid
+    // race conditions where pending requests slip through with stale config).
+    if (worktreeMainRepoPath === undefined) {
+      worktreeMainRepoPath = await detectWorktreeMainRepoPath(getCwdState())
     }
-  })()
 
-  return initializationPromise
+    const settings = getSettings_DEPRECATED()
+    const runtimeConfig = convertToSandboxRuntimeConfig(settings)
+
+    // Log monitor is automatically enabled for macOS
+    await BaseSandboxManager.initialize(runtimeConfig, wrappedCallback)
+
+    // Subscribe to settings changes to update sandbox config dynamically
+    settingsSubscriptionCleanup = settingsChangeDetector.subscribe(() => {
+      const settings = getSettings_DEPRECATED()
+      const newConfig = convertToSandboxRuntimeConfig(settings)
+      BaseSandboxManager.updateConfig(newConfig)
+      logForDebugging('Sandbox configuration updated from settings change')
+    })
+  })().catch(error => {
+    if (initializationPromise === pendingInitialization) initializationPromise = undefined
+    logForDebugging(`Failed to initialize sandbox: ${errorMessage(error)}`)
+    throw error
+  })
+  initializationPromise = pendingInitialization
+  return pendingInitialization
 }
 
 /**
@@ -888,6 +902,7 @@ export interface ISandboxManager {
   isAutoAllowBashIfSandboxedEnabled(): boolean
   areUnsandboxedCommandsAllowed(): boolean
   isSandboxRequired(): boolean
+  getShellSandboxBlockReason(willUseSandbox?: boolean): string | undefined
   areSandboxSettingsLockedByPolicy(): boolean
   setSandboxSettings(options: {
     enabled?: boolean
@@ -934,6 +949,7 @@ export const SandboxManager: ISandboxManager = {
   isAutoAllowBashIfSandboxedEnabled,
   areUnsandboxedCommandsAllowed,
   isSandboxRequired,
+  getShellSandboxBlockReason,
   areSandboxSettingsLockedByPolicy,
   setSandboxSettings,
   getExcludedCommands,

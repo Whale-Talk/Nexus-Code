@@ -10,14 +10,13 @@ import {
 } from '../../constants/apiLimits.js'
 import { hasBinaryExtension } from '../../constants/files.js'
 import { memoryFreshnessNote } from '../../memdir/memoryAge.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { logEvent } from '../../services/analytics/index.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   getFileExtensionForAnalytics,
 } from '../../services/analytics/metadata.js'
 import {
-  countTokensWithAPI,
   roughTokenCountEstimationForFileType,
 } from '../../services/tokenEstimation.js'
 import {
@@ -52,7 +51,6 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { isAutoMemFile } from '../../utils/memoryFileDetection.js'
 import { createUserMessage } from '../../utils/messages.js'
-import { getCanonicalName, getMainLoopModel } from '../../utils/model/model.js'
 import {
   mapNotebookCellsToToolResult,
   readNotebook,
@@ -189,7 +187,7 @@ const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 
 /**
  * Detects if a file path is a session-related file for analytics logging.
- * Only matches files within the Nexus config directory (e.g., ~/.claude).
+ * Only matches files within the Nexus config directory (e.g., ~/.nexus).
  * Returns the type of session file or null if not a session file.
  */
 function detectSessionFileType(
@@ -509,7 +507,7 @@ export const FileReadTool = buildTool({
     // Telemetry: track when callers override default read limits.
     // Only fires on override (low volume) — event count = override frequency.
     if (fileReadingLimits !== undefined) {
-      logEvent('tengu_file_read_limits_override', {
+      logEvent('nexus_file_read_limits_override', {
         hasMaxTokens: fileReadingLimits.maxTokens !== undefined,
         hasMaxSizeBytes: fileReadingLimits.maxSizeBytes !== undefined,
       })
@@ -533,8 +531,8 @@ export const FileReadTool = buildTool({
     // the model externally.
     // 3P default: killswitch off = dedup enabled. Client-side only — no
     // server support needed, safe for Bedrock/Vertex/Foundry.
-    const dedupKillswitch = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_read_dedup_killswitch',
+    const dedupKillswitch = getFeatureValue(
+      'nexus_read_dedup_killswitch',
       false,
     )
     const existingState = dedupKillswitch
@@ -556,7 +554,7 @@ export const FileReadTool = buildTool({
           const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
           if (mtimeMs === existingState.timestamp) {
             const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
-            logEvent('tengu_file_read_dedup', {
+            logEvent('nexus_file_read_dedup', {
               ...(analyticsExt !== undefined && { ext: analyticsExt }),
             })
             return {
@@ -575,7 +573,7 @@ export const FileReadTool = buildTool({
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
     const cwd = getCwd()
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+    if (!isEnvTruthy(process.env.NEXUS_SIMPLE)) {
       const newSkillDirs = await discoverSkillDirsForPaths([fullFilePath], cwd)
       if (newSkillDirs.length > 0) {
         // Store discovered dirs for attachment display
@@ -696,9 +694,7 @@ export const FileReadTool = buildTool({
           content =
             memoryFileFreshnessPrefix(data) +
             formatFileLines(data.file) +
-            (shouldIncludeFileReadMitigation()
-              ? CYBER_RISK_MITIGATION_REMINDER
-              : '')
+            CYBER_RISK_MITIGATION_REMINDER
         } else {
           // Determine the appropriate warning message
           content =
@@ -729,14 +725,6 @@ function formatFileLines(file: { content: string; startLine: number }): string {
 export const CYBER_RISK_MITIGATION_REMINDER =
   '\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n'
 
-// Models where cyber risk mitigation should be skipped
-const MITIGATION_EXEMPT_MODELS = new Set(['claude-opus-4-6'])
-
-function shouldIncludeFileReadMitigation(): boolean {
-  const shortName = getCanonicalName(getMainLoopModel())
-  return !MITIGATION_EXEMPT_MODELS.has(shortName)
-}
-
 /**
  * Side-channel from call() to mapToolResultToToolResultBlockParam: mtime
  * of auto-memory files, keyed by the `data` object identity. Avoids
@@ -761,13 +749,8 @@ async function validateContentTokens(
     maxTokens ?? getDefaultFileReadingLimits().maxTokens
 
   const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
-  if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return
-
-  const tokenCount = await countTokensWithAPI(content)
-  const effectiveCount = tokenCount ?? tokenEstimate
-
-  if (effectiveCount > effectiveMaxTokens) {
-    throw new MaxFileReadTokenExceededError(effectiveCount, effectiveMaxTokens)
+  if (tokenEstimate > effectiveMaxTokens) {
+    throw new MaxFileReadTokenExceededError(tokenEstimate, effectiveMaxTokens)
   }
 }
 
@@ -901,7 +884,7 @@ async function callInner(
       if (!extractResult.success) {
         throw new Error(extractResult.error.message)
       }
-      logEvent('tengu_pdf_page_extraction', {
+      logEvent('nexus_pdf_page_extraction', {
         success: true,
         pageCount: extractResult.data.file.count,
         fileSize: extractResult.data.file.originalSize,
@@ -962,13 +945,13 @@ async function callInner(
     if (shouldExtractPages) {
       const extractResult = await extractPDFPages(resolvedFilePath)
       if (extractResult.success) {
-        logEvent('tengu_pdf_page_extraction', {
+        logEvent('nexus_pdf_page_extraction', {
           success: true,
           pageCount: extractResult.data.file.count,
           fileSize: extractResult.data.file.originalSize,
         })
       } else {
-        logEvent('tengu_pdf_page_extraction', {
+        logEvent('nexus_pdf_page_extraction', {
           success: false,
           available: extractResult.error.reason !== 'unavailable',
           fileSize: stats.size,
@@ -978,7 +961,7 @@ async function callInner(
 
     if (!isPDFSupported()) {
       throw new Error(
-        'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+        'Reading full PDFs is not supported with this model. Use a newer model (Atom 3.5 v2 or later), ' +
           `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
           'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
       )
@@ -1066,7 +1049,7 @@ async function callInner(
 
   const sessionFileType = detectSessionFileType(fullFilePath)
   const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
-  logEvent('tengu_session_file_read', {
+  logEvent('nexus_session_file_read', {
     totalLines,
     readLines: lineCount,
     totalBytes,

@@ -1,38 +1,14 @@
-import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useState } from 'react';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
-import { Box, Text } from '../../ink.js';
+import { Box, Text, useInput } from '../../ink.js';
 import TextInput from '../../components/TextInput.js';
+import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import { channelSchema } from '../../services/api/provider/catalog.js';
+import { saveUserSettingsEnv } from '../../utils/settings/userSettingsEnv.js';
+import { Select } from '../../components/CustomSelect/index.js';
 
 // Nexus API 配置表单 — 输入 NEXUS_BASE_URL + NEXUS_API_KEY, 保存到 ~/.nexus/settings.json。
 // 替代 OAuth 登录（Nexus 无账号概念, 全部走 API key + relay）。
-
-const CONFIG_DIR = join(homedir(), '.nexus')
-const SETTINGS_PATH = join(CONFIG_DIR, 'settings.json')
-
-function readSettings(): Record<string, unknown> {
-  try {
-    return JSON.parse(readFileSync(SETTINGS_PATH, 'utf8'))
-  } catch {
-    return {}
-  }
-}
-
-function saveSettings(env: Record<string, string>): void {
-  mkdirSync(CONFIG_DIR, { recursive: true })
-  const current = readSettings()
-  const merged = {
-    ...current,
-    env: {
-      ...(current.env as Record<string, string> | undefined),
-      ...env,
-    },
-  }
-  writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
-}
 
 type Step = 'url' | 'key' | 'done'
 
@@ -41,6 +17,9 @@ function ConfigField({
   label,
   hint,
   value,
+  mask,
+  cursorOffset,
+  setCursorOffset,
   onChange,
   onSubmit,
   onCancel,
@@ -48,11 +27,20 @@ function ConfigField({
   label: string
   hint: string
   value: string
+  mask?: string
+  cursorOffset: number
+  setCursorOffset: (offset: number) => void
   onChange: (v: string) => void
   onSubmit: () => void
   onCancel: () => void
 }) {
-  const [cursorOffset, setCursorOffset] = useState(value.length)
+  const { columns } = useTerminalSize()
+  useInput((_input, key, event) => {
+    if (key.escape) {
+      event.stopImmediatePropagation()
+      onCancel()
+    }
+  })
   return (
     <Box flexDirection="column" gap={1} padding={1}>
       <Text bold={true}>{label}</Text>
@@ -63,7 +51,11 @@ function ConfigField({
         onSubmit={onSubmit}
         onExit={onCancel}
         focus={true}
-        columns={80}
+        showCursor={true}
+        columns={Math.max(1, columns - 2)}
+        mask={mask}
+        showMaskedSuffix={false}
+        disableEscapeDoublePress={true}
         cursorOffset={cursorOffset}
         onChangeCursorOffset={setCursorOffset}
       />
@@ -74,17 +66,29 @@ function ConfigField({
 
 export function NexusConfigForm({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<Step>('url')
-  const [baseUrl, setBaseUrl] = useState('http://192.168.77.162:8080')
+  const [baseUrl, setBaseUrl] = useState(process.env.NEXUS_BASE_URL || 'https://api.deepseek.com/anthropic')
   const [apiKey, setApiKey] = useState('')
+  const [cursorOffset, setCursorOffset] = useState(baseUrl.length)
+  const [error, setError] = useState('')
 
   if (step === 'url') {
     return (
       <ConfigField
         label="配置 Nexus API 服务地址"
-        hint="请输入 relay 服务的 base URL（例如 http://192.168.77.162:8080）"
+        hint={error || '确认当前服务的接口根地址。也可以按 Esc 跳过，进入设置中心配置其他渠道。'}
         value={baseUrl}
-        onChange={setBaseUrl}
-        onSubmit={() => setStep('key')}
+        cursorOffset={cursorOffset}
+        setCursorOffset={setCursorOffset}
+        onChange={value => { setBaseUrl(value); setError('') }}
+        onSubmit={() => {
+          if (!channelSchema.shape.baseURL.safeParse(baseUrl).success) {
+            setError('请输入有效的 HTTP(S) 服务地址。')
+            return
+          }
+          setError('')
+          setCursorOffset(0)
+          setStep('key')
+        }}
         onCancel={onDone}
       />
     )
@@ -94,18 +98,23 @@ export function NexusConfigForm({ onDone }: { onDone: () => void }) {
     return (
       <ConfigField
         label="配置 API 密钥"
-        hint={`服务地址: ${baseUrl}\n请输入您的 API key（不要添加 sk- 前缀）`}
+        hint={error || `服务地址  ${baseUrl}\n请粘贴该服务发放的完整密钥，回车将保存到本机用户设置。`}
         value={apiKey}
+        mask="*"
+        cursorOffset={cursorOffset}
+        setCursorOffset={setCursorOffset}
         onChange={setApiKey}
         onSubmit={() => {
           if (!apiKey.trim()) return
           const url = baseUrl.trim()
           const keyVal = apiKey.trim()
-          saveSettings({
-            NEXUS_BASE_URL: url,
-            NEXUS_API_KEY: keyVal,
-          })
-          // 配置完成 — 提示重启后退出 (绕过 Onboarding 步骤切换问题)
+          const keyName = process.env.NEXUS_PROVIDER === 'openai-compatible' && process.env.NEXUS_AUTH_TOKEN
+            ? 'NEXUS_AUTH_TOKEN' : 'NEXUS_API_KEY'
+          const env = { NEXUS_BASE_URL: url, [keyName]: keyVal }
+          try { saveUserSettingsEnv(env) }
+          catch { setError('保存失败，请检查用户设置文件及其写入权限。'); return }
+          Object.assign(process.env, env)
+          setApiKey('')
           setStep('done')
         }}
         onCancel={onDone}
@@ -113,24 +122,13 @@ export function NexusConfigForm({ onDone }: { onDone: () => void }) {
     )
   }
 
-  // done — 配置完成, 显示提示后自动退出
   return (
     <Box flexDirection="column" gap={1} padding={1}>
       <Text color="green">✓ 配置完成！</Text>
       <Text dimColor={true}>服务地址: {baseUrl}</Text>
-      <Text dimColor={true}>API 密钥: {apiKey.slice(0, 8)}…</Text>
+      <Text dimColor={true}>API 密钥已保存</Text>
       <Text dimColor={true}>配置已保存到 ~/.nexus/settings.json</Text>
-      <Text bold={true}>请重新运行 nexus 以应用配置</Text>
-      <AutoExit />
+      <Select options={[{ label: '继续', value: 'continue' }]} onChange={onDone} onCancel={onDone} />
     </Box>
   )
-}
-
-// 自动退出 — 不依赖按键 (Onboarding 键盘事件不可靠)
-function AutoExit() {
-  React.useEffect(() => {
-    const t = setTimeout(() => process.exit(0), 3000)
-    return () => clearTimeout(t)
-  }, [])
-  return <Text dimColor={true}>3 秒后自动退出…</Text>
 }

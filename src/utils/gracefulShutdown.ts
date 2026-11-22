@@ -29,8 +29,6 @@ import {
   supportsTabStatus,
   wrapForMultiplexer,
 } from '../ink/termio/osc.js'
-import { shutdownDatadog } from '../services/analytics/datadog.js'
-import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -120,9 +118,9 @@ function cleanupTerminalModes(): void {
     // Clear tab status (OSC 21337) so a stale dot doesn't linger
     if (supportsTabStatus()) writeSync(1, wrapForMultiplexer(CLEAR_TAB_STATUS))
     // Clear terminal title so the tab doesn't show stale session info.
-    // Respect CLAUDE_CODE_DISABLE_TERMINAL_TITLE — if the user opted out of
+    // Respect NEXUS_DISABLE_TERMINAL_TITLE — if the user opted out of
     // title changes, don't clear their existing title on exit either.
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE)) {
+    if (!isEnvTruthy(process.env.NEXUS_DISABLE_TERMINAL_TITLE)) {
       if (process.platform === 'win32') {
         process.title = ''
       } else {
@@ -154,7 +152,7 @@ function printResumeHint(): void {
   ) {
     try {
       const sessionId = getSessionId()
-      // Don't show resume hint if no session file exists (e.g., subcommands like `claude update`)
+      // Don't show resume hint if no session file exists (e.g., subcommands like `nexus update`)
       if (!sessionIdExists(sessionId)) {
         return
       }
@@ -173,7 +171,7 @@ function printResumeHint(): void {
       writeSync(
         1,
         chalk.dim(
-          `\nResume this session with:\nclaude --resume ${resumeArg}\n`,
+          `\nResume this session with:\nnexus --resume ${resumeArg}\n`,
         ),
       )
       resumeHintPrinted = true
@@ -303,7 +301,7 @@ export const setupGracefulShutdown = memoize(() => {
       error_name: error.name,
       error_message: error.message.slice(0, 2000),
     })
-    logEvent('tengu_uncaught_exception', {
+    logEvent('nexus_uncaught_exception', {
       error_name:
         error.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -326,7 +324,7 @@ export const setupGracefulShutdown = memoize(() => {
           }
         : { error_message: String(reason).slice(0, 2000) }
     logForDiagnosticsNoPII('error', 'unhandled_rejection', errorInfo)
-    logEvent('tengu_unhandled_rejection', {
+    logEvent('nexus_unhandled_rejection', {
       error_name:
         errorName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -467,7 +465,7 @@ export async function gracefulShutdown(
   }
 
   // Execute SessionEnd hooks. Bound both the per-hook default timeout and the
-  // overall execution via a single budget (CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS,
+  // overall execution via a single budget (NEXUS_SESSIONEND_HOOKS_TIMEOUT_MS,
   // default 1.5s). hook.timeout in settings is respected up to this cap.
   try {
     await executeSessionEndHooks(reason, {
@@ -490,24 +488,12 @@ export async function gracefulShutdown(
   // Fires before analytics flush so the event makes it to the pipeline.
   const lastRequestId = getLastMainRequestId()
   if (lastRequestId) {
-    logEvent('tengu_cache_eviction_hint', {
+    logEvent('nexus_cache_eviction_hint', {
       scope:
         'session_end' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       last_request_id:
         lastRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
-  }
-
-  // Flush analytics — capped at 500ms. Previously unbounded: the 1P exporter
-  // awaits all pending axios POSTs (10s each), eating the full failsafe budget.
-  // Lost analytics on slow networks are acceptable; a hanging exit is not.
-  try {
-    await Promise.race([
-      Promise.all([shutdown1PEventLogging(), shutdownDatadog()]),
-      sleep(500),
-    ])
-  } catch {
-    // Ignore analytics shutdown errors
   }
 
   if (options?.finalMessage) {

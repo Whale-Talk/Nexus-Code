@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
@@ -404,7 +404,7 @@ export const FileEditTool = buildTool({
     // Discover skills from this file's path (fire-and-forget, non-blocking)
     // Skip in simple mode - no skills available
     const cwd = getCwd()
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+    if (!isEnvTruthy(process.env.NEXUS_SIMPLE)) {
       const newSkillDirs = await discoverSkillDirsForPaths(
         [absoluteFilePath],
         cwd,
@@ -526,7 +526,7 @@ export const FileEditTool = buildTool({
 
     // 7. Log events
     if (absoluteFilePath.endsWith(`${sep}NEXUS.md`)) {
-      logEvent('tengu_write_claudemd', {})
+      logEvent('nexus_write_nexusmd', {})
     }
     countLinesChanged(patch)
 
@@ -536,7 +536,7 @@ export const FileEditTool = buildTool({
       filePath: absoluteFilePath,
     })
 
-    logEvent('tengu_edit_string_lengths', {
+    logEvent('nexus_edit_string_lengths', {
       oldStringBytes: Buffer.byteLength(old_string, 'utf8'),
       newStringBytes: Buffer.byteLength(new_string, 'utf8'),
       replaceAll: replace_all,
@@ -544,13 +544,13 @@ export const FileEditTool = buildTool({
 
     let gitDiff: ToolUseDiff | undefined
     if (
-      isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)
+      isEnvTruthy(process.env.NEXUS_REMOTE) &&
+      getFeatureValue('nexus_quartz_lantern', false)
     ) {
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(absoluteFilePath)
       if (diff) gitDiff = diff
-      logEvent('tengu_tool_use_diff_computed', {
+      logEvent('nexus_tool_use_diff_computed', {
         isEditTool: true,
         durationMs: Date.now() - startTime,
         hasDiff: !!diff,

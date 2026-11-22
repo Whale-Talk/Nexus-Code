@@ -1,5 +1,6 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue } from 'src/services/analytics/featureFlags.js'
 import { splitCommand_DEPRECATED } from '../../utils/bash/commands.js'
+import { tryParseShellCommand } from '../../utils/bash/shellQuote.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import {
@@ -15,61 +16,32 @@ type SandboxInput = {
   dangerouslyDisableSandbox?: boolean
 }
 
-// NOTE: excludedCommands is a user-facing convenience feature, not a security boundary.
-// It is not a security bug to be able to bypass excludedCommands — the sandbox permission
-// system (which prompts users) is the actual security control.
-function containsExcludedCommand(command: string): boolean {
-  // Check dynamic config for disabled commands and substrings (only for ants)
-  if (process.env.USER_TYPE === 'ant') {
-    const disabledCommands = getFeatureValue_CACHED_MAY_BE_STALE<{
-      commands: string[]
-      substrings: string[]
-    }>('tengu_sandbox_disabled_commands', { commands: [], substrings: [] })
+function isExcludedCommand(command: string): boolean {
+  const userExcludedCommands = getSettings_DEPRECATED().sandbox?.excludedCommands ?? []
+  const internalExclusions = process.env.NEXUS_BUILD_FLAVOR === 'development'
+    ? getFeatureValue('nexus_sandbox_disabled_commands', {
+        commands: [] as string[], substrings: [] as string[],
+      })
+    : undefined
+  if (!userExcludedCommands.length && !internalExclusions) return false
 
-    // Check if command contains any disabled substrings
-    for (const substring of disabledCommands.substrings) {
-      if (command.includes(substring)) {
-        return true
-      }
-    }
+  // The legacy splitter omits some shell syntax such as redirections. Keep
+  // complex input isolated rather than applying an exception to a partial parse.
+  if (/[<>()`{}]/.test(command) || !tryParseShellCommand(command).success) return false
 
-    // Check if command starts with any disabled commands
-    try {
-      const commandParts = splitCommand_DEPRECATED(command)
-      for (const part of commandParts) {
-        const baseCommand = part.trim().split(' ')[0]
-        if (baseCommand && disabledCommands.commands.includes(baseCommand)) {
-          return true
-        }
-      }
-    } catch {
-      // If we can't parse the command (e.g., malformed bash syntax),
-      // treat it as not excluded to allow other validation checks to handle it
-      // This prevents crashes when rendering tool use messages
-    }
-  }
-
-  // Check user-configured excluded commands from settings
-  const settings = getSettings_DEPRECATED()
-  const userExcludedCommands = settings.sandbox?.excludedCommands ?? []
-
-  if (userExcludedCommands.length === 0) {
-    return false
-  }
-
-  // Split compound commands (e.g. "docker ps && curl evil.com") into individual
-  // subcommands and check each one against excluded patterns. This prevents a
-  // compound command from escaping the sandbox just because its first subcommand
-  // matches an excluded pattern.
   let subcommands: string[]
   try {
     subcommands = splitCommand_DEPRECATED(command)
   } catch {
-    subcommands = [command]
+    return false
   }
-
-  for (const subcommand of subcommands) {
+  return subcommands.length > 0 && subcommands.every(subcommand => {
     const trimmed = subcommand.trim()
+    const [baseCommand] = trimmed.split(/\s+/, 1)
+    if (internalExclusions?.commands.includes(baseCommand ?? '') ||
+      internalExclusions?.substrings.some(substring => trimmed.includes(substring))) {
+      return true
+    }
     // Also try matching with env var prefixes and wrapper commands stripped, so
     // that `FOO=bar bazel ...` and `timeout 30 bazel ...` match `bazel:*`. Not a
     // security boundary (see NOTE at top); the &&-split above already lets
@@ -122,32 +94,15 @@ function containsExcludedCommand(command: string): boolean {
         }
       }
     }
-  }
-
-  return false
+    return false
+  })
 }
 
 export function shouldUseSandbox(input: Partial<SandboxInput>): boolean {
-  if (!SandboxManager.isSandboxingEnabled()) {
+  if (!SandboxManager.isSandboxingEnabled() || !input.command) {
     return false
   }
-
-  // Don't sandbox if explicitly overridden AND unsandboxed commands are allowed by policy
-  if (
-    input.dangerouslyDisableSandbox &&
-    SandboxManager.areUnsandboxedCommandsAllowed()
-  ) {
-    return false
-  }
-
-  if (!input.command) {
-    return false
-  }
-
-  // Don't sandbox if the command contains user-configured excluded commands
-  if (containsExcludedCommand(input.command)) {
-    return false
-  }
-
-  return true
+  // Strict policy takes precedence over both the explicit flag and exclusions.
+  if (!SandboxManager.areUnsandboxedCommandsAllowed()) return true
+  return !input.dangerouslyDisableSandbox && !isExcludedCommand(input.command)
 }

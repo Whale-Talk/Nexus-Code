@@ -1,13 +1,13 @@
 import { feature } from 'bun:bundle'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
-  getClaudeAIOAuthTokens,
-  isAnthropicAuthEnabled,
+  getHostedAccountOAuthTokens,
+  isHostedLoginEnabled,
 } from '../utils/auth.js'
 
 /**
  * Kill-switch check for voice mode. Returns true unless the
- * `tengu_amber_quartz_disabled` GrowthBook flag is flipped on (emergency
+ * `nexus_amber_quartz_disabled` GrowthBook flag is flipped on (emergency
  * off). Default `false` means a missing/stale disk cache reads as "not
  * killed" — so fresh installs get voice working immediately without
  * waiting for GrowthBook init. Use this for deciding whether voice mode
@@ -18,28 +18,27 @@ export function isVoiceGrowthBookEnabled(): boolean {
   // Negative pattern (if (!feature(...)) return) does not eliminate
   // inline string literals from external builds.
   return feature('VOICE_MODE')
-    ? !getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_quartz_disabled', false)
+    ? !getFeatureValue('nexus_amber_quartz_disabled', false)
     : false
 }
 
 /**
  * Auth-only check for voice mode. Returns true when the user has a valid
- * Anthropic OAuth token. Backed by the memoized getClaudeAIOAuthTokens —
+ * Provider OAuth token. Backed by the memoized getHostedAccountOAuthTokens —
  * first call spawns `security` on macOS (~20-50ms), subsequent calls are
  * cache hits. The memoize clears on token refresh (~once/hour), so one
  * cold spawn per refresh is expected. Cheap enough for usage-time checks.
  */
 export function hasVoiceAuth(): boolean {
-  // Voice mode requires Anthropic OAuth — it uses the voice_stream
-  // endpoint on claude.ai which is not available with API keys,
+  // Voice mode requires Provider OAuth — it uses the voice_stream
   // Bedrock, Vertex, or Foundry.
-  if (!isAnthropicAuthEnabled()) {
+  if (!isHostedLoginEnabled()) {
     return false
   }
-  // isAnthropicAuthEnabled only checks the auth *provider*, not whether
+  // isHostedLoginEnabled only checks the auth *provider*, not whether
   // a token exists. Without this check, the voice UI renders but
   // connectVoiceStream fails silently when the user isn't logged in.
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   return Boolean(tokens?.accessToken)
 }
 

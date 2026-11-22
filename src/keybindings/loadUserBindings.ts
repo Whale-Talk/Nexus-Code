@@ -5,7 +5,7 @@
  * for changes to reload them automatically.
  *
  * NOTE: User keybinding customization is currently only available for
- * Anthropic employees (USER_TYPE === 'ant'). External users always
+ * Provider employees (NEXUS_BUILD_FLAVOR === 'development'). External users always
  * use the default bindings.
  */
 
@@ -13,7 +13,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import { readFileSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
 import { dirname, join } from 'path'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import { logEvent } from '../services/analytics/index.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -33,14 +33,14 @@ import {
 /**
  * Check if keybinding customization is enabled.
  *
- * Returns true if the tengu_keybinding_customization_release GrowthBook gate is enabled.
+ * Returns true if the nexus_keybinding_customization_release GrowthBook gate is enabled.
  *
  * This function is exported so other parts of the codebase (e.g., /doctor)
  * can check the same condition consistently.
  */
 export function isKeybindingCustomizationEnabled(): boolean {
-  return getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_keybinding_customization_release',
+  return getFeatureValue(
+    'nexus_keybinding_customization_release',
     false,
   )
 }
@@ -84,7 +84,7 @@ function logCustomBindingsLoadedOncePerDay(userBindingCount: number): void {
   const today = new Date().toISOString().slice(0, 10)
   if (lastCustomBindingsLogDate === today) return
   lastCustomBindingsLogDate = today
-  logEvent('tengu_custom_keybindings_loaded', {
+  logEvent('nexus_custom_keybindings_loaded', {
     user_binding_count: userBindingCount,
   })
 }
@@ -128,7 +128,7 @@ function getDefaultParsedBindings(): ParsedBinding[] {
  * Returns merged default + user bindings along with validation warnings.
  *
  * For external users, always returns default bindings only.
- * User customization is currently gated to Anthropic employees.
+ * User customization is currently gated to Provider employees.
  */
 export async function loadKeybindings(): Promise<KeybindingsLoadResult> {
   const defaultBindings = getDefaultParsedBindings()
@@ -254,7 +254,7 @@ export function loadKeybindingsSync(): ParsedBinding[] {
  * Uses cached values if available.
  *
  * For external users, always returns default bindings only.
- * User customization is currently gated to Anthropic employees.
+ * User customization is currently gated to Provider employees.
  */
 export function loadKeybindingsSyncWithWarnings(): KeybindingsLoadResult {
   if (cachedBindings) {

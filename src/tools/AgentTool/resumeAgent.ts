@@ -16,7 +16,7 @@ import {
   filterUnresolvedToolUses,
   filterWhitespaceOnlyAssistantMessages,
 } from '../../utils/messages.js'
-import { getAgentModel } from '../../utils/model/agent.js'
+import { getAgentModel, getAgentModelRole } from '../../utils/model/agent.js'
 import { getQuerySourceForAgent } from '../../utils/promptCategory.js'
 import {
   getAgentTranscript,
@@ -200,6 +200,8 @@ export async function resumeAgentBackground({
     description: uiDescription,
     prompt,
     selectedAgent,
+    model: resolvedAgentModel,
+    modelRole: getAgentModelRole(selectedAgent.model),
     setAppState: rootSetAppState,
     toolUseId: toolUseContext.toolUseId,
   })

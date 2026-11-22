@@ -6,25 +6,20 @@ import { lazySchema } from '../lazySchema.js'
 /**
  * First-layer defense against official marketplace impersonation.
  *
- * This validation blocks direct impersonation attempts like "anthropic-official",
- * "claude-marketplace", etc. Indirect variations (e.g., "my-claude-marketplace")
+ * This validation blocks direct impersonation attempts like "provider-official",
+ * "nexus-marketplace", etc. Indirect variations (e.g., "my-nexus-marketplace")
  * are not blocked intentionally to avoid false positives on legitimate names.
  * Source org verification provides additional protection at registration/install time.
  */
 
 /**
- * Official marketplace names that are reserved for Anthropic/Nexus official use.
+ * Official marketplace names that are reserved for Provider/Nexus official use.
  * These names are allowed ONLY for official marketplaces and blocked for third parties.
  */
-export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
-  'claude-code-marketplace',
-  'claude-code-plugins',
-  'claude-plugins-official',
-  'anthropic-marketplace',
-  'anthropic-plugins',
-  'agent-skills',
-  'life-sciences',
-  'knowledge-work-plugins',
+export const ALLOWED_FEATURED_MARKETPLACE_NAMES = new Set([
+  'nexus-code-marketplace',
+  'nexus-code-plugins',
+  'nexus-plugins-official',
 ])
 
 /**
@@ -32,12 +27,12 @@ export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
  * These are still reserved/allowed names, but opt out of the auto-update
  * default that other official marketplaces receive.
  */
-const NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES = new Set(['knowledge-work-plugins'])
+const NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES = new Set<string>()
 
 /**
  * Check if auto-update is enabled for a marketplace.
  * Uses the stored value if set, otherwise defaults based on whether
- * it's an official Anthropic marketplace (true) or not (false).
+ * it's an official Nexus marketplace (true) or not (false).
  * Official marketplaces in NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES are excluded
  * from the auto-update default.
  *
@@ -52,24 +47,24 @@ export function isMarketplaceAutoUpdate(
   const normalizedName = marketplaceName.toLowerCase()
   return (
     entry.autoUpdate ??
-    (ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(normalizedName) &&
+    (ALLOWED_FEATURED_MARKETPLACE_NAMES.has(normalizedName) &&
       !NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES.has(normalizedName))
   )
 }
 
 /**
- * Pattern to detect names that impersonate official Anthropic/Nexus marketplaces.
+ * Pattern to detect names that impersonate official Nexus/Nexus marketplaces.
  *
  * Matches names containing variations like:
- * - "official" combined with "anthropic" or "claude" (e.g., "official-claude-plugins")
- * - "anthropic" or "claude" combined with "official" (e.g., "claude-official")
- * - Names starting with "anthropic" or "claude" followed by official-sounding terms
- *   like "marketplace", "plugins" (e.g., "anthropic-marketplace-new", "claude-plugins-v2")
+ * - "official" combined with "messages" or "nexus" (e.g., "official-nexus-plugins")
+ * - "messages" or "nexus" combined with "official" (e.g., "nexus-official")
+ * - Names starting with "messages" or "nexus" followed by official-sounding terms
+ *   like "marketplace", "plugins" (e.g., "provider-marketplace-new", "nexus-plugins-v2")
  *
  * The pattern is case-insensitive.
  */
 export const BLOCKED_OFFICIAL_NAME_PATTERN =
-  /(?:official[^a-z0-9]*(anthropic|claude)|(?:anthropic|claude)[^a-z0-9]*official|^(?:anthropic|claude)[^a-z0-9]*(marketplace|plugins|official))/i
+  /(?:official[^a-z0-9]*nexus|nexus[^a-z0-9]*official|^nexus[^a-z0-9]*(marketplace|plugins|official))/i
 
 /**
  * Pattern to detect non-ASCII characters that could be used for homograph attacks.
@@ -79,19 +74,19 @@ export const BLOCKED_OFFICIAL_NAME_PATTERN =
 const NON_ASCII_PATTERN = /[^\u0020-\u007E]/
 
 /**
- * Check if a marketplace name impersonates an official Anthropic/Nexus marketplace.
+ * Check if a marketplace name impersonates an official Nexus/Nexus marketplace.
  *
  * @param name - The marketplace name to check
  * @returns true if the name is blocked (impersonates official), false if allowed
  */
 export function isBlockedOfficialName(name: string): boolean {
   // If it's in the allowed list, it's not blocked
-  if (ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(name.toLowerCase())) {
+  if (ALLOWED_FEATURED_MARKETPLACE_NAMES.has(name.toLowerCase())) {
     return false
   }
 
   // Block names with non-ASCII characters to prevent homograph attacks
-  // (e.g., using Cyrillic 'а' to impersonate 'anthropic')
+  // (e.g., using Cyrillic 'а' to impersonate 'messages')
   if (NON_ASCII_PATTERN.test(name)) {
     return true
   }
@@ -101,16 +96,16 @@ export function isBlockedOfficialName(name: string): boolean {
 }
 
 /**
- * The official GitHub organization for Anthropic marketplaces.
+ * The official GitHub organization for Provider marketplaces.
  * Reserved names must come from this org.
  */
-export const OFFICIAL_GITHUB_ORG = 'anthropics'
+export const OFFICIAL_GITHUB_ORG = 'whale-talk'
 
 /**
  * Validate that a marketplace with a reserved name comes from the official source.
  *
- * Reserved names (in ALLOWED_OFFICIAL_MARKETPLACE_NAMES) can only be used by
- * marketplaces from the official Anthropic GitHub organization.
+ * Reserved names (in ALLOWED_FEATURED_MARKETPLACE_NAMES) can only be used by
+ * marketplaces from the official Nexus GitHub organization.
  *
  * @param name - The marketplace name
  * @param source - The marketplace source configuration
@@ -123,7 +118,7 @@ export function validateOfficialNameSource(
   const normalizedName = name.toLowerCase()
 
   // Only validate reserved names
-  if (!ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(normalizedName)) {
+  if (!ALLOWED_FEATURED_MARKETPLACE_NAMES.has(normalizedName)) {
     return null // Not a reserved name, no source validation needed
   }
 
@@ -132,7 +127,7 @@ export function validateOfficialNameSource(
     // Verify the repo is from the official org
     const repo = source.repo || ''
     if (!repo.toLowerCase().startsWith(`${OFFICIAL_GITHUB_ORG}/`)) {
-      return `The name '${name}' is reserved for official Anthropic marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+      return `The name '${name}' is reserved for official Nexus marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
     }
     return null // Valid: reserved name from official GitHub source
   }
@@ -140,20 +135,18 @@ export function validateOfficialNameSource(
   // Check for git URL source type
   if (source.source === 'git' && source.url) {
     const url = source.url.toLowerCase()
-    // Check for HTTPS URL format: https://github.com/anthropics/...
-    // or SSH format: git@github.com:anthropics/...
-    const isHttpsAnthropics = url.includes('github.com/anthropics/')
-    const isSshAnthropics = url.includes('git@github.com:anthropics/')
+    const isHttpsOwner = url.startsWith('https://github.com/whale-talk/')
+    const isSshOwner = url.startsWith('git@github.com:whale-talk/')
 
-    if (isHttpsAnthropics || isSshAnthropics) {
+    if (isHttpsOwner || isSshOwner) {
       return null // Valid: reserved name from official git URL
     }
 
-    return `The name '${name}' is reserved for official Anthropic marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+    return `The name '${name}' is reserved for official Nexus marketplaces. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
   }
 
   // Reserved names must come from GitHub (either 'github' or 'git' source)
-  return `The name '${name}' is reserved for official Anthropic marketplaces and can only be used with GitHub sources from the '${OFFICIAL_GITHUB_ORG}' organization.`
+  return `The name '${name}' is reserved for official Nexus marketplaces and can only be used with GitHub sources from the '${OFFICIAL_GITHUB_ORG}' organization.`
 }
 
 /**
@@ -234,7 +227,7 @@ const MarketplaceNameSchema = lazySchema(() =>
     )
     .refine(name => !isBlockedOfficialName(name), {
       message:
-        'Marketplace name impersonates an official Anthropic/Nexus marketplace',
+        'Marketplace name impersonates an official Nexus/Nexus marketplace',
     })
     .refine(name => name.toLowerCase() !== 'inline', {
       message:
@@ -575,7 +568,6 @@ const PluginManifestMcpServerSchema = lazySchema(() =>
  * Schema for a single user-configurable option in plugin manifest userConfig.
  *
  * Shape intentionally matches `McpbUserConfigurationOption` from
- * `@anthropic-ai/mcpb` so the parsed result is structurally assignable to
  * `UserConfigSchema` in mcpbHandler.ts — this lets us reuse
  * `validateUserConfig` and the config dialog without modification.
  * `title` and `description` are required (not optional) because the upstream
@@ -637,7 +629,7 @@ const PluginManifestUserConfigSchema = lazySchema(() =>
           .string()
           .regex(
             /^[A-Za-z_]\w*$/,
-            'Option keys must be valid identifiers (letters, digits, underscore; no leading digit) — they become CLAUDE_PLUGIN_OPTION_<KEY> env vars in hooks',
+            'Option keys must be valid identifiers (letters, digits, underscore; no leading digit) — they become NEXUS_PLUGIN_OPTION_<KEY> env vars in hooks',
           ),
         PluginUserConfigOptionSchema(),
       )
@@ -656,7 +648,7 @@ const PluginManifestUserConfigSchema = lazySchema(() =>
 /**
  * Schema for channel declarations in plugin manifest.
  *
- * A channel is an MCP server that emits `notifications/claude/channel` to
+ * A channel is an MCP server that emits `notifications/nexus/channel` to
  * inject messages into the conversation (Telegram, Slack, Discord, etc.).
  * Declaring it here lets the plugin prompt for user config (bot tokens,
  * owner IDs) at install time via the PluginOptionsFlow prompt,
@@ -879,7 +871,7 @@ const PluginManifestSettingsSchema = lazySchema(() =>
  * still fail, since a typo there is more likely to be an author mistake
  * than a vendor extension. Type mismatches and other validation errors
  * still fail at all levels. For developer feedback on unknown top-level
- * fields, use `claude plugin validate`.
+ * fields, use `nexus plugin validate`.
  */
 export const PluginManifestSchema = lazySchema(() =>
   z.object({
@@ -926,7 +918,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Path to marketplace.json within repo (defaults to .claude-plugin/marketplace.json)',
+          'Path to marketplace.json within repo (defaults to .nexus-plugin/marketplace.json)',
         ),
       sparsePaths: z
         .array(z.string())
@@ -934,7 +926,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
         .describe(
           'Directories to include via git sparse-checkout (cone mode). ' +
             'Use for monorepos where the marketplace lives in a subdirectory. ' +
-            'Example: [".claude-plugin", "plugins"]. ' +
+            'Example: [".nexus-plugin", "plugins"]. ' +
             'If omitted, the full repository is cloned.',
         ),
     }),
@@ -958,7 +950,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Path to marketplace.json within repo (defaults to .claude-plugin/marketplace.json)',
+          'Path to marketplace.json within repo (defaults to .nexus-plugin/marketplace.json)',
         ),
       sparsePaths: z
         .array(z.string())
@@ -966,7 +958,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
         .describe(
           'Directories to include via git sparse-checkout (cone mode). ' +
             'Use for monorepos where the marketplace lives in a subdirectory. ' +
-            'Example: [".claude-plugin", "plugins"]. ' +
+            'Example: [".nexus-plugin", "plugins"]. ' +
             'If omitted, the full repository is cloned.',
         ),
     }),
@@ -984,7 +976,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
       source: z.literal('directory'),
       path: z
         .string()
-        .describe('Local directory containing .claude-plugin/marketplace.json'),
+        .describe('Local directory containing .nexus-plugin/marketplace.json'),
     }),
     z.object({
       source: z.literal('hostPattern'),
@@ -1014,11 +1006,11 @@ export const MarketplaceSourceSchema = lazySchema(() =>
         source: z.literal('settings'),
         name: MarketplaceNameSchema()
           .refine(
-            name => !ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(name.toLowerCase()),
+            name => !ALLOWED_FEATURED_MARKETPLACE_NAMES.has(name.toLowerCase()),
             {
               message:
                 'Reserved official marketplace names cannot be used with settings sources. ' +
-                'validateOfficialNameSource only accepts github/git sources from anthropics/* ' +
+                'validateOfficialNameSource only accepts github/git sources from providers/* ' +
                 'for these names; a settings source would be rejected after ' +
                 'loadAndCacheMarketplace has already written to disk with cleanupNeeded=false.',
             },
@@ -1062,7 +1054,7 @@ export const gitSha = lazySchema(() =>
 export const PluginSourceSchema = lazySchema(() =>
   z.union([
     RelativePath().describe(
-      'Path to the plugin root, relative to the marketplace root (the directory containing .claude-plugin/, not .claude-plugin/ itself)',
+      'Path to the plugin root, relative to the marketplace root (the directory containing .nexus-plugin/, not .nexus-plugin/ itself)',
     ),
     z
       .object({
@@ -1140,7 +1132,7 @@ export const PluginSourceSchema = lazySchema(() =>
           .string()
           .min(1)
           .describe(
-            'Subdirectory within the repo containing the plugin (e.g., "tools/claude-plugin"). ' +
+            'Subdirectory within the repo containing the plugin (e.g., "tools/nexus-plugin"). ' +
               'Cloned sparsely using partial clone (--filter=tree:0) to minimize bandwidth for monorepos.',
           ),
         ref: z
@@ -1332,7 +1324,7 @@ export const PluginMarketplaceSchema = lazySchema(() =>
  * Both parts allow alphanumeric characters, hyphens, dots, and underscores.
  *
  * Examples:
- * - "code-formatter@anthropic-tools"
+ * - "code-formatter@provider-tools"
  * - "db_assistant@company-internal"
  * - "my.plugin@personal-marketplace"
  */
@@ -1401,7 +1393,7 @@ export const DependencyRefSchema = lazySchema(() =>
  * not in the plugin reference.
  *
  * Examples:
- * - "code-formatter@anthropic-tools"
+ * - "code-formatter@provider-tools"
  * - "db-assistant@company-internal"
  * - { id: "formatter@tools", version: "^2.0.0", required: true }
  */
@@ -1435,12 +1427,12 @@ export const SettingsPluginEntrySchema = lazySchema(() =>
  * (npm, git, local, etc.). The plugin ID is the key in the plugins record,
  * so it's not duplicated here.
  *
- * Example entry for key "code-formatter@anthropic-tools":
+ * Example entry for key "code-formatter@provider-tools":
  * {
  *   "version": "1.2.0",
  *   "installedAt": "2024-01-15T10:30:00Z",
- *   "marketplace": "anthropic-tools",
- *   "installPath": "/home/user/.claude/plugins/installed/anthropic-tools/code-formatter"
+ *   "marketplace": "provider-tools",
+ *   "installPath": "/home/user/.nexus/plugins/installed/provider-tools/code-formatter"
  * }
  */
 export const InstalledPluginSchema = lazySchema(() =>
@@ -1474,7 +1466,7 @@ export const InstalledPluginSchema = lazySchema(() =>
  * {
  *   "version": 1,
  *   "plugins": {
- *     "code-formatter@anthropic-tools": { ... },
+ *     "code-formatter@provider-tools": { ... },
  *     "db-assistant@company-internal": { ... }
  *   }
  * }
@@ -1552,7 +1544,7 @@ export const PluginInstallationEntrySchema = lazySchema(() =>
  * {
  *   "version": 2,
  *   "plugins": {
- *     "code-formatter@anthropic-tools": [
+ *     "code-formatter@provider-tools": [
  *       { "scope": "user", "installPath": "...", "version": "1.0.0" },
  *       { "scope": "project", "projectPath": "/path/to/project", "installPath": "...", "version": "1.1.0" }
  *     ]
@@ -1584,8 +1576,8 @@ export const InstalledPluginsFileSchema = lazySchema(() =>
  *
  * Example entry:
  * {
- *   "source": { "source": "github", "repo": "anthropic/claude-plugins" },
- *   "installLocation": "/home/user/.claude/plugins/cached/marketplaces/anthropic-tools",
+ *   "source": { "source": "github", "repo": "provider/nexus-plugins" },
+ *   "installLocation": "/home/user/.nexus/plugins/cached/marketplaces/provider-tools",
  *   "lastUpdated": "2024-01-15T10:30:00Z"
  * }
  */
@@ -1617,7 +1609,7 @@ export const KnownMarketplaceSchema = lazySchema(() =>
  *
  * Example file:
  * {
- *   "anthropic-tools": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." },
+ *   "provider-tools": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." },
  *   "company-internal": { "source": { ... }, "installLocation": "...", "lastUpdated": "..." }
  * }
  */

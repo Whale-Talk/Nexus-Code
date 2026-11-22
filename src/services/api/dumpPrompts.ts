@@ -1,5 +1,5 @@
 // P4 边界: SDK ClientOptions['fetch'] 的本地镜像 — 仅消费 fetch 覆盖签名,
-// 与 claude.ts Options.fetchOverride (SDK ClientOptions['fetch']) 直接对接。
+// 与 nexus.ts Options.fetchOverride (SDK ClientOptions['fetch']) 直接对接。
 type DumpPromptsFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -52,7 +52,7 @@ export function clearAllDumpState(): void {
 }
 
 export function addApiRequestToCache(requestData: unknown): void {
-  if (process.env.USER_TYPE !== 'ant') return
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return
   cachedApiRequests.push({
     timestamp: new Date().toISOString(),
     request: requestData,
@@ -103,7 +103,7 @@ function dumpRequest(
     const req = jsonParse(body) as Record<string, unknown>
     addApiRequestToCache(req)
 
-    if (process.env.USER_TYPE !== 'ant') return
+    if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return
     const entries: string[] = []
     const messages = (req.messages ?? []) as Array<{ role?: string }>
 
@@ -177,7 +177,7 @@ export function createDumpPromptsFetch(
     const response = await globalThis.fetch(input, init)
 
     // Save response async
-    if (timestamp && response.ok && process.env.USER_TYPE === 'ant') {
+    if (timestamp && response.ok && process.env.NEXUS_BUILD_FLAVOR === 'development') {
       const cloned = response.clone()
       void (async () => {
         try {

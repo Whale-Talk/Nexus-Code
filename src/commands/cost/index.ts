@@ -3,7 +3,7 @@
  * Implementation is lazy-loaded from cost.ts to reduce startup time.
  */
 import type { Command } from '../../commands.js'
-import { isClaudeAISubscriber } from '../../utils/auth.js'
+import { isHostedAccountSubscriber } from '../../utils/auth.js'
 
 const cost = {
   type: 'local',
@@ -11,10 +11,10 @@ const cost = {
   description: 'Show the total cost and duration of the current session',
   get isHidden() {
     // Keep visible for Ants even if they're subscribers (they see cost breakdowns)
-    if (process.env.USER_TYPE === 'ant') {
+    if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
       return false
     }
-    return isClaudeAISubscriber()
+    return isHostedAccountSubscriber()
   },
   supportsNonInteractive: true,
   load: () => import('./cost.js'),

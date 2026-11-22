@@ -1,14 +1,11 @@
 import {
   buildComputerUseTools,
   createComputerUseMcpServer,
-} from '@ant/computer-use-mcp'
+} from '@nexus-local/computer-use-mcp'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { homedir } from 'os'
 
-import { shutdownDatadog } from '../../services/analytics/datadog.js'
-import { shutdown1PEventLogging } from '../../services/analytics/firstPartyEventLogger.js'
-import { initializeAnalyticsSink } from '../../services/analytics/sink.js'
 import { enableConfigs } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { filterAppsForDescription } from './appNames.js'
@@ -19,7 +16,7 @@ const APP_ENUM_TIMEOUT_MS = 1000
 
 /**
  * Enumerate installed apps, timed. Fails soft — if Spotlight is slow or
- * claude-swift throws, the tool description just omits the list. Resolution
+ * nexus-swift throws, the tool description just omits the list. Resolution
  * happens at call time regardless; the model just doesn't get hints.
  */
 async function tryGetInstalledAppNames(): Promise<string[] | undefined> {
@@ -79,12 +76,11 @@ export async function createComputerUseMcpServerForCli(): Promise<
 
 /**
  * Subprocess entrypoint for `--computer-use-mcp`. Mirror of
- * `runClaudeInChromeMcpServer` — stdio transport, exit on stdin close,
+ * `runBrowserCompanionMcpServer` — stdio transport, exit on stdin close,
  * flush analytics before exit.
  */
 export async function runComputerUseMcpServer(): Promise<void> {
   enableConfigs()
-  initializeAnalyticsSink()
 
   const server = await createComputerUseMcpServerForCli()
   const transport = new StdioServerTransport()
@@ -93,7 +89,6 @@ export async function runComputerUseMcpServer(): Promise<void> {
   const shutdownAndExit = async (): Promise<void> => {
     if (exiting) return
     exiting = true
-    await Promise.all([shutdown1PEventLogging(), shutdownDatadog()])
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(0)
   }

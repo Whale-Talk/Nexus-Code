@@ -9,7 +9,7 @@ const teamMemPaths = feature('TEAMMEM')
   : null
 
 import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -171,7 +171,7 @@ function logMemoryDirCounts(
           subdirCount++
         }
       }
-      logEvent('tengu_memdir_loaded', {
+      logEvent('nexus_memdir_loaded', {
         ...baseMetadata,
         total_file_count: fileCount,
         total_subdir_count: subdirCount,
@@ -179,7 +179,7 @@ function logMemoryDirCounts(
     },
     () => {
       // Directory unreadable — log without counts
-      logEvent('tengu_memdir_loaded', baseMetadata)
+      logEvent('nexus_memdir_loaded', baseMetadata)
     },
   )
 }
@@ -373,7 +373,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
  * Build the "Searching past context" section if the feature gate is enabled.
  */
 export function buildSearchingPastContextSection(autoMemDir: string): string[] {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_coral_fern', false)) {
+  if (!getFeatureValue('nexus_coral_fern', false)) {
     return []
   }
   const projectDir = getProjectDir(getOriginalCwd())
@@ -419,15 +419,15 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 export async function loadMemoryPrompt(): Promise<string | null> {
   const autoEnabled = isAutoMemoryEnabled()
 
-  const skipIndex = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_moth_copse',
+  const skipIndex = getFeatureValue(
+    'nexus_moth_copse',
     false,
   )
 
   // KAIROS daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared
   // MEMORY.md that both sides read + write). Gating on `autoEnabled` here
-  // means the !autoEnabled case falls through to the tengu_memdir_disabled
+  // means the !autoEnabled case falls through to the nexus_memdir_disabled
   // telemetry block below, matching the non-KAIROS path.
   if (feature('KAIROS') && autoEnabled && getKairosActive()) {
     logMemoryDirCounts(getAutoMemPath(), {
@@ -439,7 +439,7 @@ export async function loadMemoryPrompt(): Promise<string | null> {
 
   // Cowork injects memory-policy text via env var; thread into all builders.
   const coworkExtraGuidelines =
-    process.env.CLAUDE_COWORK_MEMORY_EXTRA_GUIDELINES
+    process.env.NEXUS_COWORK_MEMORY_EXTRA_GUIDELINES
   const extraGuidelines =
     coworkExtraGuidelines && coworkExtraGuidelines.trim().length > 0
       ? [coworkExtraGuidelines]
@@ -489,19 +489,19 @@ export async function loadMemoryPrompt(): Promise<string | null> {
     ).join('\n')
   }
 
-  logEvent('tengu_memdir_disabled', {
+  logEvent('nexus_memdir_disabled', {
     disabled_by_env_var: isEnvTruthy(
-      process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY,
+      process.env.NEXUS_DISABLE_AUTO_MEMORY,
     ),
     disabled_by_setting:
-      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY) &&
+      !isEnvTruthy(process.env.NEXUS_DISABLE_AUTO_MEMORY) &&
       getInitialSettings().autoMemoryEnabled === false,
   })
   // Gate on the GB flag directly, not isTeamMemoryEnabled() — that function
   // checks isAutoMemoryEnabled() first, which is definitionally false in this
   // branch. We want "was this user in the team-memory cohort at all."
-  if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_herring_clock', false)) {
-    logEvent('tengu_team_memdir_disabled', {})
+  if (getFeatureValue('nexus_herring_clock', false)) {
+    logEvent('nexus_team_memdir_disabled', {})
   }
   return null
 }

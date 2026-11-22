@@ -1,4 +1,4 @@
-// Scheduled prompts, stored in <project>/.claude/scheduled_tasks.json.
+// Scheduled prompts, stored in <project>/.nexus/scheduled_tasks.json.
 //
 // Tasks come in two flavors:
 //   - One-shot (recurring: false/undefined) — fire once, then auto-delete.
@@ -71,7 +71,7 @@ export type CronTask = {
 
 type CronFile = { tasks: CronTask[] }
 
-const CRON_FILE_REL = join('.claude', 'scheduled_tasks.json')
+const CRON_FILE_REL = join('.nexus', 'scheduled_tasks.json')
 
 /**
  * Path to the cron file. `dir` defaults to getProjectRoot() — pass it
@@ -83,7 +83,7 @@ export function getCronFilePath(dir?: string): string {
 }
 
 /**
- * Read and parse .claude/scheduled_tasks.json. Returns an empty task list if the file
+ * Read and parse .nexus/scheduled_tasks.json. Returns an empty task list if the file
  * is missing, empty, or malformed. Tasks with invalid cron strings are
  * silently dropped (logged at debug level) so a single bad entry never
  * blocks the whole file.
@@ -158,7 +158,7 @@ export function hasCronTasksSync(dir?: string): boolean {
 }
 
 /**
- * Overwrite .claude/scheduled_tasks.json with the given tasks. Creates .claude/ if
+ * Overwrite .nexus/scheduled_tasks.json with the given tasks. Creates .nexus/ if
  * missing. Empty task list writes an empty file (rather than deleting) so
  * the file watcher sees a change event on last-task-removed.
  */
@@ -167,7 +167,7 @@ export async function writeCronTasks(
   dir?: string,
 ): Promise<void> {
   const root = dir ?? getProjectRoot()
-  await mkdir(join(root, '.claude'), { recursive: true })
+  await mkdir(join(root, '.nexus'), { recursive: true })
   // Strip the runtime-only `durable` flag — everything on disk is durable
   // by definition, and keeping the flag out means readCronTasks() naturally
   // yields durable: undefined without having to set it explicitly.
@@ -187,7 +187,7 @@ export async function writeCronTasks(
  *
  * When `durable` is false the task is held in process memory only
  * (bootstrap/state.ts) — it fires on schedule this session but is never
- * written to .claude/scheduled_tasks.json and dies with the process. The
+ * written to .nexus/scheduled_tasks.json and dies with the process. The
  * scheduler merges session tasks into its tick loop directly, so no file
  * change event is needed.
  */
@@ -308,7 +308,7 @@ export function nextCronRunMs(cron: string, fromMs: number): number | null {
 
 /**
  * Cron scheduler tuning knobs. Sourced at runtime from the
- * `tengu_kairos_cron_config` GrowthBook JSON config (see cronJitterConfig.ts)
+ * `nexus_kairos_cron_config` GrowthBook JSON config (see cronJitterConfig.ts)
  * so ops can adjust behavior fleet-wide without shipping a client build.
  * Defaults here preserve the pre-config behavior exactly.
  */
@@ -408,7 +408,7 @@ export function jitteredNextCronRunMs(
  * At defaults (mod 30, max 90 s, floor 0) only :00 and :30 get jitter,
  * because humans round to the half-hour.
  *
- * During an incident, ops can push `tengu_kairos_cron_config` with e.g.
+ * During an incident, ops can push `nexus_kairos_cron_config` with e.g.
  * `{oneShotMinuteMod: 15, oneShotMaxMs: 300000, oneShotFloorMs: 30000}` to
  * spread :00/:15/:30/:45 fires across a [t-5min, t-30s] window — every task
  * gets at least 30 s of lead, so nobody lands on the exact mark.

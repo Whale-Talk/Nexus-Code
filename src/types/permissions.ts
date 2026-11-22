@@ -313,7 +313,7 @@ export type PermissionDecisionReason =
       type: 'safetyCheck'
       reason: string
       // When true, auto mode lets the classifier evaluate this instead of
-      // forcing a prompt. True for sensitive-file paths (.claude/, .git/,
+      // forcing a prompt. True for sensitive-file paths (.nexus/, .git/,
       // shell configs) — the classifier can see context and decide. False
       // for Windows path bypass attempts and cross-machine bridge messages.
       classifierApprovable: boolean
@@ -382,7 +382,7 @@ export type YoloClassifierResult = {
   stage1RequestId?: string
   /**
    * API message id (msg_xxx) for stage 1. Enables joining the
-   * tengu_auto_mode_decision analytics event to the classifier's actual
+   * nexus_auto_mode_decision analytics event to the classifier's actual
    * prompt/completion in post-analysis.
    */
   stage1MsgId?: string

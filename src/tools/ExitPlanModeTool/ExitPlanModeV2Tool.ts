@@ -203,7 +203,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     // Reject before checkPermissions to avoid showing the approval dialog.
     const mode = getAppState().toolPermissionContext.mode
     if (mode !== 'plan') {
-      logEvent('tengu_exit_plan_mode_called_outside_plan', {
+      logEvent('nexus_exit_plan_mode_called_outside_plan', {
         model:
           options.mainLoopModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -359,6 +359,8 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       setHasExitedPlanMode(true)
       setNeedsPlanModeExitAttachment(true)
       let restoreMode = prev.toolPermissionContext.prePlanMode ?? 'default'
+      // A plan approval without a mode choice does not activate bypass.
+      if (restoreMode === 'bypassPermissions') restoreMode = 'default'
       if (feature('TRANSCRIPT_CLASSIFIER')) {
         if (
           restoreMode === 'auto' &&

@@ -1,4 +1,4 @@
-// Non-React scheduler core for .claude/scheduled_tasks.json.
+// Non-React scheduler core for .nexus/scheduled_tasks.json.
 // Shared by REPL (via useScheduledTasks) and SDK/-p mode (print.ts).
 //
 // Lifecycle: poll getScheduledTasksEnabled() until true (flag flips when
@@ -86,7 +86,7 @@ type CronSchedulerOptions = {
    */
   onMissed?: (tasks: CronTask[]) => void
   /**
-   * Directory containing .claude/scheduled_tasks.json. When provided, the
+   * Directory containing .nexus/scheduled_tasks.json. When provided, the
    * scheduler never touches bootstrap state: getProjectRoot/getSessionId are
    * not read, and the getScheduledTasksEnabled() poll is skipped (enable()
    * runs immediately on start). Required for Agent SDK daemon callers.
@@ -113,7 +113,7 @@ type CronSchedulerOptions = {
    * Killswitch: polled once per check() tick. When true, check() bails
    * before firing anything — existing crons stop dead mid-session. CLI
    * callers inject `() => !isKairosCronEnabled()` so flipping the
-   * tengu_kairos_cron gate off stops already-running schedulers (not just
+   * nexus_kairos_cron gate off stops already-running schedulers (not just
    * new ones). Daemon callers omit this, same rationale as getJitterConfig.
    */
   isKilled?: () => boolean
@@ -202,7 +202,7 @@ export function createCronScheduler(
         // removeCronTasks + chokidar reload chain is in progress.
         nextFireAt.set(t.id, Infinity)
       }
-      logEvent('tengu_scheduled_task_missed', {
+      logEvent('nexus_scheduled_task_missed', {
         count: missed.length,
         taskIds: missed
           .map(t => t.id)
@@ -285,7 +285,7 @@ export function createCronScheduler(
       logForDebugging(
         `[ScheduledTasks] firing ${t.id}${t.recurring ? ' (recurring)' : ''}`,
       )
-      logEvent('tengu_scheduled_task_fire', {
+      logEvent('nexus_scheduled_task_fire', {
         recurring: t.recurring ?? false,
         taskId:
           t.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -305,7 +305,7 @@ export function createCronScheduler(
         logForDebugging(
           `[ScheduledTasks] recurring task ${t.id} aged out (${ageHours}h since creation), deleting after final fire`,
         )
-        logEvent('tengu_scheduled_task_expired', {
+        logEvent('nexus_scheduled_task_expired', {
           taskId:
             t.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           ageHours,
@@ -405,7 +405,7 @@ export function createCronScheduler(
 
     // Acquire the per-project scheduler lock. Only the owning session runs
     // check(). Other sessions probe periodically to take over if the owner
-    // dies. Prevents double-firing when multiple Claudes share a cwd.
+    // dies. Prevents double-firing when multiple Nexuss share a cwd.
     isOwner = await tryAcquireSchedulerLock(lockOpts).catch(() => false)
     if (stopped) {
       if (isOwner) {
@@ -543,7 +543,7 @@ export function buildMissedTaskNotification(missed: CronTask[]): string {
   const plural = missed.length > 1
   const header =
     `The following one-shot scheduled task${plural ? 's were' : ' was'} missed while Nexus was not running. ` +
-    `${plural ? 'They have' : 'It has'} already been removed from .claude/scheduled_tasks.json.\n\n` +
+    `${plural ? 'They have' : 'It has'} already been removed from .nexus/scheduled_tasks.json.\n\n` +
     `Do NOT execute ${plural ? 'these prompts' : 'this prompt'} yet. ` +
     `First use the AskUserQuestion tool to ask whether to run ${plural ? 'each one' : 'it'} now. ` +
     `Only execute if the user confirms.`

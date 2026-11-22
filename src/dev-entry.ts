@@ -2,6 +2,8 @@ import pkg from '../package.json'
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { dirname, extname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
+import { homedir } from 'node:os'
+import { upgradeProfile } from '../scripts/upgrade-profile.cjs'
 
 // ESM 无内置 __dirname — 本文件位于项目根的 src/ 下
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -106,30 +108,13 @@ function collectMissingRelativeImports(): MissingImport[] {
 const args = process.argv.slice(2)
 const missingImports = collectMissingRelativeImports()
 
-if (args.includes('--version')) {
+if (args.length === 1 && ['--version', '-v', '-V'].includes(args[0]!)) {
   if (missingImports.length > 0) {
     console.log(`${pkg.version} (restored dev workspace)`)
     console.log(`missing_relative_imports=${missingImports.length}`)
     process.exit(0)
   }
   console.log(pkg.version)
-  process.exit(0)
-}
-
-if (args.includes('--help')) {
-  if (missingImports.length > 0) {
-    console.log('Nexus Code restored development workspace')
-    console.log(`version: ${pkg.version}`)
-    console.log(`missing relative imports: ${missingImports.length}`)
-    process.exit(0)
-  }
-  console.log('Usage: claude [options] [prompt]')
-  console.log('')
-  console.log('Basic restored commands:')
-  console.log('  --help       Show this help')
-  console.log('  --version    Show version')
-  console.log('')
-  console.log('Interactive REPL startup is routed to src/main.tsx when run without these flags.')
   process.exit(0)
 }
 
@@ -151,4 +136,5 @@ if (missingImports.length > 0) {
 
 // Route through the original CLI bootstrap so the exported `main()` is
 // actually invoked. Importing `main.tsx` directly only evaluates the module.
+upgradeProfile(resolve(process.env.NEXUS_CONFIG_DIR || join(homedir(), '.nexus')))
 await import('./entrypoints/cli.tsx')

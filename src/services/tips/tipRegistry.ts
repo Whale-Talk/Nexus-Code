@@ -9,7 +9,6 @@ import {
 import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
 import { getDesktopUpsellConfig } from '../../components/DesktopUpsell/DesktopUpsellStartup.js'
 import { color } from '../../components/design-system/color.js'
-import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { isKairosCronEnabled } from '../../tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth.js'
@@ -38,21 +37,12 @@ import {
 import { getPlatform } from '../../utils/platform.js'
 import { isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js'
 import { loadKnownMarketplacesConfigSafe } from '../../utils/plugins/marketplaceManager.js'
-import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js'
+import { FEATURED_MARKETPLACE_NAME } from '../../utils/plugins/featuredMarketplace.js'
 import {
   getCurrentSessionAgentColor,
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
-import {
-  formatGrantAmount,
-  getCachedOverageCreditGrant,
-} from '../api/overageCreditGrant.js'
-import {
-  checkCachedPassesEligibility,
-  formatCreditAmount,
-  getCachedReferrerReward,
-} from '../api/referral.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
 import type { Tip, TipContext } from './types.js'
 
@@ -62,7 +52,7 @@ async function isOfficialMarketplaceInstalled(): Promise<boolean> {
     return _isOfficialMarketplaceInstalledCache
   }
   const config = await loadKnownMarketplacesConfigSafe()
-  _isOfficialMarketplaceInstalledCache = OFFICIAL_MARKETPLACE_NAME in config
+  _isOfficialMarketplaceInstalledCache = FEATURED_MARKETPLACE_NAME in config
   return _isOfficialMarketplaceInstalledCache
 }
 
@@ -74,7 +64,7 @@ async function isMarketplacePluginRelevant(
   if (!(await isOfficialMarketplaceInstalled())) {
     return false
   }
-  if (isPluginInstalled(`${pluginName}@${OFFICIAL_MARKETPLACE_NAME}`)) {
+  if (isPluginInstalled(`${pluginName}@${FEATURED_MARKETPLACE_NAME}`)) {
     return false
   }
   const { bashTools } = context ?? {}
@@ -109,7 +99,7 @@ const externalTips: Tip[] = [
       `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
     cooldownSessions: 5,
     isRelevant: async () => {
-      if (process.env.USER_TYPE === 'ant') return false
+      if (process.env.NEXUS_BUILD_FLAVOR === 'development') return false
       const config = getGlobalConfig()
       // Show to users who haven't used plan mode recently (7+ days)
       const daysSinceLastUse = config.lastPlanModeUse
@@ -239,11 +229,11 @@ const externalTips: Tip[] = [
   {
     id: 'powershell-tool-env',
     content: async () =>
-      'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
+      'Set NEXUS_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
     cooldownSessions: 10,
     isRelevant: async () =>
       getPlatform() === 'windows' &&
-      process.env.CLAUDE_CODE_USE_POWERSHELL_TOOL === undefined,
+      process.env.NEXUS_USE_POWERSHELL_TOOL === undefined,
   },
   {
     id: 'status-line',
@@ -325,7 +315,7 @@ const externalTips: Tip[] = [
   {
     id: 'install-github-app',
     content: async () =>
-      'Run /install-github-app to tag @claude right from your Github issues and PRs',
+      'Run /install-github-app to tag @nexus right from your Github issues and PRs',
     cooldownSessions: 10,
     isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
   },
@@ -401,7 +391,7 @@ const externalTips: Tip[] = [
   {
     id: 'shift-tab',
     content: async () =>
-      process.env.USER_TYPE === 'ant'
+      process.env.NEXUS_BUILD_FLAVOR === 'development'
         ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode and auto mode`
         : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
     cooldownSessions: 10,
@@ -471,27 +461,27 @@ const externalTips: Tip[] = [
     isRelevant: async () => true,
   },
   {
-    id: 'opusplan-mode-reminder',
+    id: 'quarkplan-mode-reminder',
     content: async () =>
-      `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Claude Opus.`,
+      `Your default model setting is Quark Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Nexus Quark.`,
     cooldownSessions: 2,
     async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') return false
+      if (process.env.NEXUS_BUILD_FLAVOR === 'development') return false
       const config = getGlobalConfig()
       const modelSetting = getUserSpecifiedModelSetting()
-      const hasOpusPlanMode = modelSetting === 'opusplan'
+      const hasQuarkPlanMode = modelSetting === 'quarkplan'
       // Show reminder if they have Quark Plan Mode and haven't used plan mode recently (3+ days)
       const daysSinceLastUse = config.lastPlanModeUse
         ? (Date.now() - config.lastPlanModeUse) / (1000 * 60 * 60 * 24)
         : Infinity
-      return hasOpusPlanMode && daysSinceLastUse > 3
+      return hasQuarkPlanMode && daysSinceLastUse > 3
     },
   },
   {
     id: 'frontend-design-plugin',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      return `Working with HTML/CSS? Install the frontend-design plugin:\n${blue(`/plugin install frontend-design@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return `Working with HTML/CSS? Install the frontend-design plugin:\n${blue(`/plugin install frontend-design@${FEATURED_MARKETPLACE_NAME}`)}`
     },
     cooldownSessions: 3,
     isRelevant: async context =>
@@ -503,7 +493,7 @@ const externalTips: Tip[] = [
     id: 'vercel-plugin',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      return `Working with Vercel? Install the vercel plugin:\n${blue(`/plugin install vercel@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return `Working with Vercel? Install the vercel plugin:\n${blue(`/plugin install vercel@${FEATURED_MARKETPLACE_NAME}`)}`
     },
     cooldownSessions: 3,
     isRelevant: async context =>
@@ -517,9 +507,9 @@ const externalTips: Tip[] = [
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
       const cmd = blue('/effort high')
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
+      const variant = getFeatureValue<
         'off' | 'copy_a' | 'copy_b'
-      >('tengu_tide_elm', 'off')
+      >('nexus_tide_elm', 'off')
       return variant === 'copy_b'
         ? `Use ${cmd} for better one-shot answers. Nexus thinks it through first.`
         : `Working on something tricky? ${cmd} gives better first answers`
@@ -535,8 +525,8 @@ const externalTips: Tip[] = [
       const persisted = getInitialSettings().effortLevel
       if (persisted === 'high' || persisted === 'max') return false
       return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_tide_elm',
+        getFeatureValue<'off' | 'copy_a' | 'copy_b'>(
+          'nexus_tide_elm',
           'off',
         ) !== 'off'
       )
@@ -546,9 +536,9 @@ const externalTips: Tip[] = [
     id: 'subagent-fanout-nudge',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
+      const variant = getFeatureValue<
         'off' | 'copy_a' | 'copy_b'
-      >('tengu_tern_alloy', 'off')
+      >('nexus_tern_alloy', 'off')
       return variant === 'copy_b'
         ? `For big tasks, tell Nexus to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
         : `Say ${blue('"fan out subagents"')} and Nexus sends a team. Each one digs deep so nothing gets missed.`
@@ -557,8 +547,8 @@ const externalTips: Tip[] = [
     isRelevant: async () => {
       if (!is1PApiCustomer()) return false
       return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_tern_alloy',
+        getFeatureValue<'off' | 'copy_a' | 'copy_b'>(
+          'nexus_tern_alloy',
           'off',
         ) !== 'off'
       )
@@ -568,9 +558,9 @@ const externalTips: Tip[] = [
     id: 'loop-command-nudge',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
+      const variant = getFeatureValue<
         'off' | 'copy_a' | 'copy_b'
-      >('tengu_timber_lark', 'off')
+      >('nexus_timber_lark', 'off')
       return variant === 'copy_b'
         ? `Use ${blue('/loop 5m check the deploy')} to run any prompt on a schedule. Set it and forget it.`
         : `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
@@ -580,51 +570,19 @@ const externalTips: Tip[] = [
       if (!is1PApiCustomer()) return false
       if (!isKairosCronEnabled()) return false
       return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_timber_lark',
+        getFeatureValue<'off' | 'copy_a' | 'copy_b'>(
+          'nexus_timber_lark',
           'off',
         ) !== 'off'
       )
     },
   },
   {
-    id: 'guest-passes',
-    content: async ctx => {
-      const claude = color('claude', ctx.theme)
-      const reward = getCachedReferrerReward()
-      return reward
-        ? `Share Nexus Code and earn ${claude(formatCreditAmount(reward))} of extra usage · ${claude('/passes')}`
-        : `You have free guest passes to share · ${claude('/passes')}`
-    },
-    cooldownSessions: 3,
-    isRelevant: async () => {
-      const config = getGlobalConfig()
-      if (config.hasVisitedPasses) {
-        return false
-      }
-      const { eligible } = checkCachedPassesEligibility()
-      return eligible
-    },
-  },
-  {
-    id: 'overage-credit',
-    content: async ctx => {
-      const claude = color('claude', ctx.theme)
-      const info = getCachedOverageCreditGrant()
-      const amount = info ? formatGrantAmount(info) : null
-      if (!amount) return ''
-      // Copy from "OC & Bulk Overages copy" doc (#5 — CLI Rotating tip)
-      return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${claude('/extra-usage')}`
-    },
-    cooldownSessions: 3,
-    isRelevant: async () => shouldShowOverageCreditUpsell(),
-  },
-  {
     id: 'feedback-command',
     content: async () => 'Use /feedback to help us improve!',
     cooldownSessions: 15,
     async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') {
+      if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
         return false
       }
       const config = getGlobalConfig()
@@ -633,7 +591,7 @@ const externalTips: Tip[] = [
   },
 ]
 const internalOnlyTips: Tip[] =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? [
         {
           id: 'important-nexusmd',

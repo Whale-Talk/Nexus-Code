@@ -34,7 +34,7 @@ function toComparable(p: string): string {
 }
 
 /**
- * Detects if a file path is a session-related file under ~/.claude.
+ * Detects if a file path is a session-related file under ~/.nexus.
  * Returns the type of session file or null if not a session file.
  */
 export function detectSessionFileType(
@@ -100,7 +100,7 @@ export type MemoryScope = 'personal' | 'team'
  * so a team path matches both isTeamMemFile and isAutoMemFile. Check team first.
  *
  * Use this for scope-keyed telemetry where a single event name distinguishes
- * by scope field — the existing tengu_memdir_* / tengu_team_mem_* event-name
+ * by scope field — the existing nexus_memdir_* / nexus_team_mem_* event-name
  * hierarchy handles the overlap differently (team writes intentionally fire both).
  */
 export function memoryScopeForPath(filePath: string): MemoryScope | null {
@@ -173,7 +173,7 @@ export function isMemoryDirectory(dirPath: string): boolean {
   ) {
     return true
   }
-  // Check the auto-memory path override (CLAUDE_COWORK_MEMORY_PATH_OVERRIDE)
+  // Check the auto-memory path override (NEXUS_COWORK_MEMORY_PATH_OVERRIDE)
   if (isAutoMemoryEnabled()) {
     const autoMemPath = getAutoMemPath()
     const autoMemDirCmp = toComparable(autoMemPath.replace(/[/\\]+$/, ''))

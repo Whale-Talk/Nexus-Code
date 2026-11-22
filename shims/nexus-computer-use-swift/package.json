@@ -1,0 +1,6 @@
+{
+  "name": "@nexus-local/computer-use-swift",
+  "version": "0.0.0-restored",
+  "type": "module",
+  "main": "./index.ts"
+}

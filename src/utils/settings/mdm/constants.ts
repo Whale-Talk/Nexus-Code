@@ -9,21 +9,21 @@ import { homedir, userInfo } from 'os'
 import { join } from 'path'
 
 /** macOS preference domain for Nexus Code MDM profiles. */
-export const MACOS_PREFERENCE_DOMAIN = 'com.anthropic.claudecode'
+export const MACOS_PREFERENCE_DOMAIN = 'io.github.whale-talk.nexus-code'
 
 /**
  * Windows registry key paths for Nexus Code MDM policies.
  *
  * These keys live under SOFTWARE\Policies which is on the WOW64 shared key
  * list — both 32-bit and 64-bit processes see the same values without
- * redirection. Do not move these to SOFTWARE\ClaudeCode, as SOFTWARE is
+ * redirection. Do not move these to SOFTWARE\NexusCode, as SOFTWARE is
  * redirected and 32-bit processes would silently read from WOW6432Node.
  * See: https://learn.microsoft.com/en-us/windows/win32/winprog64/shared-registry-keys
  */
 export const WINDOWS_REGISTRY_KEY_PATH_HKLM =
-  'HKLM\\SOFTWARE\\Policies\\ClaudeCode'
+  'HKLM\\SOFTWARE\\Policies\\NexusCode'
 export const WINDOWS_REGISTRY_KEY_PATH_HKCU =
-  'HKCU\\SOFTWARE\\Policies\\ClaudeCode'
+  'HKCU\\SOFTWARE\\Policies\\NexusCode'
 
 /** Windows registry value name containing the JSON settings blob. */
 export const WINDOWS_REGISTRY_VALUE_NAME = 'Settings'
@@ -39,7 +39,7 @@ export const MDM_SUBPROCESS_TIMEOUT_MS = 5000
 
 /**
  * Build the list of macOS plist paths in priority order (highest first).
- * Evaluates `process.env.USER_TYPE` at call time so ant-only paths are
+ * Evaluates `process.env.NEXUS_BUILD_FLAVOR` at call time so ant-only paths are
  * included only when appropriate.
  */
 export function getMacOSPlistPaths(): Array<{ path: string; label: string }> {
@@ -65,7 +65,7 @@ export function getMacOSPlistPaths(): Array<{ path: string; label: string }> {
   })
 
   // Allow user-writable preferences for local MDM testing in ant builds only.
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     paths.push({
       path: join(
         homedir(),

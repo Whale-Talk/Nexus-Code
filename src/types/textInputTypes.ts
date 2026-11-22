@@ -55,6 +55,7 @@ export type BaseTextInputProps = {
    * Replace all chars and mask the value. Useful for password inputs.
    */
   readonly mask?: string
+  readonly showMaskedSuffix?: boolean
 
   /**
    * Whether to show cursor and allow navigation inside text input with arrow keys.

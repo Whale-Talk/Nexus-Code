@@ -13,7 +13,7 @@
  * tool-result while truncation yields ~25K tokens of content at the cap.
  */
 import memoize from 'lodash-es/memoize.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue } from 'src/services/analytics/featureFlags.js'
 import { MAX_OUTPUT_SIZE } from 'src/utils/file.js'
 export const DEFAULT_MAX_OUTPUT_TOKENS = 25000
 
@@ -22,7 +22,7 @@ export const DEFAULT_MAX_OUTPUT_TOKENS = 25000
  * so the caller can fall through to the next precedence tier.
  */
 function getEnvMaxTokens(): number | undefined {
-  const override = process.env.CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS
+  const override = process.env.NEXUS_FILE_READ_MAX_OUTPUT_TOKENS
   if (override) {
     const parsed = parseInt(override, 10)
     if (!isNaN(parsed) && parsed > 0) {
@@ -52,8 +52,8 @@ export type FileReadingLimits = {
  */
 export const getDefaultFileReadingLimits = memoize((): FileReadingLimits => {
   const override =
-    getFeatureValue_CACHED_MAY_BE_STALE<Partial<FileReadingLimits> | null>(
-      'tengu_amber_wren',
+    getFeatureValue<Partial<FileReadingLimits> | null>(
+      'nexus_amber_wren',
       {},
     )
 

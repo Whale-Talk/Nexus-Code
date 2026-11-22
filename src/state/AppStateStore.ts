@@ -60,6 +60,7 @@ export type SpeculationState =
   | {
       status: 'active'
       id: string
+      permissionModeAtStart: PermissionMode
       abort: () => void
       startTime: number
       messagesRef: { current: Message[] } // Mutable ref - avoids array spreading per message
@@ -116,7 +117,7 @@ export type AppState = DeepImmutable<{
   kairosEnabled: boolean
   // Remote session URL for --remote mode (shown in footer indicator)
   remoteSessionUrl: string | undefined
-  // Remote session WS state (`claude assistant` viewer). 'connected' means the
+  // Remote session WS state (`nexus assistant` viewer). 'connected' means the
   // live event stream is open; 'reconnecting' = transient WS drop, backoff
   // in progress; 'disconnected' = permanent close or reconnects exhausted.
   remoteConnectionStatus:
@@ -124,7 +125,7 @@ export type AppState = DeepImmutable<{
     | 'connected'
     | 'reconnecting'
     | 'disconnected'
-  // `claude assistant`: count of background tasks (Agent calls, teammates,
+  // `nexus assistant`: count of background tasks (Agent calls, teammates,
   // workflows) running inside the REMOTE daemon child. Event-sourced from
   // system/task_started and system/task_notification on the WS. The local
   // AppState.tasks is always empty in viewer mode — the tasks live in a
@@ -138,13 +139,11 @@ export type AppState = DeepImmutable<{
   replBridgeOutboundOnly: boolean
   // Always-on bridge: env registered + session created (= "Ready")
   replBridgeConnected: boolean
-  // Always-on bridge: ingress WebSocket is open (= "Connected" - user on claude.ai)
   replBridgeSessionActive: boolean
   // Always-on bridge: poll loop is in error backoff (= "Reconnecting")
   replBridgeReconnecting: boolean
   // Always-on bridge: connect URL for Ready state (?bridge=envId)
   replBridgeConnectUrl: string | undefined
-  // Always-on bridge: session URL on claude.ai (set when connected)
   replBridgeSessionUrl: string | undefined
   // Always-on bridge: IDs for debugging (shown in dialog when --verbose)
   replBridgeEnvironmentId: string | undefined
@@ -252,7 +251,7 @@ export type AppState = DeepImmutable<{
   // WebBrowser tool: sticky panel visibility toggle
   bagelPanelVisible?: boolean
   // chicago MCP session state. Types inlined (not imported from
-  // @ant/computer-use-mcp/types) so external typecheck passes without the
+  // @nexus-local/computer-use-mcp/types) so external typecheck passes without the
   // ant-scoped dep resolved. Shapes match `AppGrant`/`CuGrantFlags`
   // structurally — wrapper.tsx assigns via structural compatibility. Only
   // populated when feature('CHICAGO_MCP') is active.

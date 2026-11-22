@@ -5,7 +5,7 @@ import {
   clearCommandsCache,
   getCommands,
 } from '../commands.js'
-import { onGrowthBookRefresh } from '../services/analytics/growthbook.js'
+import { onFeatureFlagsChanged } from '../services/analytics/featureFlags.js'
 import { logError } from '../utils/log.js'
 import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js'
 
@@ -56,7 +56,7 @@ export function useSkillsChange(
   }, [cwd, onCommandsChange])
 
   useEffect(
-    () => onGrowthBookRefresh(handleGrowthBookRefresh),
+    () => onFeatureFlagsChanged(handleGrowthBookRefresh),
     [handleGrowthBookRefresh],
   )
 }

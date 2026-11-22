@@ -15,7 +15,7 @@ const registerProtocolModule = feature('LODESTONE')
 
 import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
 import {
-  cleanupNpmCacheForAnthropicPackages,
+  cleanupNpmCacheForProviderPackages,
   cleanupOldMessageFilesInBackground,
   cleanupOldVersionsThrottled,
 } from './cleanup.js'
@@ -82,9 +82,9 @@ export function startBackgroundHousekeeping(): void {
   // For long-running sessions, schedule recurring cleanup every 24 hours.
   // Both cleanup functions use marker files and locks to throttle to once per day
   // and skip immediately if another process holds the lock.
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     const interval = setInterval(() => {
-      void cleanupNpmCacheForAnthropicPackages()
+      void cleanupNpmCacheForProviderPackages()
       void cleanupOldVersionsThrottled()
     }, RECURRING_CLEANUP_INTERVAL_MS)
 

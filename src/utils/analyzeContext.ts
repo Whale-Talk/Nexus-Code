@@ -8,7 +8,7 @@ import { microcompactMessages } from 'src/services/compact/microCompact.js'
 import { getSdkBetas } from '../bootstrap/state.js'
 import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
   AUTOCOMPACT_BUFFER_TOKENS,
   getEffectiveContextWindowSize,
@@ -16,8 +16,7 @@ import {
   MANUAL_COMPACT_BUFFER_TOKENS,
 } from '../services/compact/autoCompact.js'
 import {
-  countMessagesTokensWithAPI,
-  countTokensViaHaikuFallback,
+  estimateRequestTokens,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
@@ -73,40 +72,6 @@ const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
  * We subtract this overhead from per-tool counts to show accurate tool content sizes.
  */
 export const TOOL_TOKEN_COUNT_OVERHEAD = 500
-
-async function countTokensWithFallback(
-  messages: MessageParam[],
-  tools: ToolDefinition[],
-): Promise<number | null> {
-  try {
-    const result = await countMessagesTokensWithAPI(messages, tools)
-    if (result !== null) {
-      return result
-    }
-    logForDebugging(
-      `countTokensWithFallback: API returned null, trying haiku fallback (${tools.length} tools)`,
-    )
-  } catch (err) {
-    logForDebugging(`countTokensWithFallback: API failed: ${errorMessage(err)}`)
-    logError(err)
-  }
-
-  try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
-    if (fallbackResult === null) {
-      logForDebugging(
-        `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,
-      )
-    }
-    return fallbackResult
-  } catch (err) {
-    logForDebugging(
-      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}`,
-    )
-    logError(err)
-    return null
-  }
-}
 
 interface ContextCategory {
   name: string
@@ -247,7 +212,7 @@ export async function countToolDefinitionTokens(
       }),
     ),
   )
-  const result = await countTokensWithFallback([], toolSchemas)
+  const result = await estimateRequestTokens([], toolSchemas)
   if (result === null || result === 0) {
     const toolNames = tools.map(t => t.name).join(', ')
     logForDebugging(
@@ -298,7 +263,7 @@ async function countSystemTokens(
 
   const systemTokenCounts = await Promise.all(
     namedEntries.map(({ content }) =>
-      countTokensWithFallback([{ role: 'user', content }], []),
+      estimateRequestTokens([{ role: 'user', content }], []),
     ),
   )
 
@@ -322,7 +287,7 @@ async function countMemoryFileTokens(): Promise<{
   nexusMdTokens: number
 }> {
   // Simple mode disables NEXUS.md loading, so don't report tokens for them
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.NEXUS_SIMPLE)) {
     return { memoryFileDetails: [], nexusMdTokens: 0 }
   }
 
@@ -339,7 +304,7 @@ async function countMemoryFileTokens(): Promise<{
 
   const nexusMdTokenCounts = await Promise.all(
     memoryFilesData.map(async file => {
-      const tokens = await countTokensWithFallback(
+      const tokens = await estimateRequestTokens(
         [{ role: 'user', content: file.content }],
         [],
       )
@@ -412,7 +377,7 @@ async function countBuiltInToolTokens(
   // split of the bulk count based on rough schema size estimation). Excludes
   // SkillTool since its tokens are shown in the separate Skills category.
   let systemToolDetails: SystemToolDetail[] = []
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     const toolsForBreakdown = alwaysLoadedTools.filter(
       t => !toolMatchesName(t, SKILL_TOOL_NAME),
     )
@@ -743,7 +708,7 @@ async function countCustomAgentTokens(agentDefinitions: {
 
   const tokenCounts = await Promise.all(
     customAgents.map(agent =>
-      countTokensWithFallback(
+      estimateRequestTokens(
         [
           {
             role: 'user',
@@ -897,7 +862,7 @@ async function approximateMessageTokens(
   }
 
   // Calculate total tokens using the API for accuracy
-  const approximateMessageTokens = await countTokensWithFallback(
+  const approximateMessageTokens = await estimateRequestTokens(
     normalizeMessagesForAPI(microcompactResult.messages).map(_ => {
       if (_.type === 'assistant') {
         return {
@@ -1022,7 +987,7 @@ export async function analyzeContextUsage(
   if (systemToolsTokens > 0) {
     cats.push({
       name:
-        process.env.USER_TYPE === 'ant'
+        process.env.NEXUS_BUILD_FLAVOR === 'development'
           ? '[ANT-ONLY] System tools'
           : 'System tools',
       tokens: systemToolsTokens,
@@ -1074,7 +1039,7 @@ export async function analyzeContextUsage(
     cats.push({
       name: 'Memory files',
       tokens: nexusMdTokens,
-      color: 'claude',
+      color: 'nexus',
     })
   }
 
@@ -1112,7 +1077,7 @@ export async function analyzeContextUsage(
   let reservedTokens = 0
   let skipReservedBuffer = false
   if (feature('REACTIVE_COMPACT')) {
-    if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_raccoon', false)) {
+    if (getFeatureValue('nexus_cobalt_raccoon', false)) {
       skipReservedBuffer = true
     }
   }
@@ -1351,11 +1316,11 @@ export async function analyzeContextUsage(
     memoryFiles: memoryFileDetails,
     mcpTools: mcpToolDetails,
     deferredBuiltinTools:
-      process.env.USER_TYPE === 'ant' ? deferredBuiltinDetails : undefined,
+      process.env.NEXUS_BUILD_FLAVOR === 'development' ? deferredBuiltinDetails : undefined,
     systemTools:
-      process.env.USER_TYPE === 'ant' ? systemToolDetails : undefined,
+      process.env.NEXUS_BUILD_FLAVOR === 'development' ? systemToolDetails : undefined,
     systemPromptSections:
-      process.env.USER_TYPE === 'ant' ? systemPromptSections : undefined,
+      process.env.NEXUS_BUILD_FLAVOR === 'development' ? systemPromptSections : undefined,
     agents: agentDetails,
     slashCommands:
       slashCommandTokens > 0

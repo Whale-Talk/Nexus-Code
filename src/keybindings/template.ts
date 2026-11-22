@@ -43,7 +43,7 @@ export function generateKeybindingsTemplate(): string {
 
   // Format as object wrapper with bindings array
   const config = {
-    $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
+
     $docs: 'https://github.com/Whale-Talk/Nexus-Code',
     bindings,
   }

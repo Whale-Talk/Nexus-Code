@@ -501,7 +501,7 @@ const NOUNS = [
   'shell',
   'sketch',
   'snowglobe',
-  'sonnet',
+  'atom',
   'sparkle',
   'spindle',
   'sprout',

@@ -109,7 +109,7 @@ function getLogWriter(path: string): JsonlWriter {
 }
 
 function appendToLog(path: string, message: object): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return
   }
 
@@ -117,7 +117,7 @@ function appendToLog(path: string, message: object): void {
     timestamp: new Date().toISOString(),
     ...message,
     cwd: getFsImplementation().cwd(),
-    userType: process.env.USER_TYPE,
+    userType: process.env.NEXUS_BUILD_FLAVOR,
     sessionId: getSessionId(),
     version: MACRO.VERSION,
   }

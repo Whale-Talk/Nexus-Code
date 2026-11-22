@@ -7,7 +7,6 @@ import {
   getFlagSettingsPath,
   getInlinePlugins,
   getMainLoopModelOverride,
-  getSessionBypassPermissionsMode,
 } from '../../bootstrap/state.js'
 import { quote } from '../bash/shellQuote.js'
 import { isInBundledMode } from '../bundledMode.js'
@@ -27,6 +26,15 @@ export function getTeammateCommand(): string {
   return isInBundledMode() ? process.execPath : process.argv[1]!
 }
 
+export function getInheritedPermissionModeFlag(
+  planModeRequired: boolean | undefined,
+  liveMode: PermissionMode | undefined,
+): string {
+  const mode = planModeRequired ? 'plan' : liveMode ?? 'default'
+  if (mode === 'bypassPermissions') return '--dangerously-skip-permissions'
+  return `--permission-mode ${mode === 'bubble' ? 'default' : mode}`
+}
+
 /**
  * Builds CLI flags to propagate from the current session to spawned teammates.
  * This ensures teammates inherit important settings like permission mode,
@@ -39,21 +47,8 @@ export function buildInheritedCliFlags(options?: {
   planModeRequired?: boolean
   permissionMode?: PermissionMode
 }): string {
-  const flags: string[] = []
   const { planModeRequired, permissionMode } = options || {}
-
-  // Propagate permission mode to teammates, but NOT if plan mode is required
-  // Plan mode takes precedence over bypass permissions for safety
-  if (planModeRequired) {
-    // Don't inherit bypass permissions when plan mode is required
-  } else if (
-    permissionMode === 'bypassPermissions' ||
-    getSessionBypassPermissionsMode()
-  ) {
-    flags.push('--dangerously-skip-permissions')
-  } else if (permissionMode === 'acceptEdits') {
-    flags.push('--permission-mode acceptEdits')
-  }
+  const flags = [getInheritedPermissionModeFlag(planModeRequired, permissionMode)]
 
   // Propagate --model if explicitly set via CLI
   const modelOverride = getMainLoopModelOverride()
@@ -96,21 +91,21 @@ export function buildInheritedCliFlags(options?: {
 const TEAMMATE_ENV_VARS = [
   // API provider selection — without these, teammates default to firstParty
   // and send requests to the wrong endpoint (GitHub issue #23561)
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
+  'NEXUS_USE_BEDROCK',
+  'NEXUS_USE_VERTEX',
+  'NEXUS_USE_FOUNDRY',
   // Custom API endpoint
   'NEXUS_BASE_URL',
   // Config directory override
-  'CLAUDE_CONFIG_DIR',
+  'NEXUS_CONFIG_DIR',
   // CCR marker — teammates need this for CCR-aware code paths. Auth finds
-  // its own way via /home/claude/.claude/remote/.oauth_token regardless;
+  // its own way via /home/nexus/.nexus/remote/.oauth_token regardless;
   // the FD env var wouldn't help (pipe FDs don't cross tmux).
-  'CLAUDE_CODE_REMOTE',
+  'NEXUS_REMOTE',
   // Auto-memory gate (memdir/paths.ts) checks REMOTE && !MEMORY_DIR to
   // disable memory on ephemeral CCR filesystems. Forwarding REMOTE alone
   // would flip teammates to memory-off when the parent has it on.
-  'CLAUDE_CODE_REMOTE_MEMORY_DIR',
+  'NEXUS_REMOTE_MEMORY_DIR',
   // Upstream proxy — the parent's MITM relay is reachable from teammates
   // (same container network). Forward the proxy vars so teammates route
   // customer-configured upstream traffic through the relay for credential
@@ -129,11 +124,11 @@ const TEAMMATE_ENV_VARS = [
 
 /**
  * Builds the `env KEY=VALUE ...` string for teammate spawn commands.
- * Always includes CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
+ * Always includes NEXUS_TERMINAL=1 and NEXUS_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
 export function buildInheritedEnvVars(): string {
-  const envVars = ['CLAUDECODE=1', 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
+  const envVars = ['NEXUS_TERMINAL=1', 'NEXUS_EXPERIMENTAL_AGENT_TEAMS=1']
 
   for (const key of TEAMMATE_ENV_VARS) {
     const value = process.env[key]

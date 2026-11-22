@@ -9,14 +9,14 @@
 //   Daemon/SDK: omit getJitterConfig → DEFAULT_CRON_JITTER_CONFIG applies.
 
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../services/analytics/growthbook.js'
+import { getFeatureValueWithRefresh } from '../services/analytics/featureFlags.js'
 import {
   type CronJitterConfig,
   DEFAULT_CRON_JITTER_CONFIG,
 } from './cronTasks.js'
 import { lazySchema } from './lazySchema.js'
 
-// How often to re-fetch tengu_kairos_cron_config from GrowthBook. Short because
+// How often to re-fetch nexus_kairos_cron_config from GrowthBook. Short because
 // this is an incident lever — when we push a config change to shed :00 load,
 // we want the fleet to converge within a minute, not on the next process
 // restart. The underlying call is a synchronous cache read; the refresh just
@@ -53,7 +53,7 @@ const cronJitterConfigSchema = lazySchema(() =>
 )
 
 /**
- * Read `tengu_kairos_cron_config` from GrowthBook, validate, fall back to
+ * Read `nexus_kairos_cron_config` from GrowthBook, validate, fall back to
  * defaults on absent/malformed/out-of-bounds config. Called from check()
  * every tick via the `getJitterConfig` callback — cheap (synchronous cache
  * hit). Refresh window: JITTER_CONFIG_REFRESH_MS.
@@ -65,8 +65,8 @@ const cronJitterConfigSchema = lazySchema(() =>
  * contexts. Daemon/SDK callers omit getJitterConfig and get defaults.
  */
 export function getCronJitterConfig(): CronJitterConfig {
-  const raw = getFeatureValue_CACHED_WITH_REFRESH<unknown>(
-    'tengu_kairos_cron_config',
+  const raw = getFeatureValueWithRefresh<unknown>(
+    'nexus_kairos_cron_config',
     DEFAULT_CRON_JITTER_CONFIG,
     JITTER_CONFIG_REFRESH_MS,
   )

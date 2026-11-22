@@ -39,6 +39,7 @@ import type {
 import {
   applyPermissionUpdate,
   applyPermissionUpdates,
+  filterHookPermissionUpdates,
   persistPermissionUpdates,
 } from './PermissionUpdate.js'
 import type {
@@ -54,6 +55,7 @@ import {
   type PermissionRuleFromEditableSettings,
   shouldAllowManagedPermissionRulesOnly,
 } from './permissionsLoader.js'
+import { checkPlanModePermission } from './planModePermissions.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const classifierDecisionModule = feature('TRANSCRIPT_CLASSIFIER')
@@ -70,7 +72,7 @@ import {
   getTotalInputTokens,
   getTotalOutputTokens,
 } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics/growthbook.js'
+import { getFeatureValueWithRefresh } from '../../services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -245,7 +247,7 @@ function toolMatchesRule(
   }
 
   // MCP tools are matched by their fully qualified mcp__server__tool name. In
-  // skip-prefix mode (CLAUDE_AGENT_SDK_MCP_NO_PREFIX), MCP tools have unprefixed
+  // skip-prefix mode (NEXUS_SDK_MCP_NO_PREFIX), MCP tools have unprefixed
   // display names (e.g., "Write") that collide with builtin names; rules targeting
   // builtins should not match their MCP replacements.
   const nameForRuleMatch = getToolNameForPermissionCheck(tool)
@@ -405,6 +407,7 @@ async function runPermissionRequestHooksForHeadlessAgent(
   permissionMode: string | undefined,
   suggestions: PermissionUpdate[] | undefined,
 ): Promise<PermissionDecision | null> {
+  const modeAtRequest = context.getAppState().toolPermissionContext.mode
   try {
     for await (const hookResult of executePermissionRequestHooks(
       tool.name,
@@ -418,17 +421,20 @@ async function runPermissionRequestHooksForHeadlessAgent(
       if (!hookResult.permissionRequestResult) {
         continue
       }
+      if (context.abortController.signal.aborted || context.getAppState().toolPermissionContext.mode !== modeAtRequest) {
+        return permissionModeChanged()
+      }
       const decision = hookResult.permissionRequestResult
       if (decision.behavior === 'allow') {
         const finalInput = decision.updatedInput ?? input
-        // Persist permission updates if provided
-        if (decision.updatedPermissions?.length) {
-          persistPermissionUpdates(decision.updatedPermissions)
+        const updates = filterHookPermissionUpdates(decision.updatedPermissions ?? [])
+        if (updates.length > 0) {
+          persistPermissionUpdates(updates)
           context.setAppState(prev => ({
             ...prev,
             toolPermissionContext: applyPermissionUpdates(
               prev.toolPermissionContext,
-              decision.updatedPermissions!,
+              updates,
             ),
           }))
         }
@@ -470,6 +476,36 @@ async function runPermissionRequestHooksForHeadlessAgent(
   return null
 }
 
+export function rejectApprovalInDontAsk(toolName: string, context: ToolUseContext): PermissionDenyDecision | null {
+  if (context.getAppState().toolPermissionContext.mode !== 'dontAsk') return null
+  return {
+    behavior: 'deny',
+    decisionReason: { type: 'mode', mode: 'dontAsk' },
+    message: DONT_ASK_REJECT_MESSAGE(toolName),
+  }
+}
+
+export function permissionModeChanged(): PermissionDenyDecision {
+  return {
+    behavior: 'deny',
+    message: '权限模式在审批期间已切换。请按当前模式重新发起这项操作。',
+    decisionReason: { type: 'other', reason: 'Permission mode changed during approval' },
+  }
+}
+
+function sandboxOverrideApproval(tool: Tool, input: Record<string, unknown>): PermissionAskDecision | null {
+  if ((tool.name !== BASH_TOOL_NAME && tool.name !== POWERSHELL_TOOL_NAME) ||
+    !SandboxManager.isSandboxingEnabled() || !SandboxManager.areUnsandboxedCommandsAllowed()) return null
+  const parsed = tool.inputSchema.safeParse(input)
+  if (!parsed.success || parsed.data.dangerouslyDisableSandbox !== true ||
+    !shouldUseSandbox({ ...parsed.data, dangerouslyDisableSandbox: false })) return null
+  return {
+    behavior: 'ask',
+    message: '此命令请求脱离命令执行隔离，需要你单次确认。',
+    decisionReason: { type: 'sandboxOverride', reason: 'dangerouslyDisableSandbox' },
+  }
+}
+
 export const hasPermissionsToUseTool: CanUseToolFn = async (
   tool,
   input,
@@ -477,7 +513,16 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   assistantMessage,
   toolUseID,
 ): Promise<PermissionDecision> => {
-  const result = await hasPermissionsToUseToolInner(tool, input, context)
+  const currentMode = () => context.getAppState().toolPermissionContext.mode
+  let mode = currentMode()
+  let result = await hasPermissionsToUseToolInner(tool, input, context)
+  if (mode !== currentMode()) {
+    // A permission check can await subprocess parsing. Recheck once using
+    // the live mode and require a retry if it changes again during the check.
+    mode = currentMode()
+    result = await hasPermissionsToUseToolInner(tool, input, context)
+    if (mode !== currentMode()) return permissionModeChanged()
+  }
 
 
   // Reset consecutive denials on any allowed tool use in auto mode.
@@ -504,16 +549,12 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   // This is done at the end so it can't be bypassed by early returns
   if (result.behavior === 'ask') {
     const appState = context.getAppState()
-
-    if (appState.toolPermissionContext.mode === 'dontAsk') {
-      return {
-        behavior: 'deny',
-        decisionReason: {
-          type: 'mode',
-          mode: 'dontAsk',
-        },
-        message: DONT_ASK_REJECT_MESSAGE(tool.name),
-      }
+    const dontAsk = rejectApprovalInDontAsk(tool.name, context)
+    if (dontAsk) return dontAsk
+    if (result.decisionReason?.type === 'sandboxOverride') {
+      return appState.toolPermissionContext.shouldAvoidPermissionPrompts
+        ? { behavior: 'deny', message: result.message, decisionReason: result.decisionReason }
+        : result
     }
     // Apply auto mode: use AI classifier instead of prompting user
     // Check this BEFORE shouldAvoidPermissionPrompts so classifiers work in headless mode
@@ -623,7 +664,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
             logForDebugging(
               `Skipping auto mode classifier for ${tool.name}: would be allowed in acceptEdits mode`,
             )
-            logEvent('tengu_auto_mode_decision', {
+            logEvent('nexus_auto_mode_decision', {
               decision:
                 'allowed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -663,7 +704,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
         logForDebugging(
           `Skipping auto mode classifier for ${tool.name}: tool is on the safe allowlist`,
         )
-        logEvent('tengu_auto_mode_decision', {
+        logEvent('nexus_auto_mode_decision', {
           decision:
             'allowed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -703,7 +744,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
 
       // Notify ants when classifier error dumped prompts (will be in /share)
       if (
-        process.env.USER_TYPE === 'ant' &&
+        process.env.NEXUS_BUILD_FLAVOR === 'development' &&
         classifierResult.errorDumpPath &&
         context.addNotification
       ) {
@@ -730,7 +771,7 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
               classifierResult.usage,
             )
           : undefined
-      logEvent('tengu_auto_mode_decision', {
+      logEvent('nexus_auto_mode_decision', {
         decision:
           yoloDecision as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -841,11 +882,11 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
           }
         }
         // When classifier is unavailable (API error), behavior depends on
-        // the tengu_iron_gate_closed gate.
+        // the nexus_iron_gate_closed gate.
         if (classifierResult.unavailable) {
           if (
-            getFeatureValue_CACHED_WITH_REFRESH(
-              'tengu_iron_gate_closed',
+            getFeatureValueWithRefresh(
+              'nexus_iron_gate_closed',
               true,
               CLASSIFIER_FAIL_CLOSED_REFRESH_MS,
             )
@@ -1006,7 +1047,7 @@ function handleDenialLimitExceeded(
     ? `${totalCount} actions were blocked this session. Please review the transcript before continuing.`
     : `${consecutiveCount} consecutive actions were blocked. Please review the transcript before continuing.`
 
-  logEvent('tengu_auto_mode_denial_limit_exceeded', {
+  logEvent('nexus_auto_mode_denial_limit_exceeded', {
     limit: (hitTotalLimit
       ? 'total'
       : 'consecutive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1088,28 +1129,6 @@ export async function checkRuleBasedPermissions(
     }
   }
 
-  // 1b. Entire tool has an ask rule
-  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
-  if (askRule) {
-    const canSandboxAutoAllow =
-      tool.name === BASH_TOOL_NAME &&
-      SandboxManager.isSandboxingEnabled() &&
-      SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
-      shouldUseSandbox(input)
-
-    if (!canSandboxAutoAllow) {
-      return {
-        behavior: 'ask',
-        decisionReason: {
-          type: 'rule',
-          rule: askRule,
-        },
-        message: createPermissionRequestMessage(tool.name),
-      }
-    }
-    // Fall through to let tool.checkPermissions handle command-specific rules
-  }
-
   // 1c. Tool-specific permission check (e.g. bash subcommand rules)
   let toolPermissionResult: PermissionResult = {
     behavior: 'passthrough',
@@ -1131,6 +1150,13 @@ export async function checkRuleBasedPermissions(
     return toolPermissionResult
   }
 
+  const sandboxApproval = sandboxOverrideApproval(tool, getUpdatedInputOrFallback(toolPermissionResult, input))
+  if (sandboxApproval) return sandboxApproval
+  const askRule = getAskRuleForTool(context.getAppState().toolPermissionContext, tool)
+  if (askRule) {
+    return { behavior: 'ask', decisionReason: { type: 'rule', rule: askRule }, message: createPermissionRequestMessage(tool.name) }
+  }
+
   // 1f. Content-specific ask rules from tool.checkPermissions
   // (e.g. Bash(npm publish:*) → {ask, type:'rule', ruleBehavior:'ask'})
   if (
@@ -1141,7 +1167,7 @@ export async function checkRuleBasedPermissions(
     return toolPermissionResult
   }
 
-  // 1g. Safety checks (e.g. .git/, .claude/, .vscode/, shell configs) are
+  // 1g. Safety checks (e.g. .git/, .nexus/, .vscode/, shell configs) are
   // bypass-immune — they must prompt even when a PreToolUse hook returned
   // allow. checkPathSafetyForAutoEdit returns {type:'safetyCheck'} for these.
   if (
@@ -1164,6 +1190,9 @@ async function hasPermissionsToUseToolInner(
     throw new AbortError()
   }
 
+  const planRestriction = await checkPlanModePermission(tool, input, context)
+  if (planRestriction) return planRestriction
+
   let appState = context.getAppState()
 
   // 1. Check if the tool is denied
@@ -1178,31 +1207,6 @@ async function hasPermissionsToUseToolInner(
       },
       message: `Permission to use ${tool.name} has been denied.`,
     }
-  }
-
-  // 1b. Check if the entire tool should always ask for permission
-  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
-  if (askRule) {
-    // When autoAllowBashIfSandboxed is on, sandboxed commands skip the ask rule and
-    // auto-allow via Bash's checkPermissions. Commands that won't be sandboxed (excluded
-    // commands, dangerouslyDisableSandbox) still need to respect the ask rule.
-    const canSandboxAutoAllow =
-      tool.name === BASH_TOOL_NAME &&
-      SandboxManager.isSandboxingEnabled() &&
-      SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
-      shouldUseSandbox(input)
-
-    if (!canSandboxAutoAllow) {
-      return {
-        behavior: 'ask',
-        decisionReason: {
-          type: 'rule',
-          rule: askRule,
-        },
-        message: createPermissionRequestMessage(tool.name),
-      }
-    }
-    // Fall through to let Bash's checkPermissions handle command-specific rules
   }
 
   // 1c. Ask the tool implementation for a permission result
@@ -1227,6 +1231,13 @@ async function hasPermissionsToUseToolInner(
     return toolPermissionResult
   }
 
+  const sandboxApproval = sandboxOverrideApproval(tool, getUpdatedInputOrFallback(toolPermissionResult, input))
+  if (sandboxApproval) return sandboxApproval
+  const askRule = getAskRuleForTool(context.getAppState().toolPermissionContext, tool)
+  if (askRule) {
+    return { behavior: 'ask', decisionReason: { type: 'rule', rule: askRule }, message: createPermissionRequestMessage(tool.name) }
+  }
+
   // 1e. Tool requires user interaction even in bypass mode
   if (
     tool.requiresUserInteraction?.() &&
@@ -1249,7 +1260,7 @@ async function hasPermissionsToUseToolInner(
     return toolPermissionResult
   }
 
-  // 1g. Safety checks (e.g. .git/, .claude/, .vscode/, shell configs) are
+  // 1g. Safety checks (e.g. .git/, .nexus/, .vscode/, shell configs) are
   // bypass-immune — they must prompt even in bypassPermissions mode.
   // checkPathSafetyForAutoEdit returns {type:'safetyCheck'} for these paths.
   if (
@@ -1262,14 +1273,7 @@ async function hasPermissionsToUseToolInner(
   // 2a. Check if mode allows the tool to run
   // IMPORTANT: Call getAppState() to get the latest value
   appState = context.getAppState()
-  // Check if permissions should be bypassed:
-  // - Direct bypassPermissions mode
-  // - Plan mode when the user originally started with bypass mode (isBypassPermissionsModeAvailable)
-  const shouldBypassPermissions =
-    appState.toolPermissionContext.mode === 'bypassPermissions' ||
-    (appState.toolPermissionContext.mode === 'plan' &&
-      appState.toolPermissionContext.isBypassPermissionsModeAvailable)
-  if (shouldBypassPermissions) {
+  if (appState.toolPermissionContext.mode === 'bypassPermissions') {
     return {
       behavior: 'allow',
       updatedInput: getUpdatedInputOrFallback(toolPermissionResult, input),

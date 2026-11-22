@@ -35,12 +35,13 @@ export type Tokenizer = {
 }
 
 type TokenizerOptions = {
-  /**
-   * Treat `CSI M` as an X10 mouse event prefix and consume 3 payload bytes.
-   * Only enable for stdin input — `\x1b[M` is also CSI DL (Delete Lines) in
-   * output streams, and enabling this there swallows display text. Default false.
-   */
+  /** Capture X10 mouse payloads on their own (CSI M followed by three bytes). */
   x10Mouse?: boolean
+  /**
+   * Decode stdin-only sequence boundaries for X10 mouse events and legacy
+   * function keys. The same bytes can represent CSI instructions on stdout.
+   */
+  keyboardInput?: boolean
 }
 
 /**
@@ -57,7 +58,6 @@ type TokenizerOptions = {
 export function createTokenizer(options?: TokenizerOptions): Tokenizer {
   let currentState: State = 'ground'
   let currentBuffer = ''
-  const x10Mouse = options?.x10Mouse ?? false
 
   return {
     feed(input: string): Token[] {
@@ -66,7 +66,7 @@ export function createTokenizer(options?: TokenizerOptions): Tokenizer {
         currentState,
         currentBuffer,
         false,
-        x10Mouse,
+        options,
       )
       currentState = result.state.state
       currentBuffer = result.state.buffer
@@ -74,7 +74,7 @@ export function createTokenizer(options?: TokenizerOptions): Tokenizer {
     },
 
     flush(): Token[] {
-      const result = tokenize('', currentState, currentBuffer, true, x10Mouse)
+      const result = tokenize('', currentState, currentBuffer, true, options)
       currentState = result.state.state
       currentBuffer = result.state.buffer
       return result.tokens
@@ -101,7 +101,7 @@ function tokenize(
   initialState: State,
   initialBuffer: string,
   flush: boolean,
-  x10Mouse: boolean,
+  options?: TokenizerOptions,
 ): { tokens: Token[]; state: InternalState } {
   const tokens: Token[] = []
   const result: InternalState = {
@@ -202,6 +202,20 @@ function tokenize(
         break
 
       case 'csi':
+        // Linux console / libuv F1–F5 are ESC [[ A–E. The second '['
+        // would otherwise finish a CSI and leave its letter in the draft.
+        if (options?.keyboardInput && code === 0x5b && i === seqStart + 2) {
+          if (i + 1 === data.length && !flush) {
+            i++
+            break
+          }
+          const final = data.charCodeAt(i + 1)
+          if (final >= 0x41 && final <= 0x45) {
+            i += 2
+            emitSequence(data.slice(seqStart, i))
+            break
+          }
+        }
         // X10 mouse: CSI M + 3 raw payload bytes (Cb+32, Cx+32, Cy+32).
         // M immediately after [ (offset 2) means no params — SGR mouse
         // (CSI < … M) has a `<` param byte first and reaches M at offset > 2.
@@ -209,7 +223,7 @@ function tokenize(
         // legacy encoding; without this branch the 3 payload bytes leak
         // through as text (`` `rK `` / `arK` garbage in the prompt).
         //
-        // Gated on x10Mouse — `\x1b[M` is also CSI DL (Delete Lines) and
+        // Gated on input mode — `\x1b[M` is also CSI DL (Delete Lines) and
         // blindly consuming 3 chars corrupts output rendering (Parser/Ansi)
         // and fragments bracketed-paste PASTE_END. Only stdin enables this.
         // The ≥0x20 check on each payload slot is belt-and-suspenders: X10
@@ -226,7 +240,7 @@ function tokenize(
         // Fixing this requires latin1 stdin; X10's 223-coord cap is exactly
         // why SGR was invented, and no-SGR terminals at 162+ cols are rare.
         if (
-          x10Mouse &&
+          (options?.keyboardInput || options?.x10Mouse) &&
           code === 0x4d /* M */ &&
           i - seqStart === 2 &&
           (i + 1 >= data.length || data.charCodeAt(i + 1) >= 0x20) &&

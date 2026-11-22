@@ -202,7 +202,7 @@ const GIT_NO_PROMPT_ENV = {
 }
 
 function worktreesDir(repoRoot: string): string {
-  return join(repoRoot, '.claude', 'worktrees')
+  return join(repoRoot, '.nexus', 'worktrees')
 }
 
 // Flatten nested slugs (`user/feature` → `user+feature`) for both the branch
@@ -511,7 +511,7 @@ async function performPostCreationSetup(
   repoRoot: string,
   worktreePath: string,
 ): Promise<void> {
-  // Copy settings.local.json to the worktree's .claude directory
+  // Copy settings.local.json to the worktree's .nexus directory
   // This propagates local settings (which may contain secrets) to the worktree
   const localSettingsRelativePath =
     getRelativeSettingsFilePathForSource('localSettings')
@@ -1254,7 +1254,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
 
   // Mirror createWorktreeForSession(): hook takes precedence over git so the
   // WorktreeCreate hook substitutes the VCS backend for this fast-path too
-  // (anthropics/claude-code#39281). Git path below runs only when no hook.
+  // (Whale-Talk/Nexus-Code#39281). Git path below runs only when no hook.
   let worktreeDir: string
   let repoName: string
   if (hasWorktreeCreateHook()) {
@@ -1341,7 +1341,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
 
   // Check if tmux prefix conflicts with Nexus keybindings
   // Nexus binds: ctrl+b (task:background), ctrl+c, ctrl+d, ctrl+t, ctrl+o, ctrl+r, ctrl+s, ctrl+g, ctrl+e
-  const claudeBindings = [
+  const nexusBindings = [
     'C-b',
     'C-c',
     'C-d',
@@ -1352,14 +1352,14 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     'C-g',
     'C-e',
   ]
-  const prefixConflicts = claudeBindings.includes(tmuxPrefix)
+  const prefixConflicts = nexusBindings.includes(tmuxPrefix)
 
   // Set env vars for the inner Nexus to display tmux info in welcome message
   const tmuxEnv = {
     ...process.env,
-    CLAUDE_CODE_TMUX_SESSION: tmuxSessionName,
-    CLAUDE_CODE_TMUX_PREFIX: tmuxPrefix,
-    CLAUDE_CODE_TMUX_PREFIX_CONFLICTS: prefixConflicts ? '1' : '',
+    NEXUS_TMUX_SESSION: tmuxSessionName,
+    NEXUS_TMUX_PREFIX: tmuxPrefix,
+    NEXUS_TMUX_PREFIX_CONFLICTS: prefixConflicts ? '1' : '',
   }
 
   // Check if session already exists
@@ -1392,10 +1392,10 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     )
   }
 
-  // For ants in claude-cli-internal, set up dev panes (watch + start)
-  const isAnt = process.env.USER_TYPE === 'ant'
-  const isClaudeCliInternal = repoName === 'claude-cli-internal'
-  const shouldSetupDevPanes = isAnt && isClaudeCliInternal && !sessionExists
+  // For ants in nexus-cli-internal, set up dev panes (watch + start)
+  const isAnt = process.env.NEXUS_BUILD_FLAVOR === 'development'
+  const isNexusCliInternal = repoName === 'nexus-cli-internal'
+  const shouldSetupDevPanes = isAnt && isNexusCliInternal && !sessionExists
 
   if (shouldSetupDevPanes) {
     // Create detached session with Nexus in first pane

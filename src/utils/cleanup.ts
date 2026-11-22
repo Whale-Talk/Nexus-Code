@@ -431,11 +431,11 @@ export async function cleanupOldDebugLogs(): Promise<CleanupResult> {
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Clean up old npm cache entries for Anthropic packages.
+ * Clean up old npm cache entries for Provider packages.
  * This helps reduce disk usage since we publish many dev versions per day.
  * Only runs once per day for Ant users.
  */
-export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
+export async function cleanupNpmCacheForProviderPackages(): Promise<void> {
   const markerPath = join(getNexusConfigHomeDir(), '.npm-cache-cleanup')
 
   try {
@@ -466,24 +466,24 @@ export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
     const cacache = await import('cacache')
     const cutoff = startTime - ONE_DAY_MS
 
-    // Stream index entries and collect all Anthropic package entries.
+    // Stream index entries and collect all Provider package entries.
     // Previous implementation used cacache.verify() which does a full
     // integrity check + GC of the ENTIRE cache — O(all content blobs).
     // On large caches this took 60+ seconds and blocked the event loop.
     const stream = cacache.ls.stream(npmCachePath)
-    const anthropicEntries: { key: string; time: number }[] = []
+    const providerEntries: { key: string; time: number }[] = []
     for await (const entry of stream as AsyncIterable<{
       key: string
       time: number
     }>) {
-      if (entry.key.includes('@anthropic-ai/claude-')) {
-        anthropicEntries.push({ key: entry.key, time: entry.time })
+      if (entry.key.includes('@while_talk/nexus-code')) {
+        providerEntries.push({ key: entry.key, time: entry.time })
       }
     }
 
     // Group by package name (everything before the last @version separator)
     const byPackage = new Map<string, { key: string; time: number }[]>()
-    for (const entry of anthropicEntries) {
+    for (const entry of providerEntries) {
       const atVersionIdx = entry.key.lastIndexOf('@')
       const pkgName =
         atVersionIdx > 0 ? entry.key.slice(0, atVersionIdx) : entry.key
@@ -513,19 +513,19 @@ export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
     const durationMs = Date.now() - startTime
     if (keysToRemove.length > 0) {
       logForDebugging(
-        `npm cache cleanup: Removed ${keysToRemove.length} old @anthropic-ai entries in ${durationMs}ms`,
+        `npm cache cleanup: Removed ${keysToRemove.length} old Nexus package entries in ${durationMs}ms`,
       )
     } else {
       logForDebugging(`npm cache cleanup: completed in ${durationMs}ms`)
     }
-    logEvent('tengu_npm_cache_cleanup', {
+    logEvent('nexus_npm_cache_cleanup', {
       success: true,
       durationMs,
       entriesRemoved: keysToRemove.length,
     })
   } catch (error) {
     logError(error as Error)
-    logEvent('tengu_npm_cache_cleanup', {
+    logEvent('nexus_npm_cache_cleanup', {
       success: false,
       durationMs: Date.now() - startTime,
     })
@@ -594,9 +594,9 @@ export async function cleanupOldMessageFilesInBackground(): Promise<void> {
   await cleanupOldPastes(getCutoffDate())
   const removedWorktrees = await cleanupStaleAgentWorktrees(getCutoffDate())
   if (removedWorktrees > 0) {
-    logEvent('tengu_worktree_cleanup', { removed: removedWorktrees })
+    logEvent('nexus_worktree_cleanup', { removed: removedWorktrees })
   }
-  if (process.env.USER_TYPE === 'ant') {
-    await cleanupNpmCacheForAnthropicPackages()
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    await cleanupNpmCacheForProviderPackages()
   }
 }

@@ -1,5 +1,5 @@
 import type { SDKMessage } from 'src/entrypoints/agentSdkTypes.js'
-import { checkGate_CACHED_OR_BLOCKING } from '../../../services/analytics/growthbook.js'
+import { checkFeatureEntitlement } from '../../../services/analytics/featureFlags.js'
 import { isPolicyAllowed } from '../../../services/policyLimits/index.js'
 import { detectCurrentRepositoryWithHost } from '../../detectRepository.js'
 import { isEnvTruthy } from '../../envUtils.js'
@@ -8,7 +8,7 @@ import {
   checkGithubAppInstalled,
   checkHasRemoteEnvironment,
   checkIsInGitRepo,
-  checkNeedsClaudeAiLogin,
+  checkNeedsHostedAccountLogin,
 } from './preconditions.js'
 
 /**
@@ -56,7 +56,7 @@ export async function checkBackgroundRemoteSessionEligibility({
   }
 
   const [needsLogin, hasRemoteEnv, repository] = await Promise.all([
-    checkNeedsClaudeAiLogin(),
+    checkNeedsHostedAccountLogin(),
     checkHasRemoteEnvironment(),
     detectCurrentRepositoryWithHost(),
   ])
@@ -76,7 +76,7 @@ export async function checkBackgroundRemoteSessionEligibility({
     !skipBundle &&
     (isEnvTruthy(process.env.CCR_FORCE_BUNDLE) ||
       isEnvTruthy(process.env.CCR_ENABLE_BUNDLE) ||
-      (await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bundle_seed_enabled')))
+      (await checkFeatureEntitlement('nexus_ccr_bundle_seed_enabled')))
 
   if (!checkIsInGitRepo()) {
     errors.push({ type: 'not_in_git_repo' })

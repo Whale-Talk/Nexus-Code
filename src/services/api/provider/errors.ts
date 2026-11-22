@@ -1,19 +1,3 @@
-// Provider 层 app 自有错误类 — 6 类 (4 实 + 2 占位)。
-//
-// 契约来源: P0-B 全库消费面实测 (.omc/plans/error-contract-map.md)
-//   76 instanceof 站点 / 11 构造站点 / message 字符串契约 11 条
-//
-// 关键约束:
-//   - 必须保持与 @anthropic-ai/sdk 错误类相同的 instanceof 身份
-//   - messages 文本契约钉死 (compact.ts 字符串匹配依赖)
-//   - 构造签名 3 种形态 (位置 4 元组 / 对象参数 / 无参)
-//   - .status / .headers / .requestID / .error / .cause 属性面
-
-// ============================================================================
-// APIError — 主错误类 (53 instanceof + 52 .status + 75 .message + 3 构造)
-// ============================================================================
-
-/** 构造签名 1: new APIError(status, errorBody, message, headers) (rateLimitMocking.ts:52/96/116) */
 export class APIError extends Error {
   declare status: number
   declare headers: Headers
@@ -64,7 +48,7 @@ export class APIConnectionError extends Error {
 }
 
 // ============================================================================
-// APIConnectionTimeoutError — 2 instanceof + 对象参数构造 (claude.ts:2465)
+// APIConnectionTimeoutError — 2 instanceof + 对象参数构造 (inference.ts:2465)
 // ============================================================================
 
 export class APIConnectionTimeoutError extends Error {
@@ -87,13 +71,15 @@ export class APIUserAbortError extends Error {
 }
 
 // ============================================================================
-// AuthenticationError — 1 instanceof (validateModel.ts:100)
-//   占位但必须可抛出、可 instanceof
+// The channel rejected its configured credentials. Upstream error bodies can
+// include the rejected key, so expose only the status and request metadata.
 // ============================================================================
 
-export class AuthenticationError extends Error {
-  constructor(message?: string) {
-    super(message ?? 'Authentication error')
+export class AuthenticationError extends APIError {
+  constructor(status: 401 | 403, headers?: Headers) {
+    super(status, undefined, status === 401
+      ? 'HTTP 401 · 渠道未接受当前凭据'
+      : 'HTTP 403 · 渠道拒绝访问', headers)
     this.name = 'AuthenticationError'
   }
 }

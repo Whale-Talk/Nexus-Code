@@ -36,7 +36,7 @@ const BUILTIN_MARKETPLACE_NAME = 'builtin'
 // sites. Not per-org, not rotated — per-org salt would defeat cross-org
 // distinct-count, rotation would break trend lines. Customers can compute the
 // same hash on their known plugin names to reverse-match their own telemetry.
-const PLUGIN_ID_HASH_SALT = 'claude-plugin-telemetry-v1'
+const PLUGIN_ID_HASH_SALT = 'nexus-plugin-telemetry-v1'
 
 /**
  * Opaque per-plugin aggregation key. Input is the name@marketplace string as
@@ -58,7 +58,7 @@ export function hashPluginId(name: string, marketplace?: string): string {
  * (managed/user/project/local) which is installation-target — this is
  * marketplace-origin.
  *
- * - official: from an allowlisted Anthropic marketplace
+ * - official: from an allowlisted Provider marketplace
  * - default-bundle: ships with product (@builtin), auto-enabled
  * - org: enterprise admin-pushed via managed settings (policySettings)
  * - user-local: user added marketplace or local plugin
@@ -94,7 +94,7 @@ export type EnabledVia =
 /** How a skill/command invocation was triggered. */
 export type InvocationTrigger =
   | 'user-slash'
-  | 'claude-proactive'
+  | 'nexus-proactive'
   | 'nested-skill'
 
 /** Where a skill invocation executes. */
@@ -142,9 +142,9 @@ export function buildPluginTelemetryFields(
   is_official_plugin: boolean
 } {
   const scope = getTelemetryPluginScope(name, marketplace, managedNames)
-  // Both official marketplaces and builtin plugins are Anthropic-controlled
+  // Both official marketplaces and builtin plugins are Provider-controlled
   // — safe to expose real names in the redacted columns.
-  const isAnthropicControlled =
+  const isProviderControlled =
     scope === 'official' || scope === 'default-bundle'
   return {
     plugin_id_hash: hashPluginId(
@@ -153,19 +153,19 @@ export function buildPluginTelemetryFields(
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     plugin_scope:
       scope as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    plugin_name_redacted: (isAnthropicControlled
+    plugin_name_redacted: (isProviderControlled
       ? name
       : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    marketplace_name_redacted: (isAnthropicControlled && marketplace
+    marketplace_name_redacted: (isProviderControlled && marketplace
       ? marketplace
       : 'third-party') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    is_official_plugin: isAnthropicControlled,
+    is_official_plugin: isProviderControlled,
   }
 }
 
 /**
  * Per-invocation callers (SkillTool, processSlashCommand) pass
- * managedNames=null — the session-level tengu_plugin_enabled_for_session
+ * managedNames=null — the session-level nexus_plugin_enabled_for_session
  * event carries the authoritative plugin_scope, and per-invocation rows can
  * join on plugin_id_hash to recover it. This keeps hot-path call sites free
  * of the extra settings read.
@@ -183,8 +183,8 @@ export function buildPluginCommandTelemetryFields(
 }
 
 /**
- * Emit tengu_plugin_enabled_for_session once per enabled plugin at session
- * start. Supplements tengu_skill_loaded (which still fires per-skill) — use
+ * Emit nexus_plugin_enabled_for_session once per enabled plugin at session
+ * start. Supplements nexus_skill_loaded (which still fires per-skill) — use
  * this for plugin-level aggregates instead of DISTINCT-on-prefix hacks.
  * A plugin with 5 skills emits 5 skill_loaded rows but 1 of these.
  */
@@ -196,7 +196,7 @@ export function logPluginsEnabledForSession(
   for (const plugin of plugins) {
     const { marketplace } = parsePluginIdentifier(plugin.repository)
 
-    logEvent('tengu_plugin_enabled_for_session', {
+    logEvent('nexus_plugin_enabled_for_session', {
       _PROTO_plugin_name:
         plugin.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
       ...(marketplace && {
@@ -259,8 +259,8 @@ export function classifyPluginCommandError(
 }
 
 /**
- * Emit tengu_plugin_load_failed once per error surfaced by session-start
- * plugin loading. Pairs with tengu_plugin_enabled_for_session so dashboards
+ * Emit nexus_plugin_load_failed once per error surfaced by session-start
+ * plugin loading. Pairs with nexus_plugin_enabled_for_session so dashboards
  * can compute a load-success rate. PluginError.type is already a bounded
  * enum — use it directly as error_category.
  */
@@ -274,7 +274,7 @@ export function logPluginLoadErrors(
     // some are marketplace-level). Use the 'plugin' property if present,
     // fall back to the name parsed from err.source.
     const pluginName = 'plugin' in err && err.plugin ? err.plugin : name
-    logEvent('tengu_plugin_load_failed', {
+    logEvent('nexus_plugin_load_failed', {
       error_category:
         err.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       _PROTO_plugin_name:

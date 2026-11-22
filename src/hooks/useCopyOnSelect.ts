@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useTheme } from '../components/design-system/ThemeProvider.js'
 import type { useSelection } from '../ink/hooks/use-selection.js'
+import type { CopySelectionOptions } from '../ink/ink.js'
 import { getGlobalConfig } from '../utils/config.js'
 import { getTheme } from '../utils/theme.js'
 
@@ -19,14 +20,12 @@ type Selection = ReturnType<typeof useSelection>
  * pressed, so a selection appearing with isDragging=false is always a
  * drag-finish. copiedRef guards against double-firing on spurious notifies.
  *
- * onCopied is optional — when omitted, copy is silent (clipboard is written
- * but no toast/notification fires). FleetView uses this silent mode; the
- * fullscreen REPL passes showCopiedToast for user feedback.
+ * When provided, onCopied receives the outcome once the copy path is known.
  */
 export function useCopyOnSelect(
   selection: Selection,
   isActive: boolean,
-  onCopied?: (text: string) => void,
+  onCopied?: CopySelectionOptions['onCopied'],
 ): void {
   // Tracks whether the *previous* notification had a visible selection with
   // isDragging=false (i.e., we already auto-copied it). Without this, the
@@ -68,15 +67,11 @@ export function useCopyOnSelect(
       const enabled = getGlobalConfig().copyOnSelect ?? true
       if (!enabled) return
 
-      const text = selection.copySelectionNoClear()
-      // Whitespace-only (e.g., blank-line multi-click) — not worth a
-      // clipboard write or toast. Still set copiedRef so we don't retry.
-      if (!text || !text.trim()) {
-        copiedRef.current = true
-        return
-      }
       copiedRef.current = true
-      onCopiedRef.current?.(text)
+      selection.copySelectionNoClear({
+        skipBlank: true,
+        onCopied: (text, path) => onCopiedRef.current?.(text, path),
+      })
     })
     return unsubscribe
   }, [isActive, selection])

@@ -1,7 +1,4 @@
-import type {
-  McpbManifest,
-  McpbUserConfigurationOption,
-} from '@anthropic-ai/mcpb'
+import { buildBundleServerConfig, type McpbManifest, type McpbUserConfigurationOption } from '../dxt/manifest.js'
 import axios from 'axios'
 import { createHash } from 'crypto'
 import { chmod, writeFile } from 'fs/promises'
@@ -415,26 +412,7 @@ async function generateMcpConfig(
   extractedPath: string,
   userConfig: UserConfigValues = {},
 ): Promise<McpServerConfig> {
-  // Lazy import: @anthropic-ai/mcpb barrel pulls in zod v3 schemas (~700KB of
-  // bound closures). See dxt/helpers.ts for details.
-  const { getMcpConfigForManifest } = await import('@anthropic-ai/mcpb')
-  const mcpConfig = await getMcpConfigForManifest({
-    manifest,
-    extensionPath: extractedPath,
-    systemDirs: getSystemDirectories(),
-    userConfig,
-    pathSeparator: '/',
-  })
-
-  if (!mcpConfig) {
-    const error = new Error(
-      `Failed to generate MCP server configuration from manifest "${manifest.name}"`,
-    )
-    logError(error)
-    throw error
-  }
-
-  return mcpConfig as McpServerConfig
+  return buildBundleServerConfig(manifest, extractedPath, getSystemDirectories(), userConfig)
 }
 
 /**

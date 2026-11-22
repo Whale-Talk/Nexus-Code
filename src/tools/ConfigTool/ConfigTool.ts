@@ -238,12 +238,12 @@ export const ConfigTool = buildTool({
         '../../voice/voiceModeEnabled.js'
       )
       if (!isVoiceModeEnabled()) {
-        const { isAnthropicAuthEnabled } = await import('../../utils/auth.js')
+        const { isHostedLoginEnabled } = await import('../../utils/auth.js')
         return {
           data: {
             success: false,
-            error: !isAnthropicAuthEnabled()
-              ? 'Voice mode requires a Claude.ai account. Please run /login to sign in.'
+            error: !isHostedLoginEnabled()
+              ? 'Voice mode requires a hosted account. Please run /login to sign in.'
               : 'Voice mode is not available.',
           },
         }
@@ -273,7 +273,7 @@ export const ConfigTool = buildTool({
           data: {
             success: false,
             error:
-              'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+              'Voice mode requires a hosted account. Please run /login to sign in.',
           },
         }
       }
@@ -380,7 +380,7 @@ export const ConfigTool = buildTool({
         })
       }
 
-      logEvent('tengu_config_tool_changed', {
+      logEvent('nexus_config_tool_changed', {
         setting:
           setting as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: String(

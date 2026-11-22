@@ -164,7 +164,7 @@ User: "Fix the typo in the README"
 }
 
 export function getEnterPlanModeToolPrompt(): string {
-  return process.env.USER_TYPE === 'ant'
+  return process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? getEnterPlanModeToolPromptAnt()
     : getEnterPlanModeToolPromptExternal()
 }

@@ -94,19 +94,19 @@ export function initializeWarningHandler(): void {
 
       // Always log to Statsig for monitoring
       // Include full details for ant users only, since they may contain code or filepaths
-      logEvent('tengu_node_warning', {
+      logEvent('nexus_node_warning', {
         is_internal: isInternal ? 1 : 0,
         occurrence_count: count + 1,
         classname:
           warning.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(process.env.USER_TYPE === 'ant' && {
+        ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
           message:
             warning.message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }),
       })
 
       // In debug mode, show all warnings with context
-      if (isEnvTruthy(process.env.CLAUDE_DEBUG)) {
+      if (isEnvTruthy(process.env.NEXUS_DEBUG)) {
         const prefix = isInternal ? '[Internal Warning]' : '[Warning]'
         logForDebugging(`${prefix} ${warning.toString()}`, { level: 'warn' })
       }

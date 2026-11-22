@@ -90,7 +90,7 @@ export async function setup(
     // Start UDS messaging server (Mac/Linux only).
     // Enabled by default for ants — creates a socket in tmpdir if no
     // --messaging-socket-path is passed. Awaited so the server is bound
-    // and $CLAUDE_CODE_MESSAGING_SOCKET is exported before any hook
+    // and $NEXUS_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.
     if (feature('UDS_INBOX')) {
       const m = await import('./utils/udsMessaging.js')
@@ -243,7 +243,7 @@ export async function setup(
       process.exit(1)
     }
 
-    logEvent('tengu_worktree_created', { tmux_enabled: tmuxEnabled })
+    logEvent('nexus_worktree_created', { tmux_enabled: tmuxEnabled })
 
     // Create tmux session for the worktree if enabled
     if (tmuxEnabled && tmuxSessionName) {
@@ -306,7 +306,7 @@ export async function setup(
   profileCheckpoint('setup_before_prefetch')
   // Pre-fetch promises - only items needed before render
   logForDiagnosticsNoPII('info', 'setup_prefetch_starting')
-  // When CLAUDE_CODE_SYNC_PLUGIN_INSTALL is set, skip all plugin prefetch.
+  // When NEXUS_SYNC_PLUGIN_INSTALL is set, skip all plugin prefetch.
   // The sync install path in print.ts calls refreshPluginState() after
   // installing, which reloads commands, hooks, and agents. Prefetching here
   // races with the install (concurrent copyPluginToVersionedCache / cachePlugin
@@ -314,7 +314,7 @@ export async function setup(
   // mid-install when policySettings arrives.
   const skipPluginPrefetch =
     (getIsNonInteractiveSession() &&
-      isEnvTruthy(process.env.CLAUDE_CODE_SYNC_PLUGIN_INSTALL)) ||
+      isEnvTruthy(process.env.NEXUS_SYNC_PLUGIN_INSTALL)) ||
     // --bare: loadPluginHooks → loadAllPlugins is filesystem work that's
     // wasted when executeHooks early-returns under --bare anyway.
     isBareMode()
@@ -327,26 +327,13 @@ export async function setup(
       m.setupPluginHookHotReload() // Set up hot reload for plugin hooks when settings change
     }
   })
-  // --bare: skip attribution hook install + repo classification +
+  // --bare: skip attribution hook install +
   // session-file-access analytics + team memory watcher. These are background
   // bookkeeping for commit attribution + usage metrics — scripted calls don't
   // commit code, and the 49ms attribution hook stat check (measured) is pure
   // overhead. NOT an early-return: the --dangerously-skip-permissions safety
-  // gate, tengu_started beacon, and apiKeyHelper prefetch below must still run.
+  // gate, nexus_started beacon, and apiKeyHelper prefetch below must still run.
   if (!isBareMode()) {
-    if (process.env.USER_TYPE === 'ant') {
-      // Prime repo classification cache for auto-undercover mode. Default is
-      // undercover ON until proven internal; if this resolves to internal, clear
-      // the prompt cache so the next turn picks up the OFF state.
-      void import('./utils/commitAttribution.js').then(async m => {
-        if (await m.isInternalModelRepo()) {
-          const { clearSystemPromptSections } = await import(
-            './constants/systemPromptSections.js'
-          )
-          clearSystemPromptSections()
-        }
-      })
-    }
     if (feature('COMMIT_ATTRIBUTION')) {
       // Dynamic import to enable dead code elimination (module contains excluded strings).
       // Defer to next tick so the git subprocess spawn runs after first render
@@ -375,7 +362,7 @@ export async function setup(
   // inc-3694 (P0 CHANGELOG crash) threw at checkForReleaseNotes below; every
   // event after this point was dead. This beacon is the earliest reliable
   // "process started" signal for release health monitoring.
-  logEvent('tengu_started', {})
+  logEvent('nexus_started', {})
 
   void prefetchApiKeyFromApiKeyHelperIfSafe(getIsNonInteractiveSession()) // Prefetch safely - only executes if trust already confirmed
   profileCheckpoint('setup_after_prefetch')
@@ -404,7 +391,7 @@ export async function setup(
       typeof process.getuid === 'function' &&
       process.getuid() === 0 &&
       process.env.IS_SANDBOX !== '1' &&
-      !isEnvTruthy(process.env.CLAUDE_CODE_BUBBLEWRAP)
+      !isEnvTruthy(process.env.NEXUS_BUBBLEWRAP)
     ) {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.error(
@@ -414,14 +401,14 @@ export async function setup(
     }
 
     if (
-      process.env.USER_TYPE === 'ant' &&
+      process.env.NEXUS_BUILD_FLAVOR === 'development' &&
       // Skip for Desktop's local agent mode — same trust model as CCR/BYOC
-      // (trusted Anthropic-managed launcher intentionally pre-approving everything).
+      // (trusted Provider-managed launcher intentionally pre-approving everything).
       // Precedent: permissionSetup.ts:861, applySettingsChange.ts:55 (PR #19116)
-      process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent' &&
+      process.env.NEXUS_ENTRYPOINT !== 'local-agent' &&
       // Same for CCD (Nexus Code in Desktop) — apps#29127 passes the flag
       // unconditionally to unlock mid-session bypass switching
-      process.env.CLAUDE_CODE_ENTRYPOINT !== 'claude-desktop'
+      process.env.NEXUS_ENTRYPOINT !== 'nexus-desktop'
     ) {
       // Only await if permission mode is set to bypass
       const [isDocker, hasInternet] = await Promise.all([
@@ -445,13 +432,13 @@ export async function setup(
     return
   }
 
-  // Log tengu_exit event from the last session?
+  // Log nexus_exit event from the last session?
   const projectConfig = getCurrentProjectConfig()
   if (
     projectConfig.lastCost !== undefined &&
     projectConfig.lastDuration !== undefined
   ) {
-    logEvent('tengu_exit', {
+    logEvent('nexus_exit', {
       last_session_cost: projectConfig.lastCost,
       last_session_api_duration: projectConfig.lastAPIDuration,
       last_session_tool_duration: projectConfig.lastToolDuration,

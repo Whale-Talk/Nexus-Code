@@ -3,17 +3,17 @@ import { getOauthConfig } from '../../constants/oauth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { getAuthHeaders } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getNexusUserAgent } from '../../utils/userAgent.js'
 
 /**
  * Fetch the user's first Nexus Code token date and store in config.
  * This is called after successful login to cache when they started using Nexus Code.
  */
-export async function fetchAndStoreClaudeCodeFirstTokenDate(): Promise<void> {
+export async function fetchAndStoreNexusCodeFirstTokenDate(): Promise<void> {
   try {
     const config = getGlobalConfig()
 
-    if (config.claudeCodeFirstTokenDate !== undefined) {
+    if (config.nexusCodeFirstTokenDate !== undefined) {
       return
     }
 
@@ -24,12 +24,12 @@ export async function fetchAndStoreClaudeCodeFirstTokenDate(): Promise<void> {
     }
 
     const oauthConfig = getOauthConfig()
-    const url = `${oauthConfig.BASE_API_URL}/api/organization/claude_code_first_token_date`
+    const url = `${oauthConfig.BASE_API_URL}/api/organization/nexus_code_first_token_date`
 
     const response = await axios.get(url, {
       headers: {
         ...authHeaders.headers,
-        'User-Agent': getClaudeCodeUserAgent(),
+        'User-Agent': getNexusUserAgent(),
       },
       timeout: 10000,
     })
@@ -52,7 +52,7 @@ export async function fetchAndStoreClaudeCodeFirstTokenDate(): Promise<void> {
 
     saveGlobalConfig(current => ({
       ...current,
-      claudeCodeFirstTokenDate: firstTokenDate,
+      nexusCodeFirstTokenDate: firstTokenDate,
     }))
   } catch (error) {
     logError(error)

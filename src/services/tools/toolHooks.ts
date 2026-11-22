@@ -27,7 +27,8 @@ import {
   type PermissionDecisionReason,
   type PermissionResult,
 } from '../../utils/permissions/PermissionResult.js'
-import { checkRuleBasedPermissions } from '../../utils/permissions/permissions.js'
+import { checkRuleBasedPermissions, rejectApprovalInDontAsk } from '../../utils/permissions/permissions.js'
+import { checkPlanModePermission } from '../../utils/permissions/planModePermissions.js'
 import { formatError } from '../../utils/toolErrors.js'
 import { isMcpTool } from '../mcp/utils.js'
 import type { McpServerType, MessageUpdateLazy } from './toolExecution.js'
@@ -69,7 +70,7 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
           result.message?.type === 'attachment' &&
           result.message.attachment.type === 'hook_cancelled'
         ) {
-          logEvent('tengu_post_tool_hooks_cancelled', {
+          logEvent('nexus_post_tool_hooks_cancelled', {
             toolName: sanitizeToolNameForAnalytics(tool.name),
 
             queryChainId: toolUseContext.queryTracking
@@ -151,7 +152,7 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
         }
       } catch (error) {
         const postToolDurationMs = Date.now() - postToolStartTime
-        logEvent('tengu_post_tool_hook_error', {
+        logEvent('nexus_post_tool_hook_error', {
           messageID:
             messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -225,7 +226,7 @@ export async function* runPostToolUseFailureHooks<Input extends AnyObject>(
           result.message?.type === 'attachment' &&
           result.message.attachment.type === 'hook_cancelled'
         ) {
-          logEvent('tengu_post_tool_failure_hooks_cancelled', {
+          logEvent('nexus_post_tool_failure_hooks_cancelled', {
             toolName: sanitizeToolNameForAnalytics(tool.name),
             queryChainId: toolUseContext.queryTracking
               ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -280,7 +281,7 @@ export async function* runPostToolUseFailureHooks<Input extends AnyObject>(
         }
       } catch (hookError) {
         const postToolDurationMs = Date.now() - postToolStartTime
-        logEvent('tengu_post_tool_failure_hook_error', {
+        logEvent('nexus_post_tool_failure_hook_error', {
           messageID:
             messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -346,6 +347,8 @@ export async function resolveHookPermissionDecision(
 
   if (hookPermissionResult?.behavior === 'allow') {
     const hookInput = hookPermissionResult.updatedInput ?? input
+    const planRestriction = await checkPlanModePermission(tool, hookInput, toolUseContext)
+    if (planRestriction) return { decision: planRestriction, input: hookInput }
 
     // Hook provided updatedInput for an interactive tool — the hook IS the
     // user interaction (e.g. headless wrapper that collected AskUserQuestion
@@ -412,13 +415,22 @@ export async function resolveHookPermissionDecision(
 
   // No hook decision or 'ask' — normal permission flow, possibly with
   // forceDecision so the dialog shows the hook's ask message.
-  const forceDecision =
+  let forceDecision =
     hookPermissionResult?.behavior === 'ask' ? hookPermissionResult : undefined
   const askInput =
     hookPermissionResult?.behavior === 'ask' &&
     hookPermissionResult.updatedInput
       ? hookPermissionResult.updatedInput
       : input
+  if (forceDecision) {
+    const planRestriction = await checkPlanModePermission(tool, askInput, toolUseContext)
+    if (planRestriction) return { decision: planRestriction, input: askInput }
+    const ruleCheck = await checkRuleBasedPermissions(tool, askInput, toolUseContext)
+    if (ruleCheck?.behavior === 'deny') return { decision: ruleCheck, input: askInput }
+    const dontAsk = rejectApprovalInDontAsk(tool.name, toolUseContext)
+    if (dontAsk) return { decision: dontAsk, input: askInput }
+    if (ruleCheck?.decisionReason?.type === 'sandboxOverride') forceDecision = ruleCheck
+  }
   return {
     decision: await canUseTool(
       tool,
@@ -580,7 +592,7 @@ export async function* runPreToolUseHooks(
 
         // Check if we were aborted during hook execution
         if (toolUseContext.abortController.signal.aborted) {
-          logEvent('tengu_pre_tool_hooks_cancelled', {
+          logEvent('nexus_pre_tool_hooks_cancelled', {
             toolName: sanitizeToolNameForAnalytics(tool.name),
 
             queryChainId: toolUseContext.queryTracking
@@ -604,7 +616,7 @@ export async function* runPreToolUseHooks(
       } catch (error) {
         logError(error)
         const durationMs = Date.now() - hookStartTime
-        logEvent('tengu_pre_tool_hook_error', {
+        logEvent('nexus_pre_tool_hook_error', {
           messageID:
             messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           toolName: sanitizeToolNameForAnalytics(tool.name),

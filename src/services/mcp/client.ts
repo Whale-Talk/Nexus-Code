@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
   ContentBlockParam,
-  MessageParam,
 } from '../api/provider/types.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import {
@@ -42,7 +41,6 @@ import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
-import { getOauthConfig } from '../../constants/oauth.js'
 import { PRODUCT_URL } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
 import {
@@ -56,11 +54,6 @@ import { createMcpAuthTool } from '../../tools/McpAuthTool/McpAuthTool.js'
 import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-} from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -94,7 +87,6 @@ import {
   getWebSocketProxyUrl,
 } from '../../utils/proxy.js'
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   isPersistError,
@@ -127,11 +119,10 @@ import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForColla
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
 import {
-  ClaudeAuthProvider,
+  NexusAuthProvider,
   hasMcpDiscoveryButNoToken,
   wrapFetchWithStepUpDetection,
 } from './auth.js'
-import { markClaudeAiMcpConnected } from './claudeai.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
 import { SdkControlClientTransport } from './SdkControlTransport.js'
@@ -228,16 +219,16 @@ function getMcpToolTimeoutMs(): number {
   )
 }
 
-import { isClaudeInChromeMCPServer } from '../../utils/claudeInChrome/common.js'
+import { isBrowserCompanionMCPServer } from '../../utils/browserCompanion/common.js'
 
 // Lazy: toolRendering.tsx pulls React/ink; only needed when Nexus-in-Chrome MCP server is connected
 /* eslint-disable @typescript-eslint/no-require-imports */
-const claudeInChromeToolRendering =
-  (): typeof import('../../utils/claudeInChrome/toolRendering.js') =>
-    require('../../utils/claudeInChrome/toolRendering.js')
+const browserCompanionToolRendering =
+  (): typeof import('../../utils/browserCompanion/toolRendering.js') =>
+    require('../../utils/browserCompanion/toolRendering.js')
 // Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
-// (@ant/computer-use-input + @ant/computer-use-swift). Runtime-gated by
-// GrowthBook tengu_malort_pedway (see gates.ts).
+// (@nexus-local/computer-use-input + @nexus-local/computer-use-swift). Runtime-gated by
+// GrowthBook nexus_malort_pedway (see gates.ts).
 const computerUseWrapper = feature('CHICAGO_MCP')
   ? (): typeof import('../../utils/computerUse/wrapper.js') =>
       require('../../utils/computerUse/wrapper.js')
@@ -333,16 +324,16 @@ function mcpBaseUrlAnalytics(serverRef: ScopedMcpServerConfig): {
 }
 
 /**
- * Shared handler for sse/http/claudeai-proxy auth failures during connect:
- * emits tengu_mcp_server_needs_auth, caches the needs-auth entry, and returns
+ * Shared handler for sse/http auth failures during connect:
+ * emits nexus_mcp_server_needs_auth, caches the needs-auth entry, and returns
  * the needs-auth connection result.
  */
 function handleRemoteAuthFailure(
   name: string,
   serverRef: ScopedMcpServerConfig,
-  transportType: 'sse' | 'http' | 'claudeai-proxy',
+  transportType: 'sse' | 'http',
 ): MCPServerConnection {
-  logEvent('tengu_mcp_server_needs_auth', {
+  logEvent('nexus_mcp_server_needs_auth', {
     transportType:
       transportType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     ...mcpBaseUrlAnalytics(serverRef),
@@ -350,7 +341,6 @@ function handleRemoteAuthFailure(
   const label: Record<typeof transportType, string> = {
     sse: 'SSE',
     http: 'HTTP',
-    'claudeai-proxy': 'claude.ai proxy',
   }
   logMCPDebug(
     name,
@@ -358,67 +348,6 @@ function handleRemoteAuthFailure(
   )
   setMcpAuthCacheEntry(name)
   return { name, type: 'needs-auth', config: serverRef }
-}
-
-/**
- * Fetch wrapper for claude.ai proxy connections. Attaches the OAuth bearer
- * token and retries once on 401 via handleOAuth401Error (force-refresh).
- *
- * The Anthropic API path has this retry (withRetry.ts, grove.ts) to handle
- * memoize-cache staleness and clock drift. Without the same here, a single
- * stale token mass-401s every claude.ai connector and sticks them all in the
- * 15-min needs-auth cache.
- */
-export function createClaudeAiProxyFetch(innerFetch: FetchLike): FetchLike {
-  return async (url, init) => {
-    const doRequest = async () => {
-      await checkAndRefreshOAuthTokenIfNeeded()
-      const currentTokens = getClaudeAIOAuthTokens()
-      if (!currentTokens) {
-        throw new Error('No claude.ai OAuth token available')
-      }
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      const headers = new Headers(init?.headers)
-      headers.set('Authorization', `Bearer ${currentTokens.accessToken}`)
-      const response = await innerFetch(url, { ...init, headers })
-      // Return the exact token that was sent. Reading getClaudeAIOAuthTokens()
-      // again after the request is wrong under concurrent 401s: another
-      // connector's handleOAuth401Error clears the memoize cache, so we'd read
-      // the NEW token from keychain, pass it to handleOAuth401Error, which
-      // finds same-as-keychain → returns false → skips retry. Same pattern as
-      // bridgeApi.ts withOAuthRetry (token passed as fn param).
-      return { response, sentToken: currentTokens.accessToken }
-    }
-
-    const { response, sentToken } = await doRequest()
-    if (response.status !== 401) {
-      return response
-    }
-    // handleOAuth401Error returns true only if the token actually changed
-    // (keychain had a newer one, or force-refresh succeeded). Gate retry on
-    // that — otherwise we double round-trip time for every connector whose
-    // downstream service genuinely needs auth (the common case: 30+ servers
-    // with "MCP server requires authentication but no OAuth token configured").
-    const tokenChanged = await handleOAuth401Error(sentToken).catch(() => false)
-    logEvent('tengu_mcp_claudeai_proxy_401', {
-      tokenChanged:
-        tokenChanged as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    if (!tokenChanged) {
-      // ELOCKED contention: another connector may have won the lockfile and refreshed — check if token changed underneath us
-      const now = getClaudeAIOAuthTokens()?.accessToken
-      if (!now || now === sentToken) {
-        return response
-      }
-    }
-    try {
-      return (await doRequest()).response
-    } catch {
-      // Retry itself failed (network error). Return the original 401 so the
-      // outer handler can classify it.
-      return response
-    }
-  }
 }
 
 // Minimal interface for WebSocket instances passed to mcpWebSocketTransport
@@ -612,13 +541,9 @@ export const connectToServer = memoize(
     try {
       let transport
 
-      // If we have the session ingress JWT, we will connect via the session ingress rather than
-      // to remote MCP's directly.
-      const sessionIngressToken = getSessionIngressAuthToken()
-
       if (serverRef.type === 'sse') {
         // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
+        const authProvider = new NexusAuthProvider(name, serverRef)
 
         // Get combined headers (static + dynamic)
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
@@ -743,9 +668,6 @@ export const connectToServer = memoize(
         const tlsOptions = getWebSocketTLSOptions()
         const wsHeaders = {
           'User-Agent': getMCPUserAgent(),
-          ...(sessionIngressToken && {
-            Authorization: `Bearer ${sessionIngressToken}`,
-          }),
           ...combinedHeaders,
         }
 
@@ -759,7 +681,6 @@ export const connectToServer = memoize(
           `WebSocket transport options: ${jsonStringify({
             url: serverRef.url,
             headers: wsHeadersForLogging,
-            hasSessionAuth: !!sessionIngressToken,
           })}`,
         )
 
@@ -799,17 +720,10 @@ export const connectToServer = memoize(
         )
 
         // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
+        const authProvider = new NexusAuthProvider(name, serverRef)
 
         // Get combined headers (static + dynamic)
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
-
-        // Check if this server has stored OAuth tokens. If so, the SDK's
-        // authProvider will set Authorization — don't override with the
-        // session ingress token (SDK merges requestInit AFTER authProvider).
-        // CCR proxy URLs (ccr_shttp_mcp) have no stored OAuth, so they still
-        // get the ingress token. See PR #24454 discussion.
-        const hasOAuthTokens = !!(await authProvider.tokens())
 
         // Use the auth provider with StreamableHTTPClientTransport
         const proxyOptions = getProxyFetchOptions()
@@ -830,10 +744,6 @@ export const connectToServer = memoize(
             ...proxyOptions,
             headers: {
               'User-Agent': getMCPUserAgent(),
-              ...(sessionIngressToken &&
-                !hasOAuthTokens && {
-                  Authorization: `Bearer ${sessionIngressToken}`,
-                }),
               ...combinedHeaders,
             },
           },
@@ -865,59 +775,22 @@ export const connectToServer = memoize(
         logMCPDebug(name, `HTTP transport created successfully`)
       } else if (serverRef.type === 'sdk') {
         throw new Error('SDK servers should be handled in print.ts')
-      } else if (serverRef.type === 'claudeai-proxy') {
-        logMCPDebug(
-          name,
-          `Initializing claude.ai proxy transport for server ${serverRef.id}`,
-        )
-
-        const tokens = getClaudeAIOAuthTokens()
-        if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
-        }
-
-        const oauthConfig = getOauthConfig()
-        const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
-
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
-
-        // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-        const fetchWithAuth = createClaudeAiProxyFetch(globalThis.fetch)
-
-        const proxyOptions = getProxyFetchOptions()
-        const transportOptions: StreamableHTTPClientTransportOptions = {
-          // Wrap fetchWithAuth with fresh timeout per request
-          fetch: wrapFetchWithTimeout(fetchWithAuth),
-          requestInit: {
-            ...proxyOptions,
-            headers: {
-              'User-Agent': getMCPUserAgent(),
-              'X-Mcp-Client-Session-Id': getSessionId(),
-            },
-          },
-        }
-
-        transport = new StreamableHTTPClientTransport(
-          new URL(proxyUrl),
-          transportOptions,
-        )
-        logMCPDebug(name, `claude.ai proxy transport created successfully`)
       } else if (
         (serverRef.type === 'stdio' || !serverRef.type) &&
-        isClaudeInChromeMCPServer(name)
+        isBrowserCompanionMCPServer(name)
       ) {
         // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
         const { createChromeContext } = await import(
-          '../../utils/claudeInChrome/mcpServer.js'
+          '../../utils/browserCompanion/mcpServer.js'
         )
-        const { createClaudeForChromeMcpServer } = await import(
-          '@ant/claude-for-chrome-mcp'
+        const { createNexusForChromeMcpServer } = await import(
+          '@nexus-local/browser-companion'
         )
         const { createLinkedTransportPair } = await import(
           './InProcessTransport.js'
         )
         const context = createChromeContext(serverRef.env)
-        inProcessServer = createClaudeForChromeMcpServer(context)
+        inProcessServer = createNexusForChromeMcpServer(context)
         const [clientTransport, serverTransport] = createLinkedTransportPair()
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
@@ -943,8 +816,8 @@ export const connectToServer = memoize(
         logMCPDebug(name, `In-process Computer Use MCP server started`)
       } else if (serverRef.type === 'stdio' || !serverRef.type) {
         const finalCommand =
-          process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
-        const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
+          process.env.NEXUS_SHELL_PREFIX || serverRef.command
+        const finalArgs = process.env.NEXUS_SHELL_PREFIX
           ? [[serverRef.command, ...serverRef.args].join(' ')]
           : serverRef.args
         transport = new StdioClientTransport({
@@ -984,7 +857,7 @@ export const connectToServer = memoize(
 
       const client = new Client(
         {
-          name: 'claude-code',
+          name: 'nexus-code',
           title: 'Nexus Code',
           version: MACRO.VERSION ?? 'unknown',
           description: "Nexus Code agentic coding tool",
@@ -1122,25 +995,10 @@ export const connectToServer = memoize(
             return handleRemoteAuthFailure(name, serverRef, 'http')
           }
         } else if (
-          serverRef.type === 'claudeai-proxy' &&
-          error instanceof Error
-        ) {
-          logMCPDebug(
-            name,
-            `claude.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
-          )
-          logMCPError(name, error)
-
-          // StreamableHTTPError has a `code` property with the HTTP status
-          const errorCode = (error as Error & { code?: number }).code
-          if (errorCode === 401) {
-            return handleRemoteAuthFailure(name, serverRef, 'claudeai-proxy')
-          }
-        } else if (
           serverRef.type === 'sse-ide' ||
           serverRef.type === 'ws-ide'
         ) {
-          logEvent('tengu_mcp_ide_server_connection_failed', {
+          logEvent('nexus_mcp_ide_server_connection_failed', {
             connectionDurationMs: elapsed,
           })
         }
@@ -1198,7 +1056,7 @@ export const connectToServer = memoize(
 
       if (serverRef.type === 'sse-ide' || serverRef.type === 'ws-ide') {
         const ideConnectionDurationMs = Date.now() - connectStartTime
-        logEvent('tengu_mcp_ide_server_connection_succeeded', {
+        logEvent('nexus_mcp_ide_server_connection_succeeded', {
           connectionDurationMs: ideConnectionDurationMs,
           serverVersion:
             serverVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1314,7 +1172,7 @@ export const connectToServer = memoize(
         // and close the transport so pending tool calls reject and the next
         // call reconnects with a fresh session ID.
         if (
-          (transportType === 'http' || transportType === 'claudeai-proxy') &&
+          transportType === 'http' &&
           isMcpSessionExpiredError(error)
         ) {
           logMCPDebug(
@@ -1332,8 +1190,7 @@ export const connectToServer = memoize(
         // and trigger reconnection via close if we see repeated failures.
         if (
           transportType === 'sse' ||
-          transportType === 'http' ||
-          transportType === 'claudeai-proxy'
+          transportType === 'http'
         ) {
           // The SDK's StreamableHTTP transport fires this after exhausting its
           // own SSE reconnect attempts (default maxRetries: 2) — but it never
@@ -1580,7 +1437,7 @@ export const connectToServer = memoize(
       }
 
       const connectionDurationMs = Date.now() - connectStartTime
-      logEvent('tengu_mcp_server_connection_succeeded', {
+      logEvent('nexus_mcp_server_connection_succeeded', {
         connectionDurationMs,
         transportType: (serverRef.type ??
           'stdio') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1604,7 +1461,7 @@ export const connectToServer = memoize(
       }
     } catch (error) {
       const connectionDurationMs = Date.now() - connectStartTime
-      logEvent('tengu_mcp_server_connection_failed', {
+      logEvent('nexus_mcp_server_connection_failed', {
         connectionDurationMs,
         totalServers: serverStats?.totalServers || 1,
         stdioCount:
@@ -1760,7 +1617,7 @@ export const fetchToolsForClient = memoizeWithLRU(
       // Check if we should skip the mcp__ prefix for SDK MCP servers
       const skipPrefix =
         client.config.type === 'sdk' &&
-        isEnvTruthy(process.env.CLAUDE_AGENT_SDK_MCP_NO_PREFIX)
+        isEnvTruthy(process.env.NEXUS_SDK_MCP_NO_PREFIX)
 
       // Convert MCP tools to our Tool format
       return toolsToProcess
@@ -1777,12 +1634,12 @@ export const fetchToolsForClient = memoizeWithLRU(
             // a newline here would inject orphan lines into the deferred-tool
             // list (formatDeferredToolLine joins on '\n').
             searchHint:
-              typeof tool._meta?.['anthropic/searchHint'] === 'string'
-                ? tool._meta['anthropic/searchHint']
+              typeof tool._meta?.['provider/searchHint'] === 'string'
+                ? tool._meta['provider/searchHint']
                     .replace(/\s+/g, ' ')
                     .trim() || undefined
                 : undefined,
-            alwaysLoad: tool._meta?.['anthropic/alwaysLoad'] === true,
+            alwaysLoad: tool._meta?.['provider/alwaysLoad'] === true,
             async description() {
               return tool.description ?? ''
             },
@@ -1839,7 +1696,7 @@ export const fetchToolsForClient = memoizeWithLRU(
             ) {
               const toolUseId = extractToolUseId(parentMessage)
               const meta = toolUseId
-                ? { 'claudecode/toolUseId': toolUseId }
+                ? { 'nexuscode/toolUseId': toolUseId }
                 : {}
 
               // Emit progress when tool starts
@@ -1974,9 +1831,9 @@ export const fetchToolsForClient = memoizeWithLRU(
               const displayName = tool.annotations?.title || tool.name
               return `${client.name} - ${displayName} (MCP)`
             },
-            ...(isClaudeInChromeMCPServer(client.name) &&
+            ...(isBrowserCompanionMCPServer(client.name) &&
             (client.config.type === 'stdio' || !client.config.type)
-              ? claudeInChromeToolRendering().getClaudeInChromeMCPToolOverrides(
+              ? browserCompanionToolRendering().getBrowserCompanionMCPToolOverrides(
                   tool.name,
                 )
               : {}),
@@ -2163,9 +2020,6 @@ export async function reconnectMcpServerImpl(
       }
     }
 
-    if (config.type === 'claudeai-proxy') {
-      markClaudeAiMcpConnected(name)
-    }
 
     const supportsResources = !!client.capabilities?.resources
 
@@ -2306,8 +2160,7 @@ export async function getMcpToolsCommandsAndResources(
       // Each probe is a network round-trip for connect-401 plus OAuth
       // discovery, and print mode awaits the whole batch (main.tsx:3503).
       if (
-        (config.type === 'claudeai-proxy' ||
-          config.type === 'http' ||
+        (config.type === 'http' ||
           config.type === 'sse') &&
         ((await isMcpAuthCached(name)) ||
           ((config.type === 'http' || config.type === 'sse') &&
@@ -2336,9 +2189,6 @@ export async function getMcpToolsCommandsAndResources(
         return
       }
 
-      if (config.type === 'claudeai-proxy') {
-        markClaudeAiMcpConnected(name)
-      }
 
       const supportsResources = !!client.capabilities?.resources
 
@@ -2446,7 +2296,7 @@ export function prefetchAllMcpResources(
             (command.argumentHint ?? '').length
           return sum + commandMetadataLength
         }, 0)
-        logEvent('tengu_mcp_tools_commands_loaded', {
+        logEvent('nexus_mcp_tools_commands_loaded', {
           tools_count: tools.length,
           commands_count: commands.length,
           commands_metadata_length: commandsMetadataLength,
@@ -2545,7 +2395,7 @@ export async function transformResultContent(
             imageBuffer.length,
             ext,
           )
-          const content: MessageParam['content'] = []
+          const content: ContentBlockParam[] = []
           if (prefix) {
             content.push({
               type: 'text',
@@ -2740,7 +2590,7 @@ export async function processMCPResult(
 
   // If large output files feature is disabled, fall back to old truncation behavior
   if (isEnvDefinedFalsy(process.env.ENABLE_MCP_LARGE_OUTPUT_FILES)) {
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('nexus_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'env_disabled',
       sizeEstimateTokens,
@@ -2757,7 +2607,7 @@ export async function processMCPResult(
   // If content contains images, fall back to truncation - persisting images as JSON
   // defeats the image compression logic and makes them non-viewable
   if (contentContainsImages(content)) {
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('nexus_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'contains_images',
       sizeEstimateTokens,
@@ -2776,7 +2626,7 @@ export async function processMCPResult(
   if (isPersistError(persistResult)) {
     // If file save failed, fall back to returning truncated content info
     const contentLength = contentStr.length
-    logEvent('tengu_mcp_large_result_handled', {
+    logEvent('nexus_mcp_large_result_handled', {
       outcome: 'truncated',
       reason: 'persist_failed',
       sizeEstimateTokens,
@@ -2784,7 +2634,7 @@ export async function processMCPResult(
     return `Error: result (${contentLength.toLocaleString()} characters) exceeds maximum allowed tokens. Failed to save output to file: ${persistResult.error}. If this MCP server provides pagination or filtering tools, use them to retrieve specific portions of the data.`
   }
 
-  logEvent('tengu_mcp_large_result_handled', {
+  logEvent('nexus_mcp_large_result_handled', {
     outcome: 'persisted',
     reason: 'file_saved',
     sizeEstimateTokens,
@@ -3161,7 +3011,7 @@ async function callMCPTool({
     // Log code indexing tool usage
     const codeIndexingTool = detectCodeIndexingFromMcpServerName(name)
     if (codeIndexingTool) {
-      logEvent('tengu_code_indexing_tool_used', {
+      logEvent('nexus_code_indexing_tool_used', {
         tool: codeIndexingTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         source:
           'mcp' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -3201,7 +3051,7 @@ async function callMCPTool({
           name,
           `Tool call returned 401 Unauthorized - token may have expired`,
         )
-        logEvent('tengu_mcp_tool_call_auth_error', {})
+        logEvent('nexus_mcp_tool_call_auth_error', {})
         throw new McpAuthError(
           name,
           `MCP server "${name}" requires re-authorization (token expired)`,
@@ -3220,13 +3070,13 @@ async function callMCPTool({
         'code' in e &&
         (e as Error & { code?: number }).code === -32000 &&
         e.message.includes('Connection closed') &&
-        (config.type === 'http' || config.type === 'claudeai-proxy')
+        config.type === 'http'
       if (isSessionExpired || isConnectionClosedOnHttp) {
         logMCPDebug(
           name,
           `MCP session expired during tool call (${isSessionExpired ? '404/-32001' : 'connection closed'}), clearing connection cache for re-initialization`,
         )
-        logEvent('tengu_mcp_session_expired', {})
+        logEvent('nexus_mcp_session_expired', {})
         await clearServerCache(name, config)
         throw new McpSessionExpiredError(name)
       }
@@ -3280,7 +3130,7 @@ export async function setupSdkMcpClients(
 
       const client = new Client(
         {
-          name: 'claude-code',
+          name: 'nexus-code',
           title: 'Nexus Code',
           version: MACRO.VERSION ?? 'unknown',
           description: "Nexus Code agentic coding tool",

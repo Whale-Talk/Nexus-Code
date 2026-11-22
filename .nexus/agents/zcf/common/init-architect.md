@@ -11,7 +11,7 @@ color: orange
 
 ## 一、通用约束
 
-- 不修改源代码；仅生成/更新文档与 `.claude/index.json`。
+- 不修改源代码；仅生成/更新文档与 `.nexus/index.json`。
 - **忽略规则获取策略**：
   1. 优先读取项目根目录的 `.gitignore` 文件
   2. 如果 `.gitignore` 不存在，则使用以下默认忽略规则：`node_modules/**,.git/**,.github/**,dist/**,build/**,.next/**,__pycache__/**,*.lock,*.log,*.bin,*.pdf,*.png,*.jpg,*.jpeg,*.gif,*.mp4,*.zip,*.tar,*.gz`
@@ -37,21 +37,21 @@ color: orange
    - 触发条件（满足其一即可）：
      - 仓库整体较小（文件数较少）或单模块文件数较少；
      - 阶段 B 后仍无法判断关键接口/数据模型/测试策略；
-     - 根或模块 `CLAUDE.md` 缺信息项。
+     - 根或模块 `NEXUS.md` 缺信息项。
    - 动作：对目标目录**追加分页读取**，补齐缺项。
 
 > 注：如果分页/次数达到工具或时间上限，必须**提前写出部分结果**并在摘要中说明"到此为止的原因"和"下一步建议扫描的目录列表"。
 
 ## 三、产物与增量更新
 
-1.  **写入根级 `CLAUDE.md`**
+1.  **写入根级 `NEXUS.md`**
     - 如果已存在，则在顶部插入/更新 `变更记录 (Changelog)`。
     - 根级结构（精简而全局）：
       - 项目愿景
       - 架构总览
       - **✨ 新增：模块结构图（Mermaid）**
         - 在"模块索引"表格**上方**，根据识别出的模块路径，生成一个 Mermaid `graph TD` 树形图。
-        - 每个节点应可点击，并链接到对应模块的 `CLAUDE.md` 文件。
+        - 每个节点应可点击，并链接到对应模块的 `NEXUS.md` 文件。
         - 示例语法：
 
           ```mermaid
@@ -62,9 +62,9 @@ color: orange
               A --> E["services"];
               E --> F["audit-log"];
 
-              click C "./packages/auth/CLAUDE.md" "查看 auth 模块文档"
-              click D "./packages/ui-library/CLAUDE.md" "查看 ui-library 模块文档"
-              click F "./services/audit-log/CLAUDE.md" "查看 audit-log 模块文档"
+              click C "./packages/auth/NEXUS.md" "查看 auth 模块文档"
+              click D "./packages/ui-library/NEXUS.md" "查看 ui-library 模块文档"
+              click F "./services/audit-log/NEXUS.md" "查看 audit-log 模块文档"
           ```
 
       - 模块索引（表格形式）
@@ -74,12 +74,12 @@ color: orange
       - AI 使用指引
       - 变更记录 (Changelog)
 
-2.  **写入模块级 `CLAUDE.md`**
+2.  **写入模块级 `NEXUS.md`**
     - 放在每个模块目录下，结构建议：
       - **✨ 新增：相对路径面包屑**
-        - 在每个模块 `CLAUDE.md` 的**最顶部**，插入一行相对路径面包屑，链接到各级父目录及根 `CLAUDE.md`。
-        - 示例（位于 `packages/auth/CLAUDE.md`）：
-          `[根目录](../../CLAUDE.md) > [packages](../) > **auth**`
+        - 在每个模块 `NEXUS.md` 的**最顶部**，插入一行相对路径面包屑，链接到各级父目录及根 `NEXUS.md`。
+        - 示例（位于 `packages/auth/NEXUS.md`）：
+          `[根目录](../../NEXUS.md) > [packages](../) > **auth**`
       - 模块职责
       - 入口与启动
       - 对外接口
@@ -89,7 +89,7 @@ color: orange
       - 常见问题 (FAQ)
       - 相关文件清单
       - 变更记录 (Changelog)
-3.  **`.claude/index.json`**
+3.  **`.nexus/index.json`**
     - 记录：当前时间戳（通过参数提供）、根/模块列表、每个模块的入口/接口/测试/重要路径、**扫描覆盖率**、忽略统计、是否因上限被截断（`truncated: true`）。
 
 ## 四、覆盖率与可续跑
@@ -102,7 +102,7 @@ color: orange
 
 ## 五、结果摘要（打印到主对话）
 
-- 根/模块 `CLAUDE.md` 新建或更新状态；
+- 根/模块 `NEXUS.md` 新建或更新状态；
 - 模块列表（路径+一句话职责）；
 - 覆盖率与主要缺口；
 - 若未读全：说明"为何到此为止"，并列出**推荐的下一步**（例如"建议优先补扫：packages/auth/src/controllers、services/audit/migrations"）。

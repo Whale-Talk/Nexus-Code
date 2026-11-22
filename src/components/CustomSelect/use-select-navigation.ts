@@ -428,7 +428,7 @@ const createDefaultState = <T>({
   currentViewport,
 }: Pick<UseSelectNavigationProps<T>, 'visibleOptionCount' | 'options'> & {
   initialFocusValue?: T
-  currentViewport?: { visibleFromIndex: number; visibleToIndex: number }
+  currentViewport?: { visibleFromIndex: number }
 }): State<T> => {
   const visibleOptionCount =
     typeof customVisibleOptionCount === 'number'
@@ -441,56 +441,11 @@ const createDefaultState = <T>({
   const focusedValue = focusedItem ? initialFocusValue : optionMap.first?.value
 
   let visibleFromIndex = 0
-  let visibleToIndex = visibleOptionCount
-
-  // When there's a valid focused item, adjust viewport to show it
   if (focusedItem) {
-    const focusedIndex = focusedItem.index
-
-    if (currentViewport) {
-      // If focused item is already in the current viewport range, try to preserve it
-      if (
-        focusedIndex >= currentViewport.visibleFromIndex &&
-        focusedIndex < currentViewport.visibleToIndex
-      ) {
-        // Keep the same viewport if it's valid
-        visibleFromIndex = currentViewport.visibleFromIndex
-        visibleToIndex = Math.min(
-          optionMap.size,
-          currentViewport.visibleToIndex,
-        )
-      } else {
-        // Need to adjust viewport to show focused item
-        // Use minimal scrolling - put item at edge of viewport
-        if (focusedIndex < currentViewport.visibleFromIndex) {
-          // Item is above current viewport - scroll up to put it at the top
-          visibleFromIndex = focusedIndex
-          visibleToIndex = Math.min(
-            optionMap.size,
-            visibleFromIndex + visibleOptionCount,
-          )
-        } else {
-          // Item is below current viewport - scroll down to put it at the bottom
-          visibleToIndex = Math.min(optionMap.size, focusedIndex + 1)
-          visibleFromIndex = Math.max(0, visibleToIndex - visibleOptionCount)
-        }
-      }
-    } else if (focusedIndex >= visibleOptionCount) {
-      // No current viewport but focused item is outside default viewport
-      // Scroll to show the focused item at the bottom of the viewport
-      visibleToIndex = Math.min(optionMap.size, focusedIndex + 1)
-      visibleFromIndex = Math.max(0, visibleToIndex - visibleOptionCount)
-    }
-
-    // Ensure viewport bounds are valid
-    visibleFromIndex = Math.max(
-      0,
-      Math.min(visibleFromIndex, optionMap.size - 1),
-    )
-    visibleToIndex = Math.min(
-      optionMap.size,
-      Math.max(visibleOptionCount, visibleToIndex),
-    )
+    // Keep the current scroll position when it still fits and keeps focus visible.
+    const earliestStart = Math.max(0, focusedItem.index - visibleOptionCount + 1)
+    const latestStart = Math.min(focusedItem.index, optionMap.size - visibleOptionCount)
+    visibleFromIndex = Math.min(latestStart, Math.max(earliestStart, currentViewport?.visibleFromIndex ?? 0))
   }
 
   return {
@@ -498,7 +453,7 @@ const createDefaultState = <T>({
     visibleOptionCount,
     focusedValue,
     visibleFromIndex,
-    visibleToIndex,
+    visibleToIndex: visibleFromIndex + visibleOptionCount,
   }
 }
 
@@ -525,7 +480,8 @@ export function useSelectNavigation<T>({
 
   const [lastOptions, setLastOptions] = useState(options)
 
-  if (options !== lastOptions && !isDeepStrictEqual(options, lastOptions)) {
+  const optionsChanged = options !== lastOptions && !isDeepStrictEqual(options, lastOptions)
+  if (optionsChanged || state.visibleOptionCount !== Math.min(visibleOptionCount, options.length)) {
     dispatch({
       type: 'reset',
       state: createDefaultState({
@@ -535,12 +491,11 @@ export function useSelectNavigation<T>({
           focusValue ?? state.focusedValue ?? initialFocusValue,
         currentViewport: {
           visibleFromIndex: state.visibleFromIndex,
-          visibleToIndex: state.visibleToIndex,
         },
       }),
     })
 
-    setLastOptions(options)
+    if (optionsChanged) setLastOptions(options)
   }
 
   const focusNextOption = useCallback(() => {

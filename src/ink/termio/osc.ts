@@ -43,31 +43,8 @@ export function wrapForMultiplexer(sequence: string): string {
   return sequence
 }
 
-/**
- * Which path setClipboard() will take, based on env state. Synchronous so
- * callers can show an honest toast without awaiting the copy itself.
- *
- * - 'native': pbcopy (or equivalent) will run — high-confidence system
- *   clipboard write. tmux buffer may also be loaded as a bonus.
- * - 'tmux-buffer': tmux load-buffer will run, but no native tool — paste
- *   with prefix+] works. System clipboard depends on tmux's set-clipboard
- *   option + outer terminal OSC 52 support; can't know from here.
- * - 'osc52': only the raw OSC 52 sequence will be written to stdout.
- *   Best-effort; iTerm2 disables OSC 52 by default.
- *
- * pbcopy gating uses SSH_CONNECTION specifically, not SSH_TTY — tmux panes
- * inherit SSH_TTY forever even after local reattach, but SSH_CONNECTION is
- * in tmux's default update-environment set and gets cleared.
- */
+/** An observed native or tmux write, or an unconfirmed terminal request. */
 export type ClipboardPath = 'native' | 'tmux-buffer' | 'osc52'
-
-export function getClipboardPath(): ClipboardPath {
-  const nativeAvailable =
-    process.platform === 'darwin' && !process.env['SSH_CONNECTION']
-  if (nativeAvailable) return 'native'
-  if (process.env['TMUX']) return 'tmux-buffer'
-  return 'osc52'
-}
 
 /**
  * Wrap a payload in tmux's DCS passthrough: ESC P tmux ; <payload> ESC \
@@ -120,7 +97,6 @@ export async function tmuxLoadBuffer(text: string): Promise<boolean> {
  * With `allow-passthrough on` + an OSC-52-capable outer terminal, selection
  * reaches the system clipboard; with either off, tmux silently drops the
  * DCS and prefix+] still works. See Greg Smith's "free pony" in
- * https://anthropic.slack.com/archives/C07VBSHV7EV/p1773177228548119.
  *
  * If load-buffer fails entirely, fall through to raw OSC 52.
  *
@@ -136,6 +112,14 @@ export async function tmuxLoadBuffer(text: string): Promise<boolean> {
  * outside tmux, DCS-wrapped inside).
  */
 export async function setClipboard(text: string): Promise<string> {
+  return (await setClipboardWithResult(text)).sequence
+}
+
+/** Prepare terminal output immediately and report native delivery separately. */
+export async function setClipboardWithResult(text: string): Promise<{
+  sequence: string
+  delivery: Promise<ClipboardPath>
+}> {
   const b64 = Buffer.from(text, 'utf8').toString('base64')
   const raw = osc(OSC.CLIPBOARD, 'c', b64)
 
@@ -143,78 +127,72 @@ export async function setClipboard(text: string): Promise<string> {
   // focus-switch after selecting doesn't race pbcopy. Previously this ran
   // AFTER awaiting tmux load-buffer, adding ~50-100ms of subprocess latency
   // before pbcopy even started — fast cmd+tab → paste would beat it
-  // (https://anthropic.slack.com/archives/C07VBSHV7EV/p1773943921788829).
-  // Gated on SSH_CONNECTION (not SSH_TTY) since tmux panes inherit SSH_TTY
-  // forever but SSH_CONNECTION is in tmux's default update-environment and
-  // clears on local attach. Fire-and-forget.
-  if (!process.env['SSH_CONNECTION']) copyNative(text)
+  // SSH_CONNECTION is cleared on a local tmux reattach, unlike SSH_TTY.
+  const nativeCopy = process.env['SSH_CONNECTION']
+    ? Promise.resolve(false)
+    : copyNative(text).catch(() => false)
 
   const tmuxBufferLoaded = await tmuxLoadBuffer(text)
 
   // Inner OSC uses BEL directly (not osc()) — ST's ESC would need doubling
   // too, and BEL works everywhere for OSC 52.
-  if (tmuxBufferLoaded) return tmuxPassthrough(`${ESC}]52;c;${b64}${BEL}`)
-  return raw
+  const sequence = tmuxBufferLoaded ? tmuxPassthrough(`${ESC}]52;c;${b64}${BEL}`) : raw
+  const delivery = nativeCopy.then<ClipboardPath>(copied =>
+    copied ? 'native' : tmuxBufferLoaded ? 'tmux-buffer' : 'osc52',
+  )
+  return { sequence, delivery }
 }
 
 // Linux clipboard tool: undefined = not yet probed, null = none available.
 // Probe order: wl-copy (Wayland) → xclip (X11) → xsel (X11 fallback).
 // Cached after first attempt so repeated mouse-ups skip the probe chain.
-let linuxCopy: 'wl-copy' | 'xclip' | 'xsel' | null | undefined
+const linuxWriters = {
+  'wl-copy': [],
+  xclip: ['-selection', 'clipboard'],
+  xsel: ['--clipboard', '--input'],
+}
+type LinuxWriter = keyof typeof linuxWriters
+let linuxCopy: LinuxWriter | null | undefined
+
+const windowsClipboardScript = Buffer.from(`
+$ErrorActionPreference = 'Stop'
+$reader = [IO.StreamReader]::new([Console]::OpenStandardInput(), [Text.UTF8Encoding]::new($false))
+Set-Clipboard -Value ($reader.ReadToEnd())
+`, 'utf16le').toString('base64')
 
 /**
  * Shell out to a native clipboard utility as a safety net for OSC 52.
  * Only called when not in an SSH session (over SSH, these would write to
  * the remote machine's clipboard — OSC 52 is the right path there).
- * Fire-and-forget: failures are silent since OSC 52 may have succeeded.
+ * Report the exit status separately from the terminal fallback.
  */
-function copyNative(text: string): void {
+async function copyNative(text: string): Promise<boolean> {
   const opts = { input: text, useCwd: false, timeout: 2000 }
   switch (process.platform) {
     case 'darwin':
-      void execFileNoThrow('pbcopy', [], opts)
-      return
+      return (await execFileNoThrow('pbcopy', [], opts)).code === 0
     case 'linux': {
-      if (linuxCopy === null) return
-      if (linuxCopy === 'wl-copy') {
-        void execFileNoThrow('wl-copy', [], opts)
-        return
-      }
-      if (linuxCopy === 'xclip') {
-        void execFileNoThrow('xclip', ['-selection', 'clipboard'], opts)
-        return
-      }
-      if (linuxCopy === 'xsel') {
-        void execFileNoThrow('xsel', ['--clipboard', '--input'], opts)
-        return
-      }
-      // First call: probe wl-copy (Wayland) then xclip/xsel (X11), cache winner.
-      void execFileNoThrow('wl-copy', [], opts).then(r => {
-        if (r.code === 0) {
-          linuxCopy = 'wl-copy'
-          return
+      if (linuxCopy === null) return false
+      if (linuxCopy) return (await execFileNoThrow(linuxCopy, linuxWriters[linuxCopy], opts)).code === 0
+      for (const writer of Object.keys(linuxWriters) as LinuxWriter[]) {
+        const result = await execFileNoThrow(writer, linuxWriters[writer], opts)
+        if (result.code === 0) {
+          linuxCopy = writer
+          return true
         }
-        void execFileNoThrow('xclip', ['-selection', 'clipboard'], opts).then(
-          r2 => {
-            if (r2.code === 0) {
-              linuxCopy = 'xclip'
-              return
-            }
-            void execFileNoThrow('xsel', ['--clipboard', '--input'], opts).then(
-              r3 => {
-                linuxCopy = r3.code === 0 ? 'xsel' : null
-              },
-            )
-          },
-        )
-      })
-      return
+      }
+      linuxCopy ??= null
+      return false
     }
-    case 'win32':
-      // clip.exe is always available on Windows. Unicode handling is
-      // imperfect (system locale encoding) but good enough for a fallback.
-      void execFileNoThrow('clip', [], opts)
-      return
+    case 'win32': {
+      // Clipboard contents are passed only through UTF-8 stdin.
+      const result = await execFileNoThrow('powershell.exe', [
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', windowsClipboardScript,
+      ], { ...opts, timeout: 3000 })
+      return result.code === 0
+    }
+    default:
+      return false
   }
 }
 
@@ -465,7 +443,7 @@ export const CLEAR_TAB_STATUS = osc(
  * DCS-passthrough carries the sequence to the outer terminal.
  */
 export function supportsTabStatus(): boolean {
-  return process.env.USER_TYPE === 'ant'
+  return process.env.NEXUS_BUILD_FLAVOR === 'development'
 }
 
 /**

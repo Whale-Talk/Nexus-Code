@@ -32,7 +32,7 @@ import {
 } from '../bootstrap/state.js'
 import { builtInCommandNames } from '../commands.js'
 import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import * as sessionIngress from '../services/api/sessionIngress.js'
 import { REPL_TOOL_NAME } from '../tools/REPLTool/constants.js'
 import {
@@ -417,11 +417,11 @@ export function getNodeEnv(): string {
 
 // exported for testing
 export function getUserType(): string {
-  return process.env.USER_TYPE || 'external'
+  return process.env.NEXUS_BUILD_FLAVOR || 'external'
 }
 
 function getEntrypoint(): string | undefined {
-  return process.env.CLAUDE_CODE_ENTRYPOINT
+  return process.env.NEXUS_ENTRYPOINT
 }
 
 export function isCustomTitleEnabled(): boolean {
@@ -476,7 +476,7 @@ export function resetProjectFlushStateForTesting(): void {
 
 /**
  * Reset the entire Project singleton for testing.
- * This ensures tests with different CLAUDE_CONFIG_DIR values
+ * This ensures tests with different NEXUS_CONFIG_DIR values
  * don't share stale sessionFile paths.
  */
 export function resetProjectForTesting(): void {
@@ -952,7 +952,7 @@ class Project {
 
   /**
    * True when test env / cleanupPeriodDays=0 / --no-session-persistence /
-   * CLAUDE_CODE_SKIP_PROMPT_HISTORY should suppress all transcript writes.
+   * NEXUS_SKIP_PROMPT_HISTORY should suppress all transcript writes.
    * Shared guard for appendEntry and materializeSessionFile so both skip
    * consistently. The env var is set by tmuxSocket.ts so Tungsten-spawned
    * test sessions don't pollute the user's --resume list.
@@ -965,7 +965,7 @@ class Project {
       (getNodeEnv() === 'test' && !allowTestPersistence) ||
       getSettings_DEPRECATED()?.cleanupPeriodDays === 0 ||
       isSessionPersistenceDisabled() ||
-      isEnvTruthy(process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY)
+      isEnvTruthy(process.env.NEXUS_SKIP_PROMPT_HISTORY)
     )
   }
 
@@ -1316,7 +1316,7 @@ class Project {
           },
         )
       } catch {
-        logEvent('tengu_session_persistence_failed', {})
+        logEvent('nexus_session_persistence_failed', {})
         logForDebugging('Failed to write transcript as internal event')
       }
       return
@@ -1337,7 +1337,7 @@ class Project {
     )
 
     if (!success) {
-      logEvent('tengu_session_persistence_failed', {})
+      logEvent('nexus_session_persistence_failed', {})
       gracefulShutdownSync(1, 'other')
     }
   }
@@ -1891,7 +1891,7 @@ function applyPreservedSegmentRelinks(
       // the full pre-compact history. Known cause: mid-turn-yielded
       // attachment pushed to mutableMessages but never recordTranscript'd
       // (SDK subprocess restarted before next turn's qe:420 flush).
-      logEvent('tengu_relink_walk_broken', {
+      logEvent('nexus_relink_walk_broken', {
         tailInTranscript: messages.has(lastSeg.tailUuid),
         headInTranscript: messages.has(lastSeg.headUuid),
         anchorInTranscript: messages.has(lastSeg.anchorUuid),
@@ -2032,7 +2032,7 @@ function applySnipRemovals(messages: Map<UUID, TranscriptMessage>): void {
     relinkedCount++
   }
 
-  logEvent('tengu_snip_resume_filtered', {
+  logEvent('nexus_snip_resume_filtered', {
     removed_count: removedCount,
     relinked_count: relinkedCount,
   })
@@ -2080,7 +2080,7 @@ export function buildConversationChain(
           `Cycle detected in parentUuid chain at message ${currentMsg.uuid}. Returning partial transcript.`,
         ),
       )
-      logEvent('tengu_chain_parent_cycle', {})
+      logEvent('nexus_chain_parent_cycle', {})
       break
     }
     seen.add(currentMsg.uuid)
@@ -2097,7 +2097,7 @@ export function buildConversationChain(
  * Post-pass for buildConversationChain: recover sibling assistant blocks and
  * tool_results that the single-parent walk orphaned.
  *
- * Streaming (claude.ts:~2024) emits one AssistantMessage per content_block_stop
+ * Streaming (nexus.ts:~2024) emits one AssistantMessage per content_block_stop
  * — N parallel tool_uses → N messages, distinct uuid, same message.id. Each
  * tool_result's sourceToolAssistantUUID points to its own one-block assistant,
  * so insertMessageChain's override (line ~894) writes each TR's parentUuid to a
@@ -2192,7 +2192,7 @@ function recoverOrphanedParallelToolResults(
   }
 
   if (recoveredCount === 0) return chain
-  logEvent('tengu_chain_parallel_tr_recovered', {
+  logEvent('nexus_chain_parallel_tr_recovered', {
     recovered_count: recoveredCount,
   })
 
@@ -2208,7 +2208,7 @@ function recoverOrphanedParallelToolResults(
 /**
  * Find the latest turn_duration checkpoint in the reconstructed chain and
  * compare its recorded messageCount against the chain's position at that
- * point. Emits tengu_resume_consistency_delta for BigQuery monitoring of
+ * point. Emits nexus_resume_consistency_delta for BigQuery monitoring of
  * write→load round-trip drift — the class of bugs where snip/compact/
  * parallel-TR operations mutate in-memory but the parentUuid walk on disk
  * reconstructs a different set (adamr-20260320-165831: 397K displayed →
@@ -2231,7 +2231,7 @@ export function checkResumeConsistency(chain: Message[]): void {
     // The checkpoint was appended AFTER messageCount messages, so its own
     // position should be messageCount (i.e., i === expected).
     const actual = i
-    logEvent('tengu_resume_consistency_delta', {
+    logEvent('nexus_resume_consistency_delta', {
       expected,
       actual,
       delta: actual - expected,
@@ -2547,7 +2547,7 @@ async function trackSessionBranchingAnalytics(
   const sessionsWithBranches = branchCounts.length
   const totalBranches = branchCounts.reduce((sum, count) => sum + count, 0)
 
-  logEvent('tengu_session_forked_branches_fetched', {
+  logEvent('nexus_session_forked_branches_fetched', {
     total_sessions: sessionIdCounts.size,
     sessions_with_branches: sessionsWithBranches,
     max_branches_per_session: Math.max(...branchCounts),
@@ -2631,7 +2631,7 @@ export async function saveCustomTitle(
   if (sessionId === getSessionId()) {
     getProject().currentSessionTitle = customTitle
   }
-  logEvent('tengu_session_renamed', {
+  logEvent('nexus_session_renamed', {
     source:
       source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
@@ -2651,7 +2651,7 @@ export async function saveCustomTitle(
  * - CAS semantics: VS Code's `onlyIfNoCustomTitle` check scans for the
  *   `customTitle` field only, so AI can overwrite its own previous AI
  *   title but never a user title.
- * - Metrics: `tengu_session_renamed` is not fired for AI titles.
+ * - Metrics: `nexus_session_renamed` is not fired for AI titles.
  *
  * Because the entry is never re-appended, it scrolls out of the 64KB tail
  * window once enough messages accumulate. Readers (`readLiteMetadata`,
@@ -2673,7 +2673,7 @@ export function saveAiGeneratedTitle(sessionId: UUID, aiTitle: string): void {
 }
 
 /**
- * Append a periodic task summary for `claude ps`. Unlike ai-title this is
+ * Append a periodic task summary for `nexus ps`. Unlike ai-title this is
  * not re-appended by reAppendSessionMetadata — it's a rolling snapshot of
  * what the agent is doing *now*, so staleness is fine; ps reads the most
  * recent one from the tail.
@@ -2695,7 +2695,7 @@ export async function saveTag(sessionId: UUID, tag: string, fullPath?: string) {
   if (sessionId === getSessionId()) {
     getProject().currentSessionTag = tag
   }
-  logEvent('tengu_session_tagged', {})
+  logEvent('nexus_session_tagged', {})
 }
 
 /**
@@ -2725,7 +2725,7 @@ export async function linkSessionToPR(
     project.currentSessionPrUrl = prUrl
     project.currentSessionPrRepository = prRepository
   }
-  logEvent('tengu_session_linked_to_pr', { prNumber })
+  logEvent('nexus_session_linked_to_pr', { prNumber })
 }
 
 export function getCurrentSessionTag(sessionId: UUID): string | undefined {
@@ -2829,7 +2829,7 @@ export async function saveAgentName(
     getProject().currentSessionAgentName = agentName
     void updateSessionName(agentName)
   }
-  logEvent('tengu_agent_name_set', {
+  logEvent('nexus_agent_name_set', {
     source:
       source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
@@ -2850,7 +2850,7 @@ export async function saveAgentColor(
   if (sessionId === getSessionId()) {
     getProject().currentSessionAgentColor = agentColor
   }
-  logEvent('tengu_agent_color_set', {})
+  logEvent('nexus_agent_color_set', {})
 }
 
 /**
@@ -3533,7 +3533,7 @@ export async function loadTranscriptFile(
     let buf: Buffer | null = null
     let metadataLines: string[] | null = null
     let hasPreservedSegment = false
-    if (!isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP)) {
+    if (!isEnvTruthy(process.env.NEXUS_DISABLE_PRECOMPACT_SKIP)) {
       const { size } = await stat(filePath)
       if (size > SKIP_PRECOMPACT_THRESHOLD) {
         const scan = await readTranscriptForLoad(filePath, size)
@@ -3565,14 +3565,14 @@ export async function loadTranscriptFile(
     // preservedSegment (those messages keep their pre-compact parentUuid on
     // disk -- applyPreservedSegmentRelinks splices them in-memory AFTER
     // parse, so a pre-parse chain walk would drop them as orphans), and when
-    // CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP is set (that kill switch means
+    // NEXUS_DISABLE_PRECOMPACT_SKIP is set (that kill switch means
     // "load everything, skip nothing"; this is another skip-before-parse
     // optimization and the scan it depends on for hasPreservedSegment did
     // not run).
     if (
       !opts?.keepAllLeaves &&
       !hasPreservedSegment &&
-      !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP) &&
+      !isEnvTruthy(process.env.NEXUS_DISABLE_PRECOMPACT_SKIP) &&
       buf.length > SKIP_PRECOMPACT_THRESHOLD
     ) {
       buf = walkChainBeforeParse(buf)
@@ -3728,7 +3728,7 @@ export async function loadTranscriptFile(
   const leafUuids = new Set<UUID>()
   let hasCycle = false
 
-  if (getFeatureValue_CACHED_MAY_BE_STALE('tengu_pebble_leaf_prune', false)) {
+  if (getFeatureValue('nexus_pebble_leaf_prune', false)) {
     // Build a set of UUIDs that have user/assistant children
     // (these are mid-conversation nodes, not dead ends)
     const hasUserAssistantChild = new Set<UUID>()
@@ -3786,7 +3786,7 @@ export async function loadTranscriptFile(
   }
 
   if (hasCycle) {
-    logEvent('tengu_transcript_parent_cycle', {})
+    logEvent('nexus_transcript_parent_cycle', {})
   }
 
   return {
@@ -4354,10 +4354,10 @@ export function isLoggableMessage(m: Message): boolean {
   // they have sensitive info for training that we don't want exposed to the public.
   // When enabled, we allow hook_additional_context through since it contains
   // user-configured hook output that is useful for session context on resume.
-  if (m.type === 'attachment' && getUserType() !== 'ant') {
+  if (m.type === 'attachment' && getUserType() !== 'development') {
     if (
       m.attachment.type === 'hook_additional_context' &&
-      isEnvTruthy(process.env.CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT)
+      isEnvTruthy(process.env.NEXUS_SAVE_HOOK_ADDITIONAL_CONTEXT)
     ) {
       return true
     }
@@ -4452,7 +4452,7 @@ export function cleanMessagesForLogging(
   allMessages: readonly Message[] = messages,
 ): Transcript {
   const filtered = messages.filter(isLoggableMessage) as Transcript
-  return getUserType() !== 'ant'
+  return getUserType() !== 'development'
     ? transformMessagesForExternalTranscript(
         filtered,
         collectReplIds(allMessages),

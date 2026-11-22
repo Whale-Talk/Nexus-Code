@@ -36,10 +36,10 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
 import { resolve } from 'path'
 import {
   checkSecurityRestrictionGate,
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
-  getDynamicConfig_BLOCKS_ON_INIT,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from 'src/services/analytics/growthbook.js'
+  isFeatureEnabled,
+  readFeatureValue,
+  getFeatureValue,
+} from 'src/services/analytics/featureFlags.js'
 import {
   addDirHelpMessage,
   validateDirectoryForWorkspace,
@@ -273,7 +273,7 @@ function isDangerousClassifierPermission(
   toolName: string,
   ruleContent: string | undefined,
 ): boolean {
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     // Tmux send-keys executes arbitrary shell, bypassing the classifier same as Bash(*)
     if (toolName === 'Tmux') return true
   }
@@ -697,8 +697,8 @@ export function initialPermissionModeFromCLI({
 
   // Check GrowthBook gate first - highest precedence
   const growthBookDisableBypassPermissionsMode =
-    checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-      'tengu_disable_bypass_permissions_mode',
+    isFeatureEnabled(
+      'nexus_disable_bypass_permissions_mode',
     )
 
   // Then check settings - lower precedence
@@ -746,14 +746,14 @@ export function initialPermissionModeFromCLI({
     // settings (e.g. bypassPermissions would otherwise silently grant full
     // access in a remote environment).
     if (
-      isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
+      isEnvTruthy(process.env.NEXUS_REMOTE) &&
       !['acceptEdits', 'plan', 'default'].includes(settingsMode)
     ) {
       logForDebugging(
-        `settings defaultMode "${settingsMode}" is not supported in CLAUDE_CODE_REMOTE — only acceptEdits and plan are allowed`,
+        `settings defaultMode "${settingsMode}" is not supported in NEXUS_REMOTE — only acceptEdits and plan are allowed`,
         { level: 'warn' },
       )
-      logEvent('tengu_ccr_unsupported_default_mode_ignored', {
+      logEvent('nexus_ccr_unsupported_default_mode_ignored', {
         mode: settingsMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
     }
@@ -930,8 +930,8 @@ export async function initializeToolPermissionContext({
   // Check if bypassPermissions mode is available (not disabled by Statsig gate or settings)
   // Use cached values to avoid blocking on startup
   const growthBookDisableBypassPermissionsMode =
-    checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-      'tengu_disable_bypass_permissions_mode',
+    isFeatureEnabled(
+      'nexus_disable_bypass_permissions_mode',
     )
   const settings = getSettings_DEPRECATED() || {}
   const settingsDisableBypassPermissionsMode =
@@ -951,9 +951,9 @@ export async function initializeToolPermissionContext({
   // Variable name kept for return-field compat; contains both shells.
   let overlyBroadBashPermissions: DangerousPermissionInfo[] = []
   if (
-    process.env.USER_TYPE === 'ant' &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-    process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent'
+    process.env.NEXUS_BUILD_FLAVOR === 'development' &&
+    !isEnvTruthy(process.env.NEXUS_REMOTE) &&
+    process.env.NEXUS_ENTRYPOINT !== 'local-agent'
   ) {
     overlyBroadBashPermissions = [
       ...findOverlyBroadBashPermissions(rulesFromDisk, parsedAllowedToolsCli),
@@ -1059,8 +1059,8 @@ export function getAutoModeUnavailableNotification(
       base = 'auto mode unavailable for this model'
       break
   }
-  return process.env.USER_TYPE === 'ant'
-    ? `${base} · #claude-code-feedback`
+  return process.env.NEXUS_BUILD_FLAVOR === 'development'
+    ? `${base} · #nexus-code-feedback`
     : base
 }
 
@@ -1084,14 +1084,14 @@ export async function verifyAutoModeGateAccess(
   fastMode?: boolean,
 ): Promise<AutoModeGateCheckResult> {
   // Auto-mode config — runs in ALL builds (circuit breaker, carousel, kick-out)
-  // Fresh read of tengu_auto_mode_config.enabled — this async check runs once
+  // Fresh read of nexus_auto_mode_config.enabled — this async check runs once
   // after GrowthBook initialization and is the authoritative source for
   // isAutoModeAvailable. The sync startup path uses stale cache; this
   // corrects it. Circuit breaker (enabled==='disabled') takes effect here.
-  const autoModeConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
+  const autoModeConfig = await readFeatureValue<{
     enabled?: AutoModeEnabledState
     disableFastMode?: boolean
-  }>('tengu_auto_mode_config', {})
+  }>('nexus_auto_mode_config', {})
   const enabledState = parseAutoModeEnabledState(autoModeConfig?.enabled)
   const disabledBySettings = isAutoModeDisabledBySettings()
   // Treat settings-disable the same as GrowthBook 'disabled' for circuit-breaker
@@ -1103,7 +1103,7 @@ export async function verifyAutoModeGateAccess(
   // Carousel availability: not circuit-broken, not disabled-by-settings,
   // model supports it, disableFastMode breaker not firing, and (enabled or opted-in)
   const mainModel = getMainLoopModel()
-  // Temp circuit breaker: tengu_auto_mode_config.disableFastMode blocks auto
+  // Temp circuit breaker: nexus_auto_mode_config.disableFastMode blocks auto
   // mode when fast mode is on. Checks runtime AppState.fastMode (if provided)
   // and, for ants, model name '-fast' substring (ant-internal fast models
   // like capybara-v2-fast[1m] encode speed in the model ID itself).
@@ -1111,7 +1111,7 @@ export async function verifyAutoModeGateAccess(
   const disableFastModeBreakerFires =
     !!autoModeConfig?.disableFastMode &&
     (!!fastMode ||
-      (process.env.USER_TYPE === 'ant' &&
+      (process.env.NEXUS_BUILD_FLAVOR === 'development' &&
         mainModel.toLowerCase().includes('-fast')))
   const modelSupported =
     modelSupportsAutoMode(mainModel) && !disableFastModeBreakerFires
@@ -1167,7 +1167,7 @@ export async function verifyAutoModeGateAccess(
   } else if (enabledState === 'disabled') {
     reason = 'circuit-breaker'
     logForDebugging(
-      'auto mode disabled: tengu_auto_mode_config.enabled === "disabled" (circuit breaker)',
+      'auto mode disabled: nexus_auto_mode_config.enabled === "disabled" (circuit breaker)',
       { level: 'warn' },
     )
   } else {
@@ -1263,7 +1263,7 @@ export async function verifyAutoModeGateAccess(
  * Core logic to check if bypassPermissions should be disabled based on Statsig gate
  */
 export function shouldDisableBypassPermissions(): Promise<boolean> {
-  return checkSecurityRestrictionGate('tengu_disable_bypass_permissions_mode')
+  return checkSecurityRestrictionGate('nexus_disable_bypass_permissions_mode')
 }
 
 function isAutoModeDisabledBySettings(): boolean {
@@ -1301,7 +1301,7 @@ export function getAutoModeUnavailableReason(): AutoModeUnavailableReason | null
 }
 
 /**
- * The `enabled` field in the tengu_auto_mode_config GrowthBook JSON config.
+ * The `enabled` field in the nexus_auto_mode_config GrowthBook JSON config.
  * Controls auto mode availability in UI surfaces (CLI, IDE, Desktop).
  * - 'enabled': auto mode is available in the shift-tab carousel (or equivalent)
  * - 'disabled': auto mode is fully unavailable — circuit breaker for incident response
@@ -1320,15 +1320,15 @@ function parseAutoModeEnabledState(value: unknown): AutoModeEnabledState {
 }
 
 /**
- * Reads the `enabled` field from tengu_auto_mode_config (cached, may be stale).
+ * Reads the `enabled` field from nexus_auto_mode_config (cached, may be stale).
  * Defaults to 'disabled' if GrowthBook is unavailable or the field is unset.
  * Other surfaces (IDE, Desktop) should call this to decide whether to surface
  * auto mode in their mode pickers.
  */
 export function getAutoModeEnabledState(): AutoModeEnabledState {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE<{
+  const config = getFeatureValue<{
     enabled?: AutoModeEnabledState
-  }>('tengu_auto_mode_config', {})
+  }>('nexus_auto_mode_config', {})
   return parseAutoModeEnabledState(config?.enabled)
 }
 
@@ -1344,9 +1344,9 @@ const NO_CACHED_AUTO_MODE_CONFIG = Symbol('no-cached-auto-mode-config')
 export function getAutoModeEnabledStateIfCached():
   | AutoModeEnabledState
   | undefined {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE<
+  const config = getFeatureValue<
     { enabled?: AutoModeEnabledState } | typeof NO_CACHED_AUTO_MODE_CONFIG
-  >('tengu_auto_mode_config', NO_CACHED_AUTO_MODE_CONFIG)
+  >('nexus_auto_mode_config', NO_CACHED_AUTO_MODE_CONFIG)
   if (config === NO_CACHED_AUTO_MODE_CONFIG) return undefined
   return parseAutoModeEnabledState(config?.enabled)
 }
@@ -1370,8 +1370,8 @@ export function hasAutoModeOptInAnySource(): boolean {
  */
 export function isBypassPermissionsModeDisabled(): boolean {
   const growthBookDisableBypassPermissionsMode =
-    checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-      'tengu_disable_bypass_permissions_mode',
+    isFeatureEnabled(
+      'nexus_disable_bypass_permissions_mode',
     )
   const settings = getSettings_DEPRECATED() || {}
   const settingsDisableBypassPermissionsMode =

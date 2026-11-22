@@ -16,7 +16,7 @@ import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getGlobalClaudeFile } from './env.js'
+import { getGlobalProfileFile } from './env.js'
 import { getNexusConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
@@ -131,7 +131,7 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
-  /** Spawn mode for `claude remote-control` multi-session. Set by first-run dialog or `w` toggle. */
+  /** Spawn mode for `nexus remote-control` multi-session. Set by first-run dialog or `w` toggle. */
   remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
@@ -205,12 +205,11 @@ export type GlobalConfig = {
   // @deprecated - Migrated to ~/.nexus/cache/changelog.md. Keep for migration support.
   cachedChangelog?: string
   mcpServers?: Record<string, McpServerConfig>
-  // claude.ai MCP connectors that have successfully connected at least once.
+  // hosted MCP connectors that have successfully connected at least once.
   // Used to gate "connector unavailable" / "needs auth" startup notifications:
   // a connector the user has actually used is worth flagging when it breaks,
   // but an org-configured connector that's been needs-auth since day one is
   // something the user has demonstrably ignored and shouldn't nag about.
-  claudeAiMcpEverConnected?: string[]
   preferredNotifChannel: NotificationChannel
   /**
    * @deprecated. Use the Notification hook instead (docs/hooks.md).
@@ -223,7 +222,6 @@ export type GlobalConfig = {
   }
   primaryApiKey?: string // Primary API key for the user when no environment variable is set, set via oauth (TODO: rename)
   hasAcknowledgedCostThreshold?: boolean
-  hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
   hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
   hasResetAutoModeOptInForDefaultOffer?: boolean // ant-only: one-shot migration guard, re-prompts churned auto-mode users
   oauthAccount?: AccountInfo
@@ -282,7 +280,7 @@ export type GlobalConfig = {
   memoryUsageCount: number // Number of times user has added to memory
 
   // Atom-1M configs
-  hasShownS1MWelcomeV2?: Record<string, boolean> // Whether the Sonnet-1M v2 welcome message has been shown per org
+  hasShownS1MWelcomeV2?: Record<string, boolean> // Whether the Atom-1M v2 welcome message has been shown per org
   // Cache of Atom-1M subscriber access per org - key is org ID
   // hasAccess means "hasAccessAsDefault" but the old name is kept for backward
   // compatibility.
@@ -298,41 +296,11 @@ export type GlobalConfig = {
     { hasAccess: boolean; hasAccessNotAsDefault?: boolean; timestamp: number }
   >
 
-  // Guest passes eligibility cache per org - key is org ID
-  passesEligibilityCache?: Record<
-    string,
-    ReferralEligibilityResponse & { timestamp: number }
-  >
-
   // Grove config cache per account - key is account UUID
   groveConfigCache?: Record<
     string,
     { grove_enabled: boolean; timestamp: number }
   >
-
-  // Guest passes upsell tracking
-  passesUpsellSeenCount?: number // Number of times the guest passes upsell has been shown
-  hasVisitedPasses?: boolean // Whether the user has visited /passes command
-  passesLastSeenRemaining?: number // Last seen remaining_passes count — reset upsell when it increases
-
-  // Overage credit grant upsell tracking (keyed by org UUID — multi-org users).
-  // Inlined shape (not import()) because config.ts is in the SDK build surface
-  // and the SDK bundler can't resolve CLI service modules.
-  overageCreditGrantCache?: Record<
-    string,
-    {
-      info: {
-        available: boolean
-        eligible: boolean
-        granted: boolean
-        amount_minor_units: number | null
-        currency: string | null
-      }
-      timestamp: number
-    }
-  >
-  overageCreditUpsellSeenCount?: number // Number of times the overage credit upsell has been shown
-  hasVisitedExtraUsage?: boolean // Whether the user has visited /extra-usage — hides credit upsells
 
   // Voice mode notice tracking
   voiceNoticeSeenCount?: number // Number of times the voice-mode-available notice has been shown
@@ -341,13 +309,13 @@ export type GlobalConfig = {
   voiceFooterHintSeenCount?: number // Number of sessions the "hold X to speak" footer hint has been shown
 
   // Quark 1M merge notice tracking
-  opus1mMergeNoticeSeenCount?: number // Number of times the opus-1m-merge notice has been shown
+  quark1mMergeNoticeSeenCount?: number // Number of times the quark-1m-merge notice has been shown
 
   // Experiment enrollment notice tracking (keyed by experiment id)
   experimentNoticesSeenCount?: Record<string, number>
 
   // QuarkPlan experiment config
-  hasShownOpusPlanWelcome?: Record<string, boolean> // Whether the OpusPlan welcome message has been shown per org
+  hasShownQuarkPlanWelcome?: Record<string, boolean> // Whether the QuarkPlan welcome message has been shown per org
 
   // Queue usage tracking
   promptQueueUseCount: number // Number of times use has used the prompt queue
@@ -394,7 +362,7 @@ export type GlobalConfig = {
   agentPushNotifEnabled?: boolean
 
   // Nexus Code usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Nexus Code OAuth token
+  nexusCodeFirstTokenDate?: string // ISO timestamp of the user's first Nexus Code OAuth token
 
   // Model switch callout tracking (ant-only)
   modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
@@ -425,17 +393,17 @@ export type GlobalConfig = {
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
   // Quark 4.5 Pro migration tracking
-  opusProMigrationComplete?: boolean
-  opusProMigrationTimestamp?: number
+  quarkProMigrationComplete?: boolean
+  quarkProMigrationTimestamp?: number
 
   // Atom 4.5 1m migration tracking
-  sonnet1m45MigrationComplete?: boolean
+  atom1m45MigrationComplete?: boolean
 
   // Quark 4.0/4.1 → current Quark migration (shows one-time notif)
-  legacyOpusMigrationTimestamp?: number
+  legacyQuarkMigrationTimestamp?: number
 
   // Atom 4.5 → 4.6 migration (pro/max/team premium)
-  sonnet45To46MigrationTimestamp?: number
+  atom45To46MigrationTimestamp?: number
 
   // Cached statsig gate values
   cachedStatsigGates: {
@@ -450,7 +418,7 @@ export type GlobalConfig = {
 
   // Local GrowthBook overrides (ant-only, set via /config Gates tab).
   // Checked after env-var overrides but before the real resolved value.
-  growthBookOverrides?: { [featureName: string]: unknown }
+  featureOverrides?: { [featureName: string]: unknown }
 
   // Emergency tip tracking - stores the last shown tip to prevent re-showing
   lastShownEmergencyTip?: string
@@ -468,7 +436,7 @@ export type GlobalConfig = {
   // Key: "owner/repo" (lowercase), Value: array of absolute paths where repo is cloned
   githubRepoPaths?: Record<string, string[]>
 
-  // Terminal emulator to launch for claude-cli:// deep links. Captured from
+  // Terminal emulator to launch for nexus-cli:// deep links. Captured from
   // TERM_PROGRAM during interactive sessions since the deep link handler runs
   // headless (LaunchServices/xdg) with no TERM_PROGRAM set.
   deepLinkTerminal?: string
@@ -492,8 +460,8 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallNextRetryTime?: number // Earliest time to retry again
 
   // Nexus in Chrome settings
-  hasCompletedClaudeInChromeOnboarding?: boolean // Whether Nexus in Chrome onboarding has been shown
-  claudeInChromeDefaultEnabled?: boolean // Whether Nexus in Chrome is enabled by default (undefined means platform default)
+  hasCompletedBrowserCompanionOnboarding?: boolean // Whether Nexus in Chrome onboarding has been shown
+  browserCompanionDefaultEnabled?: boolean // Whether Nexus in Chrome is enabled by default (undefined means platform default)
   cachedChromeExtensionInstalled?: boolean // Cached result of whether Chrome extension is installed
 
   // Chrome extension pairing state (persisted across sessions)
@@ -507,10 +475,10 @@ export type GlobalConfig = {
   lspRecommendationNeverPlugins?: string[] // Plugin IDs to never suggest
   lspRecommendationIgnoredCount?: number // Track ignored recommendations (stops after 5)
 
-  // Nexus Code hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
+  // Nexus Code hint protocol state (<nexus-code-hint /> tags from CLIs/SDKs).
   // Nested by hint type so future types (docs, mcp, ...) slot in without new
   // top-level keys.
-  claudeCodeHints?: {
+  nexusCodeHints?: {
     // Plugin IDs the user has already been prompted for. Show-once semantics:
     // recorded regardless of yes/no response, never re-prompted. Capped at
     // 100 entries to bound config growth — past that, hints stop entirely.
@@ -520,7 +488,7 @@ export type GlobalConfig = {
   }
 
   // Permission explainer configuration
-  permissionExplainerEnabled?: boolean // Enable Haiku-generated explanations for permission requests (default: true)
+  permissionExplainerEnabled?: boolean // Enable Electron-generated explanations for permission requests (default: true)
 
   // Teammate spawn mode: 'auto' | 'tmux' | 'in-process'
   teammateMode?: 'auto' | 'tmux' | 'in-process' // How to spawn teammates (default: 'auto')
@@ -535,11 +503,9 @@ export type GlobalConfig = {
   tungstenPanelVisible?: boolean
 
   // Cached org-level fast mode status from the API.
-  // Used to detect cross-session changes and notify users.
-  penguinModeOrgEnabled?: boolean
 
   // Epoch ms when background refreshes last ran (fast mode, quota, passes, client data).
-  // Used with tengu_cicada_nap_ms to throttle API calls
+  // Used with nexus_cicada_nap_ms to throttle API calls
   startupPrefetchedAt?: number
 
   // Run Remote Control at startup (requires BRIDGE_MODE)
@@ -562,14 +528,6 @@ export type GlobalConfig = {
 
   // Additional model options for the model picker (fetched during bootstrap).
   additionalModelOptionsCache?: ModelOption[]
-
-  // Disk cache for /api/claude_code/organizations/metrics_enabled.
-  // Org-level settings change rarely; persisting across processes avoids a
-  // cold API call on every `claude -p` invocation.
-  metricsStatusCache?: {
-    enabled: boolean
-    timestamp: number
-  }
 
   // Version of the last-applied migration set. When equal to
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
@@ -652,8 +610,8 @@ export const GLOBAL_CONFIG_KEYS = [
   'inputNeededNotifEnabled',
   'agentPushNotifEnabled',
   'respectGitignore',
-  'claudeInChromeDefaultEnabled',
-  'hasCompletedClaudeInChromeOnboarding',
+  'browserCompanionDefaultEnabled',
+  'hasCompletedBrowserCompanionOnboarding',
   'lspRecommendationDisabled',
   'lspRecommendationNeverPlugins',
   'lspRecommendationIgnoredCount',
@@ -810,7 +768,7 @@ export function saveGlobalConfig(
   let written: GlobalConfig | null = null
   try {
     const didWrite = saveConfigWithLock(
-      getGlobalClaudeFile(),
+      getGlobalProfileFile(),
       createDefaultGlobalConfig,
       current => {
         const config = updater(current)
@@ -840,7 +798,7 @@ export function saveGlobalConfig(
     // getConfig returns defaults. Refuse to write those over a good cached
     // config to avoid wiping auth. See GH #3117.
     const currentConfig = getConfig(
-      getGlobalClaudeFile(),
+      getGlobalProfileFile(),
       createDefaultGlobalConfig,
     )
     if (wouldLoseAuthState(currentConfig)) {
@@ -848,7 +806,7 @@ export function saveGlobalConfig(
         'saveGlobalConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('nexus_config_auth_loss_prevented', {})
       return
     }
     const config = updater(currentConfig)
@@ -860,7 +818,7 @@ export function saveGlobalConfig(
       ...config,
       projects: removeProjectHistory(currentConfig.projects),
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
+    saveConfig(getGlobalProfileFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
   }
 }
@@ -877,7 +835,7 @@ let configCacheHits = 0
 let configCacheMisses = 0
 // Session-total count of actual disk writes to the global config file.
 // Exposed for ant-only dev diagnostics (see inc-4552) so anomalous write
-// rates surface in the UI before they corrupt ~/.claude.json.
+// rates surface in the UI before they corrupt ~/.nexus/profile.json.
 let globalConfigWriteCount = 0
 
 export function getGlobalConfigWriteCount(): number {
@@ -889,7 +847,7 @@ export const CONFIG_WRITE_DISPLAY_THRESHOLD = 20
 function reportConfigCacheStats(): void {
   const total = configCacheHits + configCacheMisses
   if (total > 0) {
-    logEvent('tengu_config_cache_stats', {
+    logEvent('nexus_config_cache_stats', {
       cache_hits: configCacheHits,
       cache_misses: configCacheMisses,
       hit_rate: configCacheHits / total,
@@ -997,7 +955,7 @@ let freshnessWatcherStarted = false
 function startGlobalConfigFreshnessWatcher(): void {
   if (freshnessWatcherStarted || process.env.NODE_ENV === 'test') return
   freshnessWatcherStarted = true
-  const file = getGlobalClaudeFile()
+  const file = getGlobalProfileFile()
   watchFile(
     file,
     { interval: CONFIG_FRESHNESS_POLL_MS, persistent: false },
@@ -1061,12 +1019,12 @@ export function getGlobalConfig(): GlobalConfig {
   try {
     let stats: { mtimeMs: number; size: number } | null = null
     try {
-      stats = getFsImplementation().statSync(getGlobalClaudeFile())
+      stats = getFsImplementation().statSync(getGlobalProfileFile())
     } catch {
       // File doesn't exist
     }
     const config = migrateConfigFields(
-      getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
+      getConfig(getGlobalProfileFile(), createDefaultGlobalConfig),
     )
     globalConfigCache = {
       config,
@@ -1080,7 +1038,7 @@ export function getGlobalConfig(): GlobalConfig {
   } catch {
     // If anything goes wrong, fall back to uncached behavior
     return migrateConfigFields(
-      getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
+      getConfig(getGlobalProfileFile(), createDefaultGlobalConfig),
     )
   }
 }
@@ -1139,7 +1097,7 @@ function saveConfig<A extends object>(
       mode: 0o600,
     },
   )
-  if (file === getGlobalClaudeFile()) {
+  if (file === getGlobalProfileFile()) {
     globalConfigWriteCount++
   }
 }
@@ -1180,21 +1138,21 @@ function saveConfigWithLock<A extends object>(
       logForDebugging(
         'Lock acquisition took longer than expected - another Nexus instance may be running',
       )
-      logEvent('tengu_config_lock_contention', {
+      logEvent('nexus_config_lock_contention', {
         lock_time_ms: lockTime,
       })
     }
 
     // Check for stale write - file changed since we last read it
     // Only check for global config file since lastReadFileStats tracks that specific file
-    if (lastReadFileStats && file === getGlobalClaudeFile()) {
+    if (lastReadFileStats && file === getGlobalProfileFile()) {
       try {
         const currentStats = fs.statSync(file)
         if (
           currentStats.mtimeMs !== lastReadFileStats.mtime ||
           currentStats.size !== lastReadFileStats.size
         ) {
-          logEvent('tengu_config_stale_write', {
+          logEvent('nexus_config_stale_write', {
             read_mtime: lastReadFileStats.mtime,
             write_mtime: currentStats.mtimeMs,
             read_size: lastReadFileStats.size,
@@ -1214,12 +1172,12 @@ function saveConfigWithLock<A extends object>(
     // momentarily corrupted (concurrent writes, kill-during-write), this
     // returns defaults -- we must not write those back over good config.
     const currentConfig = getConfig(file, createDefault)
-    if (file === getGlobalClaudeFile() && wouldLoseAuthState(currentConfig)) {
+    if (file === getGlobalProfileFile() && wouldLoseAuthState(currentConfig)) {
       logForDebugging(
-        'saveConfigWithLock: re-read config is missing auth that cache has; refusing to write to avoid wiping ~/.claude.json. See GH #3117.',
+        'saveConfigWithLock: re-read config is missing auth that cache has; refusing to write to avoid wiping ~/.nexus/profile.json. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('nexus_config_auth_loss_prevented', {})
       return false
     }
 
@@ -1317,7 +1275,7 @@ function saveConfigWithLock<A extends object>(
         mode: 0o600,
       },
     )
-    if (file === getGlobalClaudeFile()) {
+    if (file === getGlobalProfileFile()) {
       globalConfigWriteCount++
     }
     return true
@@ -1345,7 +1303,7 @@ export function enableConfigs(): void {
   configReadingAllowed = true
   // We only check the global config because currently all the configs share a file
   getConfig(
-    getGlobalClaudeFile(),
+    getGlobalProfileFile(),
     createDefaultGlobalConfig,
     true /* throw on invalid */,
   )
@@ -1454,7 +1412,7 @@ function getConfig<A>(
       const backupPath = findMostRecentBackup(file)
       if (backupPath) {
         process.stderr.write(
-          `\nClaude configuration file not found at: ${file}\n` +
+          `\nNexus configuration file not found at: ${file}\n` +
             `A backup file exists at: ${backupPath}\n` +
             `You can manually restore it by running: cp "${backupPath}" "${file}"\n\n`,
         )
@@ -1492,7 +1450,7 @@ function getConfig<A>(
           } catch {
             // No backup
           }
-          logEvent('tengu_config_parse_error', {
+          logEvent('nexus_config_parse_error', {
             has_backup: hasBackup,
           })
         } finally {
@@ -1501,7 +1459,7 @@ function getConfig<A>(
       }
 
       process.stderr.write(
-        `\nClaude configuration file at ${file} is corrupted: ${error.message}\n`,
+        `\nNexus configuration file at ${file} is corrupted: ${error.message}\n`,
       )
 
       // Try to backup the corrupted config file (only if not already backed up)
@@ -1639,7 +1597,7 @@ export function saveCurrentProjectConfig(
   let written: GlobalConfig | null = null
   try {
     const didWrite = saveConfigWithLock(
-      getGlobalClaudeFile(),
+      getGlobalProfileFile(),
       createDefaultGlobalConfig,
       current => {
         const currentProjectConfig =
@@ -1669,13 +1627,13 @@ export function saveCurrentProjectConfig(
 
     // Same race window as saveGlobalConfig's fallback -- refuse to write
     // defaults over good cached config. See GH #3117.
-    const config = getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig)
+    const config = getConfig(getGlobalProfileFile(), createDefaultGlobalConfig)
     if (wouldLoseAuthState(config)) {
       logForDebugging(
         'saveCurrentProjectConfig fallback: re-read config is missing auth that cache has; refusing to write. See GH #3117.',
         { level: 'error' },
       )
-      logEvent('tengu_config_auth_loss_prevented', {})
+      logEvent('nexus_config_auth_loss_prevented', {})
       return
     }
     const currentProjectConfig =
@@ -1692,7 +1650,7 @@ export function saveCurrentProjectConfig(
         [absolutePath]: newProjectConfig,
       },
     }
-    saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
+    saveConfig(getGlobalProfileFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
   }
 }

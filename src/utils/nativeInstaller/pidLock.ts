@@ -10,7 +10,7 @@
  */
 
 import { basename, join } from 'path'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
 import { isENOENT, toError } from '../errors.js'
@@ -30,7 +30,7 @@ import {
  * Controlled by GrowthBook gate with local override:
  * - Set ENABLE_PID_BASED_VERSION_LOCKING=true to force-enable
  * - Set ENABLE_PID_BASED_VERSION_LOCKING=false to force-disable
- * - If unset, GrowthBook gate (tengu_pid_based_version_locking) controls rollout
+ * - If unset, GrowthBook gate (nexus_pid_based_version_locking) controls rollout
  */
 export function isPidBasedLockingEnabled(): boolean {
   const envVar = process.env.ENABLE_PID_BASED_VERSION_LOCKING
@@ -42,8 +42,8 @@ export function isPidBasedLockingEnabled(): boolean {
     return false
   }
   // GrowthBook controls gradual rollout (returns false for external users)
-  return getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_pid_based_version_locking',
+  return getFeatureValue(
+    'nexus_pid_based_version_locking',
     false,
   )
 }
@@ -98,13 +98,13 @@ export function isProcessRunning(pid: number): boolean {
  * Validate that a running process is actually a Nexus process
  * This helps mitigate PID reuse issues
  */
-function isClaudeProcess(pid: number, expectedExecPath: string): boolean {
+function isNexusProcess(pid: number, expectedExecPath: string): boolean {
   if (!isProcessRunning(pid)) {
     return false
   }
 
   // If the PID matches our current process, we know it's valid
-  // This handles test environments where the command might not contain 'claude'
+  // This handles test environments where the command might not contain 'nexus'
   if (pid === process.pid) {
     return true
   }
@@ -117,12 +117,12 @@ function isClaudeProcess(pid: number, expectedExecPath: string): boolean {
       return true
     }
 
-    // Check if the command contains 'claude' or the expected exec path
+    // Check if the command contains 'nexus' or the expected exec path
     const normalizedCommand = command.toLowerCase()
     const normalizedExecPath = expectedExecPath.toLowerCase()
 
     return (
-      normalizedCommand.includes('claude') ||
+      normalizedCommand.includes('nexus') ||
       normalizedCommand.includes(normalizedExecPath)
     )
   } catch {
@@ -177,7 +177,7 @@ export function isLockActive(lockFilePath: string): boolean {
 
   // Secondary validation: is it actually a Nexus process?
   // This helps with PID reuse scenarios
-  if (!isClaudeProcess(pid, execPath)) {
+  if (!isNexusProcess(pid, execPath)) {
     logForDebugging(
       `Lock PID ${pid} is running but does not appear to be Nexus - treating as stale`,
     )

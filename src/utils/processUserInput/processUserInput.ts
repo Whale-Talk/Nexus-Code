@@ -8,11 +8,6 @@ import type {
 import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
 import { logEvent } from 'src/services/analytics/index.js'
-import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
-import { createMultiSkillInvocation, createSkillInvocation } from '../omn/invocation.js'
-import { detectOmnKeywords } from '../omn/keywordDetector.js'
-import { activateOmnState, clearOmnStateFiles } from '../omn/state.js'
-import { isEnvTruthy } from '../envUtils.js'
 import { getContentText } from 'src/utils/messages.js'
 import {
   findCommand,
@@ -60,10 +55,6 @@ import {
 } from '../messages.js'
 import { queryCheckpoint } from '../queryProfiler.js'
 import { parseSlashCommand } from '../slashCommandParsing.js'
-import {
-  hasUltraplanKeyword,
-  replaceUltraplanKeyword,
-} from '../ultraplan/keyword.js'
 import { processTextPrompt } from './processTextPrompt.js'
 export type ProcessUserInputContext = ToolUseContext & LocalJSXCommandContext
 
@@ -380,7 +371,7 @@ async function processUserInputBase(
           data: pastedImage.content,
         },
       }
-      logEvent('tengu_pasted_image_resize_attempt', {
+      logEvent('nexus_pasted_image_resize_attempt', {
         original_size_bytes: pastedImage.content.length,
       })
       const resized = await maybeResizeAndDownsampleImageBlock(imageBlock)
@@ -458,97 +449,6 @@ async function processUserInputBase(
     // pre-#19134. A mobile user typing "/shrug" shouldn't see "Unknown skill".
   }
 
-  // Ultraplan keyword — route through /ultraplan. Detect on the
-  // pre-expansion input so pasted content containing the word cannot
-  // trigger a CCR session; replace with "plan" in the expanded input so
-  // the CCR prompt receives paste contents and stays grammatical. See
-  // keyword.ts for the quote/path exclusions. Interactive prompt mode +
-  // non-slash-prefixed only:
-  // headless/print mode filters local-jsx commands out of context.options,
-  // so routing to /ultraplan there yields "Unknown skill" — and there's no
-  // rainbow animation in print mode anyway.
-  // Runs before attachment extraction so this path matches the slash-command
-  // path below (no await between setUserInputOnProcessing and setAppState —
-  // React batches both into one render, no flash).
-  if (
-    feature('ULTRAPLAN') &&
-    mode === 'prompt' &&
-    !context.options.isNonInteractiveSession &&
-    inputString !== null &&
-    !effectiveSkipSlash &&
-    !inputString.startsWith('/') &&
-    !context.getAppState().ultraplanSessionUrl &&
-    !context.getAppState().ultraplanLaunching &&
-    hasUltraplanKeyword(preExpansionInput ?? inputString)
-  ) {
-    logEvent('tengu_ultraplan_keyword', {})
-    const rewritten = replaceUltraplanKeyword(inputString).trim()
-    const { processSlashCommand } = await import('./processSlashCommand.js')
-    const slashResult = await processSlashCommand(
-      `/ultraplan ${rewritten}`,
-      precedingInputBlocks,
-      imageContentBlocks,
-      [],
-      context,
-      setToolJSX,
-      uuid,
-      isAlreadyProcessing,
-      canUseTool,
-    )
-    return addImageMetadataMessage(slashResult, imageMetadataTexts)
-  }
-
-  // OMN (Oh My Nexus) — 原生 keyword 触发。从官方 oh-my-claudecode 的
-  // keyword-detector hook 移植：对话输入命中关键词（ralph/autopilot/…）时，
-  // 注入技能引导文本让模型立即启动对应工作流，并激活 .omc/state/ 状态。
-  // 意图过滤与回声剥离在 detectOmnKeywords 内完成（"什么是 ralph" 不触发）。
-  // Kill switch: DISABLE_OMC / NEXUS_DISABLE_OMN / OMC_SKIP_HOOKS=keyword-detector。
-  if (
-    mode === 'prompt' &&
-    inputString !== null &&
-    !effectiveSkipSlash &&
-    !inputString.startsWith('/') &&
-    !isEnvTruthy(process.env.DISABLE_OMC) &&
-    !isEnvTruthy(process.env.NEXUS_DISABLE_OMN) &&
-    !(process.env.OMC_SKIP_HOOKS ?? '').split(',').map(s => s.trim()).includes('keyword-detector')
-  ) {
-    const omnResult = detectOmnKeywords(inputString)
-    if (
-      omnResult.cancelled ||
-      omnResult.skills.length > 0 ||
-      omnResult.modeMessages.length > 0
-    ) {
-      const omnCwd = getOriginalCwd()
-      const omnSessionId = getSessionId()
-
-      if (omnResult.cancelled) {
-        clearOmnStateFiles(
-          omnCwd,
-          ['ralph', 'autopilot', 'ultrawork', 'ralplan'],
-          omnSessionId,
-        )
-      }
-      for (const stateName of omnResult.stateActivations) {
-        if (stateName !== 'cancel') {
-          activateOmnState(omnCwd, inputString, stateName, omnSessionId)
-        }
-      }
-
-      const invocationParts: string[] = []
-      if (omnResult.cancelled) {
-        invocationParts.push(createSkillInvocation('cancel', inputString))
-      }
-      if (omnResult.skills.length > 0) {
-        invocationParts.push(createMultiSkillInvocation(omnResult.skills, inputString))
-      }
-      invocationParts.push(...omnResult.modeMessages)
-
-      if (invocationParts.length > 0) {
-        inputString = `${invocationParts.join('\n\n')}\n\n---\n\n${inputString}`
-      }
-    }
-  }
-
   // For slash commands, attachments will be extracted within getMessagesForSlashCommand
   const shouldExtractAttachments =
     !skipAttachments &&
@@ -623,7 +523,7 @@ async function processUserInputBase(
         trimmedInput.startsWith(agentMentionString) && !isSubagentOnly
 
       // Log whenever users use @agent-<name> syntax
-      logEvent('tengu_subagent_at_mention', {
+      logEvent('nexus_subagent_at_mention', {
         is_subagent_only: isSubagentOnly,
         is_prefix: isPrefix,
       })

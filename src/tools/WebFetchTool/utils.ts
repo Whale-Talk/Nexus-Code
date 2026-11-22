@@ -4,7 +4,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
+import { queryElectron } from '../../services/api/inference.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
@@ -28,7 +28,7 @@ class DomainBlockedError extends Error {
 class DomainCheckFailedError extends Error {
   constructor(domain: string) {
     super(
-      `Unable to verify if domain ${domain} is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.`,
+      `Unable to verify if domain ${domain} is safe to fetch. Configure NEXUS_WEB_FETCH_POLICY_URL to use a domain policy service.`,
     )
     this.name = 'DomainCheckFailedError'
   }
@@ -70,7 +70,7 @@ const URL_CACHE = new LRUCache<string, CacheEntry>({
 
 // Separate cache for preflight domain checks. URL_CACHE is URL-keyed, so
 // fetching two paths on the same domain triggers two identical preflight
-// HTTP round-trips to api.anthropic.com. This hostname-keyed cache avoids
+// HTTP round-trips to the configured policy service. The hostname-keyed cache avoids
 // that. Only 'allowed' is cached — blocked/failed re-check on next attempt.
 const DOMAIN_CHECK_CACHE = new LRUCache<string, true>({
   max: 128,
@@ -148,7 +148,7 @@ export function validateURL(url: string): boolean {
     return false
   }
 
-  // We don't need to check protocol here, as we'll upgrade http to https when making the request
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
 
   // As long as we aren't supporting aiming to cookies or internal domains,
   // we should block URLs with usernames/passwords too, even though these
@@ -175,18 +175,18 @@ type DomainCheckResult =
 
 export async function checkDomainBlocklist(
   domain: string,
+  signal?: AbortSignal,
 ): Promise<DomainCheckResult> {
-  if (DOMAIN_CHECK_CACHE.has(domain)) {
-    return { status: 'allowed' }
-  }
   try {
-    const response = await axios.get(
-      `${encodeURIComponent(domain)}`,
-      { timeout: DOMAIN_CHECK_TIMEOUT_MS },
-    )
+    const configured = process.env.NEXUS_WEB_FETCH_POLICY_URL?.trim()
+    if (!configured) return { status: 'check_failed', error: new Error('Domain policy URL is unset') }
+    const endpoint = new URL(configured)
+    endpoint.searchParams.set('domain', domain)
+    if (DOMAIN_CHECK_CACHE.has(endpoint.href)) return { status: 'allowed' }
+    const response = await axios.get(endpoint.href, { timeout: DOMAIN_CHECK_TIMEOUT_MS, maxRedirects: 0, signal })
     if (response.status === 200) {
       if (response.data.can_fetch === true) {
-        DOMAIN_CHECK_CACHE.set(domain, true)
+        DOMAIN_CHECK_CACHE.set(endpoint.href, true)
         return { status: 'allowed' }
       }
       return { status: 'blocked' }
@@ -197,9 +197,17 @@ export async function checkDomainBlocklist(
       error: new Error(`Domain check returned status ${response.status}`),
     }
   } catch (e) {
+    signal?.throwIfAborted()
     logError(e)
     return { status: 'check_failed', error: e as Error }
   }
+}
+
+export async function assertWebFetchDomainAllowed(hostname: string, signal: AbortSignal): Promise<void> {
+  if (getSettings_DEPRECATED().skipWebFetchPreflight) return
+  const check = await checkDomainBlocklist(hostname, signal)
+  if (check.status === 'blocked') throw new DomainBlockedError(hostname)
+  if (check.status === 'check_failed') throw new DomainCheckFailedError(hostname)
 }
 
 /**
@@ -352,66 +360,22 @@ export async function getURLMarkdownContent(
     throw new Error('Invalid URL')
   }
 
-  // Check cache (LRUCache handles TTL automatically)
-  const cachedEntry = URL_CACHE.get(url)
-  if (cachedEntry) {
-    return {
-      bytes: cachedEntry.bytes,
-      code: cachedEntry.code,
-      codeText: cachedEntry.codeText,
-      content: cachedEntry.content,
-      contentType: cachedEntry.contentType,
-      persistedPath: cachedEntry.persistedPath,
-      persistedSize: cachedEntry.persistedSize,
-    }
+  const parsedUrl = new URL(url)
+  if (parsedUrl.protocol === 'http:') parsedUrl.protocol = 'https:'
+  const upgradedUrl = parsedUrl.href
+
+  // Known public documentation can be fetched without setting up a policy service.
+  // An explicitly configured policy applies to every target, including cached pages.
+  if (process.env.NEXUS_WEB_FETCH_POLICY_URL?.trim() || !isPreapprovedUrl(upgradedUrl)) {
+    await assertWebFetchDomainAllowed(parsedUrl.hostname, abortController.signal)
   }
+  const cachedEntry = URL_CACHE.get(url)
+  if (cachedEntry) return cachedEntry
 
-  let parsedUrl: URL
-  let upgradedUrl = url
-
-  try {
-    parsedUrl = new URL(url)
-
-    // Upgrade http to https if needed
-    if (parsedUrl.protocol === 'http:') {
-      parsedUrl.protocol = 'https:'
-      upgradedUrl = parsedUrl.toString()
-    }
-
-    const hostname = parsedUrl.hostname
-
-    // Check if the user has opted to skip the blocklist check
-    // This is for enterprise customers with restrictive security policies
-    // that prevent outbound connections to claude.ai
-    const settings = getSettings_DEPRECATED()
-    if (!settings.skipWebFetchPreflight) {
-      const checkResult = await checkDomainBlocklist(hostname)
-      switch (checkResult.status) {
-        case 'allowed':
-          // Continue with the fetch
-          break
-        case 'blocked':
-          throw new DomainBlockedError(hostname)
-        case 'check_failed':
-          throw new DomainCheckFailedError(hostname)
-      }
-    }
-
-    if (process.env.USER_TYPE === 'ant') {
-      logEvent('tengu_web_fetch_host', {
-        hostname:
-          hostname as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-    }
-  } catch (e) {
-    if (
-      e instanceof DomainBlockedError ||
-      e instanceof DomainCheckFailedError
-    ) {
-      // Expected user-facing failures - re-throw without logging as internal error
-      throw e
-    }
-    logError(e)
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    logEvent('nexus_web_fetch_host', {
+      hostname: parsedUrl.hostname as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    })
   }
 
   const response = await getWithPermittedRedirects(
@@ -430,7 +394,8 @@ export async function getURLMarkdownContent(
   // This lets GC reclaim up to MAX_HTTP_CONTENT_LENGTH (10MB) before Turndown
   // builds its DOM tree (which can be 3-5x the HTML size).
   ;(response as { data: unknown }).data = null
-  const contentType = response.headers['content-type'] ?? ''
+  const contentTypeHeader = response.headers['content-type']
+  const contentType = typeof contentTypeHeader === 'string' ? contentTypeHeader : ''
 
   // Binary content: save raw bytes to disk with a proper extension so Nexus
   // can inspect the file later. We still fall through to the utf-8 decode +
@@ -500,7 +465,7 @@ export async function applyPromptToMarkdown(
     prompt,
     isPreapprovedDomain,
   )
-  const assistantMessage = await queryHaiku({
+  const assistantMessage = await queryElectron({
     systemPrompt: asSystemPrompt([]),
     userPrompt: modelPrompt,
     signal,

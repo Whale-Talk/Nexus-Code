@@ -1,7 +1,7 @@
 import { dirname, sep } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
@@ -249,7 +249,7 @@ export const FileWriteTool = buildTool({
     // Ensure parent directory exists before the atomic read-modify-write section.
     // Must stay OUTSIDE the critical section below (a yield between the staleness
     // check and writeTextContent lets concurrent edits interleave), and BEFORE the
-    // write (lazy-mkdir-on-ENOENT would fire a spurious tengu_atomic_write_error
+    // write (lazy-mkdir-on-ENOENT would fire a spurious nexus_atomic_write_error
     // inside writeFileSyncAndFlush_DEPRECATED before ENOENT propagates back).
     await getFsImplementation().mkdir(dir)
     if (fileHistoryEnabled()) {
@@ -338,18 +338,18 @@ export const FileWriteTool = buildTool({
 
     // Log when writing to NEXUS.md
     if (fullFilePath.endsWith(`${sep}NEXUS.md`)) {
-      logEvent('tengu_write_claudemd', {})
+      logEvent('nexus_write_nexusmd', {})
     }
 
     let gitDiff: ToolUseDiff | undefined
     if (
-      isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)
+      isEnvTruthy(process.env.NEXUS_REMOTE) &&
+      getFeatureValue('nexus_quartz_lantern', false)
     ) {
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(fullFilePath)
       if (diff) gitDiff = diff
-      logEvent('tengu_tool_use_diff_computed', {
+      logEvent('nexus_tool_use_diff_computed', {
         isWriteTool: true,
         durationMs: Date.now() - startTime,
         hasDiff: !!diff,

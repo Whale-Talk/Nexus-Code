@@ -75,9 +75,9 @@ import { maybeResizeAndDownsampleImageBlock } from './imageResizer.js'
 import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
 import {
-  getDefaultSonnetModel,
-  getDefaultHaikuModel,
-  getDefaultOpusModel,
+  getAtomModel,
+  getElectronModel,
+  getQuarkModel,
 } from './model/model.js'
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
 import { getSkillToolCommands, getMcpSkillCommands } from '../commands.js'
@@ -173,8 +173,8 @@ import {
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
 } from './mcpInstructionsDelta.js'
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from './claudeInChrome/common.js'
-import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from './claudeInChrome/prompt.js'
+import { NEXUS_IN_CHROME_MCP_SERVER_NAME } from './browserCompanion/common.js'
+import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from './browserCompanion/prompt.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type {
   HookEvent,
@@ -217,7 +217,7 @@ import {
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../services/compact/autoCompact.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
   hasInstructionsLoadedHook,
   executeInstructionsLoadedHooks,
@@ -751,8 +751,8 @@ export async function getAttachments(
   options?: { skipSkillDiscovery?: boolean },
 ): Promise<Attachment[]> {
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+    isEnvTruthy(process.env.NEXUS_DISABLE_ATTACHMENTS) ||
+    isEnvTruthy(process.env.NEXUS_SIMPLE)
   ) {
     // query.ts:removeFromQueue dequeues these unconditionally after
     // getAttachmentMessages runs — returning [] here silently drops them.
@@ -1016,7 +1016,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
         .reduce((total, attachment) => {
           return total + jsonStringify(attachment).length
         }, 0)
-      logEvent('tengu_attachment_compute_duration', {
+      logEvent('nexus_attachment_compute_duration', {
         label,
         duration_ms: duration,
         attachment_size_bytes: attachmentSizeBytes,
@@ -1028,7 +1028,7 @@ async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
     const duration = Date.now() - startTime
     // Log only 5% of events to reduce volume
     if (Math.random() < 0.05) {
-      logEvent('tengu_attachment_compute_duration', {
+      logEvent('nexus_attachment_compute_duration', {
         label,
         duration_ms: duration,
         error: true,
@@ -1448,7 +1448,7 @@ function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
   if (!isUltrathinkEnabled() || !input || !hasUltrathinkKeyword(input)) {
     return []
   }
-  logEvent('tengu_ultrathink', {})
+  logEvent('nexus_ultrathink', {})
   return [{ type: 'ultrathink_effort', level: 'high' }]
 }
 
@@ -1463,7 +1463,7 @@ export function getDeferredToolsDeltaAttachment(
   // These three checks mirror the sync parts of isToolSearchEnabled —
   // the attachment text says "available via ToolSearch", so ToolSearch
   // has to actually be in the request. The async auto-threshold check
-  // is not replicated (would double-fire tengu_tool_search_mode_decision);
+  // is not replicated (would double-fire nexus_tool_search_mode_decision);
   // in tst-auto below-threshold the attachment can fire while ToolSearch
   // is filtered out, but that's a narrow case and the tools announced
   // are directly callable anyway.
@@ -1575,7 +1575,7 @@ export function getMcpInstructionsDeltaAttachment(
     isToolSearchToolAvailable(tools)
   ) {
     clientSide.push({
-      serverName: CLAUDE_IN_CHROME_MCP_SERVER_NAME,
+      serverName: NEXUS_IN_CHROME_MCP_SERVER_NAME,
       block: CHROME_TOOL_SEARCH_INSTRUCTIONS,
     })
   }
@@ -1820,8 +1820,8 @@ async function getNestedMemoryAttachmentsForFile(
       originalCwd,
     )
 
-    const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_paper_halyard',
+    const skipProjectLevel = getFeatureValue(
+      'nexus_paper_halyard',
       false,
     )
 
@@ -1928,7 +1928,7 @@ async function processAtMentionedFiles(
                 )
               }
               const stdout = names.join('\n')
-              logEvent('tengu_at_mention_extracting_directory_success', {})
+              logEvent('nexus_at_mention_extracting_directory_success', {})
 
               return {
                 type: 'directory' as const,
@@ -1947,8 +1947,8 @@ async function processAtMentionedFiles(
         return await generateFileAttachment(
           absoluteFilename,
           toolUseContext,
-          'tengu_at_mention_extracting_filename_success',
-          'tengu_at_mention_extracting_filename_error',
+          'nexus_at_mention_extracting_filename_success',
+          'nexus_at_mention_extracting_filename_error',
           'at-mention',
           {
             offset: lineStart,
@@ -1956,7 +1956,7 @@ async function processAtMentionedFiles(
           },
         )
       } catch {
-        logEvent('tengu_at_mention_extracting_filename_error', {})
+        logEvent('nexus_at_mention_extracting_filename_error', {})
       }
     }),
   )
@@ -1975,11 +1975,11 @@ function processAgentMentions(
     const agentDef = agents.find(def => def.agentType === agentType)
 
     if (!agentDef) {
-      logEvent('tengu_at_mention_agent_not_found', {})
+      logEvent('nexus_at_mention_agent_not_found', {})
       return null
     }
 
-    logEvent('tengu_at_mention_agent_success', {})
+    logEvent('nexus_at_mention_agent_success', {})
 
     return {
       type: 'agent_mention' as const,
@@ -2008,14 +2008,14 @@ async function processMcpResourceAttachments(
         const uri = uriParts.join(':') // Rejoin in case URI contains colons
 
         if (!serverName || !uri) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('nexus_at_mention_mcp_resource_error', {})
           return null
         }
 
         // Find the MCP client
         const client = mcpClients.find(c => c.name === serverName)
         if (!client || client.type !== 'connected') {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('nexus_at_mention_mcp_resource_error', {})
           return null
         }
 
@@ -2024,7 +2024,7 @@ async function processMcpResourceAttachments(
           toolUseContext.options.mcpResources?.[serverName] || []
         const resourceInfo = serverResources.find(r => r.uri === uri)
         if (!resourceInfo) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('nexus_at_mention_mcp_resource_error', {})
           return null
         }
 
@@ -2033,7 +2033,7 @@ async function processMcpResourceAttachments(
             uri,
           })
 
-          logEvent('tengu_at_mention_mcp_resource_success', {})
+          logEvent('nexus_at_mention_mcp_resource_success', {})
 
           return {
             type: 'mcp_resource' as const,
@@ -2044,12 +2044,12 @@ async function processMcpResourceAttachments(
             content: result,
           }
         } catch (error) {
-          logEvent('tengu_at_mention_mcp_resource_error', {})
+          logEvent('nexus_at_mention_mcp_resource_error', {})
           logError(error)
           return null
         }
       } catch {
-        logEvent('tengu_at_mention_mcp_resource_error', {})
+        logEvent('nexus_at_mention_mcp_resource_error', {})
         return null
       }
     }),
@@ -2132,7 +2132,7 @@ export async function getChangedFiles(
             }
           } catch (compressionError) {
             logError(compressionError)
-            logEvent('tengu_watched_file_compression_failed', {
+            logEvent('nexus_watched_file_compression_failed', {
               file: normalizedPath,
             } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
             return null
@@ -2364,7 +2364,7 @@ export function startRelevantMemoryPrefetch(
 ): MemoryPrefetch | undefined {
   if (
     !isAutoMemoryEnabled() ||
-    !getFeatureValue_CACHED_MAY_BE_STALE('tengu_moth_copse', false)
+    !getFeatureValue('nexus_moth_copse', false)
   ) {
     return undefined
   }
@@ -2409,7 +2409,7 @@ export function startRelevantMemoryPrefetch(
     consumedOnIteration: -1,
     [Symbol.dispose]() {
       controller.abort()
-      logEvent('tengu_memdir_prefetch_collected', {
+      logEvent('nexus_memdir_prefetch_collected', {
         hidden_by_first_iteration:
           handle.settledAt !== null && handle.consumedOnIteration === 0,
         consumed_on_iteration: handle.consumedOnIteration,
@@ -2618,7 +2618,7 @@ export function resetSentSkillNames(): void {
  * on --resume when a skill_listing attachment already exists in the
  * transcript.
  *
- * `sentSkillNames` is module-scope — process-local. Each `claude -p` spawn
+ * `sentSkillNames` is module-scope — process-local. Each `nexus -p` spawn
  * starts with an empty Map, so without this every resume re-injects the
  * full ~600-token listing even though it's already in the conversation from
  * the prior process. Shows up on every --resume; particularly loud for
@@ -2640,7 +2640,7 @@ let suppressNext = false
 const FILTERED_LISTING_MAX = 30
 
 /**
- * Filter skills to bundled (Anthropic-curated) + MCP (user-connected) only.
+ * Filter skills to bundled (Provider-curated) + MCP (user-connected) only.
  * Used when skill-search is enabled to resolve the turn-0 gap for subagents:
  * these sources are small, intent-signaled, and won't hit the truncation budget.
  * User/project/plugin skills (the long tail — 200+) go through discovery instead.
@@ -2957,7 +2957,7 @@ export async function* getAttachmentMessages(
     return
   }
 
-  logEvent('tengu_attachments', {
+  logEvent('nexus_attachments', {
     attachment_types: attachments.map(
       _ => _.type,
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2997,7 +2997,7 @@ export async function tryGetPDFReference(
     // Use page count if available, otherwise fall back to size heuristic (~100KB per page)
     const effectivePageCount = pageCount ?? Math.ceil(stats.size / (100 * 1024))
     if (effectivePageCount > PDF_AT_MENTION_INLINE_THRESHOLD) {
-      logEvent('tengu_pdf_reference_attachment', {
+      logEvent('nexus_pdf_reference_attachment', {
         pageCount: effectivePageCount,
         fileSize: stats.size,
         hadPdfinfo: pageCount !== null,
@@ -3053,7 +3053,7 @@ export async function generateFileAttachment(
     if (!isPDFExtension(ext)) {
       try {
         const stats = await getFsImplementation().stat(filename)
-        logEvent('tengu_attachment_file_too_large', {
+        logEvent('nexus_attachment_file_too_large', {
           size_bytes: stats.size,
           mode,
         } as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
@@ -3380,7 +3380,7 @@ async function getTaskReminderAttachments(
   }
 
   // Skip for ant users
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     return []
   }
 
@@ -3534,7 +3534,7 @@ async function getTeammateMailboxAttachments(
   if (!isAgentSwarmsEnabled()) {
     return []
   }
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return []
   }
 
@@ -3807,7 +3807,7 @@ function getTokenUsageAttachment(
   messages: Message[],
   model: string,
 ): Attachment[] {
-  if (!isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT)) {
+  if (!isEnvTruthy(process.env.NEXUS_ENABLE_TOKEN_USAGE_ATTACHMENT)) {
     return []
   }
 
@@ -3895,8 +3895,8 @@ async function getVerifyPlanReminderAttachment(
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
   if (
-    process.env.USER_TYPE !== 'ant' ||
-    !isEnvTruthy(process.env.CLAUDE_CODE_VERIFY_PLAN)
+    process.env.NEXUS_BUILD_FLAVOR !== 'development' ||
+    !isEnvTruthy(process.env.NEXUS_VERIFY_PLAN)
   ) {
     return []
   }
@@ -3931,7 +3931,7 @@ export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
 ): Attachment[] {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_marble_fox', false)) {
+  if (!getFeatureValue('nexus_marble_fox', false)) {
     return []
   }
 

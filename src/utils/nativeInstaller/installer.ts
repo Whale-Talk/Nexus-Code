@@ -49,7 +49,7 @@ import * as lockfile from '../lockfile.js'
 import { logError } from '../log.js'
 import { gt, gte } from '../semver.js'
 import {
-  filterClaudeAliases,
+  filterNexusAliases,
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
@@ -109,7 +109,7 @@ export function getPlatform(): string {
 }
 
 export function getBinaryName(platform: string): string {
-  return platform.startsWith('win32') ? 'claude.exe' : 'claude'
+  return platform.startsWith('win32') ? 'nexus.exe' : 'nexus'
 }
 
 function getBaseDirectories() {
@@ -118,20 +118,20 @@ function getBaseDirectories() {
 
   return {
     // Data directories (permanent storage)
-    versions: join(getXDGDataHome(), 'claude', 'versions'),
+    versions: join(getXDGDataHome(), 'nexus', 'versions'),
 
     // Cache directories (can be deleted)
-    staging: join(getXDGCacheHome(), 'claude', 'staging'),
+    staging: join(getXDGCacheHome(), 'nexus', 'staging'),
 
     // State directories
-    locks: join(getXDGStateHome(), 'claude', 'locks'),
+    locks: join(getXDGStateHome(), 'nexus', 'locks'),
 
     // User bin
     executable: join(getUserBinDir(), executableName),
   }
 }
 
-async function isPossibleClaudeBinary(filePath: string): Promise<boolean> {
+async function isPossibleNexusBinary(filePath: string): Promise<boolean> {
   try {
     const stats = await stat(filePath)
     // before download, the version lock file (located at the same filePath) will be size 0
@@ -212,7 +212,7 @@ async function tryWithVersionLock(
       )
 
       if (success) {
-        logEvent('tengu_version_lock_acquired', {
+        logEvent('nexus_version_lock_acquired', {
           is_pid_based: true,
           is_lifetime_lock: false,
           attempts: attempts + 1,
@@ -231,7 +231,7 @@ async function tryWithVersionLock(
       }
     }
 
-    logEvent('tengu_version_lock_failed', {
+    logEvent('nexus_version_lock_failed', {
       is_pid_based: true,
       is_lifetime_lock: false,
       attempts: maxAttempts,
@@ -270,7 +270,7 @@ async function tryWithVersionLock(
         },
       })
     } catch (lockError) {
-      logEvent('tengu_version_lock_failed', {
+      logEvent('nexus_version_lock_failed', {
         is_pid_based: false,
         is_lifetime_lock: false,
       })
@@ -281,7 +281,7 @@ async function tryWithVersionLock(
     // Operation phase - log errors but let them propagate
     try {
       await callback()
-      logEvent('tengu_version_lock_acquired', {
+      logEvent('nexus_version_lock_acquired', {
         is_pid_based: false,
         is_lifetime_lock: false,
       })
@@ -331,14 +331,14 @@ async function installVersionFromPackage(
 ) {
   try {
     // Extract binary from npm package structure in staging
-    const nodeModulesDir = join(stagingPath, 'node_modules', '@anthropic-ai')
+    const nodeModulesDir = join(stagingPath, 'node_modules', MACRO.NATIVE_PACKAGE_URL.split('/')[0]!)
     const entries = await readdir(nodeModulesDir)
     const nativePackage = entries.find((entry: string) =>
-      entry.startsWith('claude-cli-native-'),
+      entry.startsWith('nexus-cli-native-'),
     )
 
     if (!nativePackage) {
-      logEvent('tengu_native_install_package_failure', {
+      logEvent('nexus_native_install_package_failure', {
         stage_find_package: true,
         error_package_not_found: true,
       })
@@ -351,7 +351,7 @@ async function installVersionFromPackage(
     try {
       await stat(stagedBinaryPath)
     } catch {
-      logEvent('tengu_native_install_package_failure', {
+      logEvent('nexus_native_install_package_failure', {
         stage_binary_exists: true,
         error_binary_not_found: true,
       })
@@ -364,7 +364,7 @@ async function installVersionFromPackage(
     // Clean up staging directory
     await rm(stagingPath, { recursive: true, force: true })
 
-    logEvent('tengu_native_install_package_success', {})
+    logEvent('nexus_native_install_package_success', {})
   } catch (error) {
     // Log if not already logged above
     const msg = errorMessage(error)
@@ -372,7 +372,7 @@ async function installVersionFromPackage(
       !msg.includes('Could not find platform-specific') &&
       !msg.includes('Native binary not found')
     ) {
-      logEvent('tengu_native_install_package_failure', {
+      logEvent('nexus_native_install_package_failure', {
         stage_atomic_move: true,
         error_move_failed: true,
       })
@@ -395,7 +395,7 @@ async function installVersionFromBinary(
     try {
       await stat(stagedBinaryPath)
     } catch {
-      logEvent('tengu_native_install_binary_failure', {
+      logEvent('nexus_native_install_binary_failure', {
         stage_binary_exists: true,
         error_binary_not_found: true,
       })
@@ -408,10 +408,10 @@ async function installVersionFromBinary(
     // Clean up staging directory
     await rm(stagingPath, { recursive: true, force: true })
 
-    logEvent('tengu_native_install_binary_success', {})
+    logEvent('nexus_native_install_binary_success', {})
   } catch (error) {
     if (!errorMessage(error).includes('Staged binary not found')) {
-      logEvent('tengu_native_install_binary_failure', {
+      logEvent('nexus_native_install_binary_failure', {
         stage_atomic_move: true,
         error_move_failed: true,
       })
@@ -465,12 +465,12 @@ async function performVersionUpdate(
     logForDebugging(`Version ${version} already installed, updating symlink`)
   }
 
-  // Create direct symlink from ~/.local/bin/claude to the version binary
+  // Create direct symlink from ~/.local/bin/nexus to the version binary
   await removeDirectoryIfEmpty(executablePath)
   await updateSymlink(executablePath, installPath)
 
   // Verify the executable was actually created/updated
-  if (!(await isPossibleClaudeBinary(executablePath))) {
+  if (!(await isPossibleNexusBinary(executablePath))) {
     let installPathExists = false
     try {
       await stat(installPath)
@@ -489,7 +489,7 @@ async function performVersionUpdate(
 
 async function versionIsAvailable(version: string): Promise<boolean> {
   const { installPath } = await getVersionPaths(version)
-  return isPossibleClaudeBinary(installPath)
+  return isPossibleNexusBinary(installPath)
 }
 
 async function updateLatest(
@@ -519,7 +519,7 @@ async function updateLatest(
         logForDebugging(
           `Native installer: current version ${MACRO.VERSION} is already at or above maxVersion ${maxVersion}, skipping update`,
         )
-        logEvent('tengu_native_update_skipped_max_version', {
+        logEvent('nexus_native_update_skipped_max_version', {
           latency_ms: Date.now() - startTime,
           max_version:
             maxVersion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -539,10 +539,10 @@ async function updateLatest(
     !forceReinstall &&
     version === MACRO.VERSION &&
     (await versionIsAvailable(version)) &&
-    (await isPossibleClaudeBinary(executablePath))
+    (await isPossibleNexusBinary(executablePath))
   ) {
     logForDebugging(`Found ${version} at ${executablePath}, skipping install`)
-    logEvent('tengu_native_update_complete', {
+    logEvent('nexus_native_update_complete', {
       latency_ms: Date.now() - startTime,
       was_new_install: false,
       was_force_reinstall: false,
@@ -553,7 +553,7 @@ async function updateLatest(
 
   // Check if this version should be skipped due to minimumVersion setting
   if (!forceReinstall && shouldSkipVersion(version)) {
-    logEvent('tengu_native_update_skipped_minimum_version', {
+    logEvent('nexus_native_update_skipped_minimum_version', {
       latency_ms: Date.now() - startTime,
       target_version:
         version as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -597,7 +597,7 @@ async function updateLatest(
           lockHolderPid = readLockContent(lockfilePath)?.pid
         }
       }
-      logEvent('tengu_native_update_lock_failed', {
+      logEvent('nexus_native_update_lock_failed', {
         latency_ms: latencyMs,
         lock_holder_pid: lockHolderPid,
       })
@@ -610,7 +610,7 @@ async function updateLatest(
     }
   }
 
-  logEvent('tengu_native_update_complete', {
+  logEvent('nexus_native_update_complete', {
     latency_ms: latencyMs,
     was_new_install: wasNewInstall,
     was_force_reinstall: forceReinstall,
@@ -845,18 +845,18 @@ export async function checkInstall(
     })
   }
 
-  // Check if claude executable exists and is valid.
+  // Check if nexus executable exists and is valid.
   // On non-Windows, call readlink directly and route errno — ENOENT means
   // the executable is missing, EINVAL means it exists but isn't a symlink.
   // This avoids an access()→readlink() TOCTOU where deletion between the
   // two calls produces a misleading "Not a symlink" diagnostic.
-  // isPossibleClaudeBinary stats the path internally, so we don't pre-check
+  // isPossibleNexusBinary stats the path internally, so we don't pre-check
   // with access() — that would be a TOCTOU between access and the stat.
   if (isWindows) {
     // On Windows it's a copied executable, not a symlink
-    if (!(await isPossibleClaudeBinary(dirs.executable))) {
+    if (!(await isPossibleNexusBinary(dirs.executable))) {
       messages.push({
-        message: `installMethod is native, but claude command is missing or invalid at ${dirs.executable}`,
+        message: `installMethod is native, but nexus command is missing or invalid at ${dirs.executable}`,
         userActionRequired: true,
         type: 'error',
       })
@@ -865,7 +865,7 @@ export async function checkInstall(
     try {
       const target = await readlink(dirs.executable)
       const absoluteTarget = resolve(dirname(dirs.executable), target)
-      if (!(await isPossibleClaudeBinary(absoluteTarget))) {
+      if (!(await isPossibleNexusBinary(absoluteTarget))) {
         messages.push({
           message: `Nexus symlink points to missing or invalid binary: ${target}`,
           userActionRequired: true,
@@ -875,13 +875,13 @@ export async function checkInstall(
     } catch (e) {
       if (isENOENT(e)) {
         messages.push({
-          message: `installMethod is native, but claude command not found at ${dirs.executable}`,
+          message: `installMethod is native, but nexus command not found at ${dirs.executable}`,
           userActionRequired: true,
           type: 'error',
         })
       } else {
         // EINVAL (not a symlink) or other — check as regular binary
-        if (!(await isPossibleClaudeBinary(dirs.executable))) {
+        if (!(await isPossibleNexusBinary(dirs.executable))) {
           messages.push({
             message: `${dirs.executable} exists but is not a valid Nexus binary`,
             userActionRequired: true,
@@ -1021,7 +1021,7 @@ async function getVersionFromSymlink(
   try {
     const target = await readlink(symlinkPath)
     const absoluteTarget = resolve(dirname(symlinkPath), target)
-    if (await isPossibleClaudeBinary(absoluteTarget)) {
+    if (await isPossibleNexusBinary(absoluteTarget)) {
       return absoluteTarget
     }
   } catch {
@@ -1070,7 +1070,7 @@ export async function lockCurrentVersion(): Promise<void> {
       )
 
       if (!acquired) {
-        logEvent('tengu_version_lock_failed', {
+        logEvent('nexus_version_lock_failed', {
           is_pid_based: true,
           is_lifetime_lock: true,
         })
@@ -1081,7 +1081,7 @@ export async function lockCurrentVersion(): Promise<void> {
         return
       }
 
-      logEvent('tengu_version_lock_acquired', {
+      logEvent('nexus_version_lock_acquired', {
         is_pid_based: true,
         is_lifetime_lock: true,
       })
@@ -1106,7 +1106,7 @@ export async function lockCurrentVersion(): Promise<void> {
             )
           },
         })
-        logEvent('tengu_version_lock_acquired', {
+        logEvent('nexus_version_lock_acquired', {
           is_pid_based: false,
           is_lifetime_lock: true,
         })
@@ -1130,7 +1130,7 @@ export async function lockCurrentVersion(): Promise<void> {
           )
           return
         }
-        logEvent('tengu_version_lock_failed', {
+        logEvent('nexus_version_lock_failed', {
           is_pid_based: false,
           is_lifetime_lock: true,
         })
@@ -1195,7 +1195,7 @@ export async function cleanupOldVersions(): Promise<void> {
       const files = await readdir(executableDir)
       let cleanedCount = 0
       for (const file of files) {
-        if (!/^claude\.exe\.old\.\d+$/.test(file)) continue
+        if (!/^nexus\.exe\.old\.\d+$/.test(file)) continue
         try {
           await unlink(join(executableDir, file))
           cleanedCount++
@@ -1241,7 +1241,7 @@ export async function cleanupOldVersions(): Promise<void> {
       logForDebugging(
         `Cleaned up ${stagingCleanedCount} orphaned staging directories`,
       )
-      logEvent('tengu_native_staging_cleanup', {
+      logEvent('nexus_native_staging_cleanup', {
         cleaned_count: stagingCleanedCount,
       })
     }
@@ -1256,7 +1256,7 @@ export async function cleanupOldVersions(): Promise<void> {
     const staleLocksCleaned = cleanupStaleLocks(dirs.locks)
     if (staleLocksCleaned > 0) {
       logForDebugging(`Cleaned up ${staleLocksCleaned} stale version locks`)
-      logEvent('tengu_native_stale_locks_cleanup', {
+      logEvent('nexus_native_stale_locks_cleanup', {
         cleaned_count: staleLocksCleaned,
       })
     }
@@ -1331,7 +1331,7 @@ export async function cleanupOldVersions(): Promise<void> {
     logForDebugging(
       `Cleaned up ${tempFilesCleanedCount} orphaned temp install files`,
     )
-    logEvent('tengu_native_temp_files_cleanup', {
+    logEvent('nexus_native_temp_files_cleanup', {
       cleaned_count: tempFilesCleanedCount,
     })
   }
@@ -1385,7 +1385,7 @@ export async function cleanupOldVersions(): Promise<void> {
     const versionsToDelete = eligibleVersions.slice(VERSION_RETENTION_COUNT)
 
     if (versionsToDelete.length === 0) {
-      logEvent('tengu_native_version_cleanup', {
+      logEvent('nexus_native_version_cleanup', {
         total_count: versionFiles.length,
         deleted_count: 0,
         protected_count: protectedVersions.size,
@@ -1423,7 +1423,7 @@ export async function cleanupOldVersions(): Promise<void> {
       }),
     )
 
-    logEvent('tengu_native_version_cleanup', {
+    logEvent('nexus_native_version_cleanup', {
       total_count: versionFiles.length,
       deleted_count: deletedCount,
       protected_count: protectedVersions.size,
@@ -1458,7 +1458,7 @@ async function isNpmSymlink(executablePath: string): Promise<boolean> {
 }
 
 /**
- * Remove the claude symlink from the executable directory
+ * Remove the nexus symlink from the executable directory
  * This is used when switching away from native installation
  * Will only remove if it's a native binary symlink, not npm-managed JS files
  */
@@ -1476,17 +1476,17 @@ export async function removeInstalledSymlink(): Promise<void> {
 
     // It's a native binary symlink, safe to remove
     await unlink(dirs.executable)
-    logForDebugging(`Removed claude symlink at ${dirs.executable}`)
+    logForDebugging(`Removed nexus symlink at ${dirs.executable}`)
   } catch (error) {
     if (isENOENT(error)) {
       return
     }
-    logError(new Error(`Failed to remove claude symlink: ${error}`))
+    logError(new Error(`Failed to remove nexus symlink: ${error}`))
   }
 }
 
 /**
- * Clean up old claude aliases from shell configuration files
+ * Clean up old nexus aliases from shell configuration files
  * Only handles alias removal, not PATH setup
  */
 export async function cleanupShellAliases(): Promise<SetupMessage[]> {
@@ -1498,16 +1498,16 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       const lines = await readFileLines(configFile)
       if (!lines) continue
 
-      const { filtered, hadAlias } = filterClaudeAliases(lines)
+      const { filtered, hadAlias } = filterNexusAliases(lines)
 
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed claude alias from ${configFile}. Run: unalias claude`,
+          message: `Removed nexus alias from ${configFile}. Run: unalias nexus`,
           userActionRequired: true,
           type: 'alias',
         })
-        logForDebugging(`Cleaned up claude alias from ${shellType} config`)
+        logForDebugging(`Cleaned up nexus alias from ${shellType} config`)
       }
     } catch (error) {
       logError(error)
@@ -1558,9 +1558,9 @@ async function manualRemoveNpmPackage(
 
     if (getPlatform().startsWith('win32')) {
       // Windows - only remove executables, not the package directory
-      const binCmd = join(globalPrefix, 'claude.cmd')
-      const binPs1 = join(globalPrefix, 'claude.ps1')
-      const binExe = join(globalPrefix, 'claude')
+      const binCmd = join(globalPrefix, 'nexus.cmd')
+      const binPs1 = join(globalPrefix, 'nexus.ps1')
+      const binExe = join(globalPrefix, 'nexus')
 
       if (await tryRemove(binCmd, 'bin script')) {
         manuallyRemoved = true
@@ -1575,7 +1575,7 @@ async function manualRemoveNpmPackage(
       }
     } else {
       // Unix/Mac - only remove symlink, not the package directory
-      const binSymlink = join(globalPrefix, 'bin', 'claude')
+      const binSymlink = join(globalPrefix, 'bin', 'nexus')
 
       if (await tryRemove(binSymlink, 'bin symlink')) {
         manuallyRemoved = true
@@ -1662,21 +1662,8 @@ export async function cleanupNpmInstallations(): Promise<{
   const warnings: string[] = []
   let removed = 0
 
-  // Always attempt to remove @anthropic-ai/claude-code
-  const codePackageResult = await attemptNpmUninstall(
-    '@anthropic-ai/claude-code',
-  )
-  if (codePackageResult.success) {
-    removed++
-    if (codePackageResult.warning) {
-      warnings.push(codePackageResult.warning)
-    }
-  } else if (codePackageResult.error) {
-    errors.push(codePackageResult.error)
-  }
-
-  // Also attempt to remove MACRO.PACKAGE_URL if it's defined and different
-  if (MACRO.PACKAGE_URL && MACRO.PACKAGE_URL !== '@anthropic-ai/claude-code') {
+  // Only remove the installed Nexus package.
+  if (MACRO.PACKAGE_URL) {
     const macroPackageResult = await attemptNpmUninstall(MACRO.PACKAGE_URL)
     if (macroPackageResult.success) {
       removed++

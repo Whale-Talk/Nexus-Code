@@ -17,18 +17,16 @@ export function isVimModeEnabled(): boolean {
 export function getNewlineInstructions(): string {
   // Apple Terminal on macOS uses native modifier key detection for Shift+Enter
   if (env.terminal === 'Apple_Terminal' && process.platform === 'darwin') {
-    return 'shift + ⏎ for newline'
+    return 'Shift+Enter'
   }
 
   // For iTerm2 and VSCode, show Shift+Enter instructions if installed
   if (isShiftEnterKeyBindingInstalled()) {
-    return 'shift + ⏎ for newline'
+    return 'Shift+Enter'
   }
 
   // Otherwise show backslash+return instructions
-  return hasUsedBackslashReturn()
-    ? '\\⏎ for newline'
-    : 'backslash (\\) + return (⏎) for newline'
+  return hasUsedBackslashReturn() ? '\\⏎' : '\\ + Enter'
 }
 
 /**

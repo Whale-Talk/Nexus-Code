@@ -35,7 +35,7 @@ const OVERFLOW_TEST_TOOL_NAME = feature('OVERFLOW_TEST_TOOL')
     ).OVERFLOW_TEST_TOOL_NAME
   : null
 const VERIFY_PLAN_EXECUTION_TOOL_NAME =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? (
         require('../../tools/VerifyPlanExecutionTool/constants.js') as typeof import('../../tools/VerifyPlanExecutionTool/constants.js')
       ).VERIFY_PLAN_EXECUTION_TOOL_NAME

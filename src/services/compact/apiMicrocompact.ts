@@ -87,7 +87,7 @@ export function getAPIContextManagement(options?: {
   }
 
   // Tool clearing strategies are ant-only
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return strategies.length > 0 ? { edits: strategies } : undefined
   }
 

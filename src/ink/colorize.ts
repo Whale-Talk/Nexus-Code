@@ -1,6 +1,11 @@
 import chalk from 'chalk'
 import type { Color, TextStyles } from './styles.js'
 
+// Chalk 5 reads FORCE_COLOR but doesn't read NO_COLOR on a color-capable TTY.
+if (process.env.NO_COLOR && process.env.FORCE_COLOR === undefined) {
+  chalk.level = 0
+}
+
 /**
  * xterm.js (VS Code, Cursor, code-server, Coder) has supported truecolor
  * since 2017, but code-server/Coder containers often don't set
@@ -48,7 +53,7 @@ function clampChalkLevelForTmux(): boolean {
   // bg.ts sets terminal-overrides :Tc before attach, so truecolor passes
   // through — skip the clamp. General escape hatch for anyone who's
   // configured their tmux correctly.
-  if (process.env.CLAUDE_CODE_TMUX_TRUECOLOR) return false
+  if (process.env.NEXUS_TMUX_TRUECOLOR) return false
   if (process.env.TMUX && chalk.level > 2) {
     chalk.level = 2
     return true

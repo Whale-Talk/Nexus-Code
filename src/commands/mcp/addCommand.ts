@@ -37,13 +37,13 @@ export function registerMcpAddCommand(mcp: Command): void {
       'Add an MCP server to Nexus Code.\n\n' +
         'Examples:\n' +
         '  # Add HTTP server:\n' +
-        '  claude mcp add --transport http sentry https://mcp.sentry.dev/mcp\n\n' +
+        '  nexus mcp add --transport http sentry https://mcp.sentry.dev/mcp\n\n' +
         '  # Add HTTP server with headers:\n' +
-        '  claude mcp add --transport http corridor https://app.corridor.dev/api/mcp --header "Authorization: Bearer ..."\n\n' +
+        '  nexus mcp add --transport http corridor https://app.corridor.dev/api/mcp --header "Authorization: Bearer ..."\n\n' +
         '  # Add stdio server with environment variables:\n' +
-        '  claude mcp add -e API_KEY=xxx my-server -- npx my-mcp-server\n\n' +
+        '  nexus mcp add -e API_KEY=xxx my-server -- npx my-mcp-server\n\n' +
         '  # Add stdio server with subprocess flags:\n' +
-        '  claude mcp add my-server -- my-command --some-flag arg1',
+        '  nexus mcp add my-server -- my-command --some-flag arg1',
     )
     .option(
       '-s, --scope <scope>',
@@ -75,7 +75,7 @@ export function registerMcpAddCommand(mcp: Command): void {
     .addOption(
       new Option(
         '--xaa',
-        "Enable XAA (SEP-990) for this server. Requires 'claude mcp xaa setup' first. Also requires --client-id and --client-secret (for the MCP server's AS).",
+        "Enable XAA (SEP-990) for this server. Requires 'nexus mcp xaa setup' first. Also requires --client-id and --client-secret (for the MCP server's AS).",
       ).hideHelp(!isXaaEnabled()),
     )
     .action(async (name, commandOrUrl, args, options) => {
@@ -87,12 +87,12 @@ export function registerMcpAddCommand(mcp: Command): void {
       if (!name) {
         cliError(
           'Error: Server name is required.\n' +
-            'Usage: claude mcp add <name> <command> [args...]',
+            'Usage: nexus mcp add <name> <command> [args...]',
         )
       } else if (!actualCommand) {
         cliError(
           'Error: Command is required when server name is provided.\n' +
-            'Usage: claude mcp add <name> <command> [args...]',
+            'Usage: nexus mcp add <name> <command> [args...]',
         )
       }
 
@@ -103,7 +103,7 @@ export function registerMcpAddCommand(mcp: Command): void {
         // XAA fail-fast: validate at add-time, not auth-time.
         if (options.xaa && !isXaaEnabled()) {
           cliError(
-            'Error: --xaa requires CLAUDE_CODE_ENABLE_XAA=1 in your environment',
+            'Error: --xaa requires NEXUS_ENABLE_XAA=1 in your environment',
           )
         }
         const xaa = Boolean(options.xaa)
@@ -113,7 +113,7 @@ export function registerMcpAddCommand(mcp: Command): void {
           if (!options.clientSecret) missing.push('--client-secret')
           if (!getXaaIdpSettings()) {
             missing.push(
-              "'claude mcp xaa setup' (settings.xaaIdp not configured)",
+              "'nexus mcp xaa setup' (settings.xaaIdp not configured)",
             )
           }
           if (missing.length) {
@@ -132,7 +132,7 @@ export function registerMcpAddCommand(mcp: Command): void {
           actualCommand.endsWith('/sse') ||
           actualCommand.endsWith('/mcp')
 
-        logEvent('tengu_mcp_add', {
+        logEvent('nexus_mcp_add', {
           type: transport as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           scope:
             scope as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -254,10 +254,10 @@ export function registerMcpAddCommand(mcp: Command): void {
               `\nWarning: The command "${actualCommand}" looks like a URL, but is being interpreted as a stdio server as --transport was not specified.\n`,
             )
             process.stderr.write(
-              `If this is an HTTP server, use: claude mcp add --transport http ${name} ${actualCommand}\n`,
+              `If this is an HTTP server, use: nexus mcp add --transport http ${name} ${actualCommand}\n`,
             )
             process.stderr.write(
-              `If this is an SSE server, use: claude mcp add --transport sse ${name} ${actualCommand}\n`,
+              `If this is an SSE server, use: nexus mcp add --transport sse ${name} ${actualCommand}\n`,
             )
           }
 

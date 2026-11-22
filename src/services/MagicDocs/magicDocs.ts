@@ -101,7 +101,7 @@ function getMagicDocsAgent(): BuiltInAgentDefinition {
     agentType: 'magic-docs',
     whenToUse: 'Update Magic Docs',
     tools: [FILE_EDIT_TOOL_NAME], // Only allow Edit
-    model: 'sonnet',
+    model: 'atom',
     source: 'built-in',
     baseDir: 'built-in',
     getSystemPrompt: () => '', // Will use override systemPrompt
@@ -240,7 +240,7 @@ const updateMagicDocs = sequential(async function (
 })
 
 export async function initMagicDocs(): Promise<void> {
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     // Register listener to detect magic docs when files are read
     registerFileReadListener((filePath: string, content: string) => {
       const result = detectMagicDocHeader(content)

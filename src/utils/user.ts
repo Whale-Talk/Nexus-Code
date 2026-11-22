@@ -86,9 +86,9 @@ export const getCoreUserData = memoize(
     if (includeAnalyticsMetadata) {
       subscriptionType = getSubscriptionType() ?? undefined
       rateLimitTier = getRateLimitTier() ?? undefined
-      if (subscriptionType && config.claudeCodeFirstTokenDate) {
+      if (subscriptionType && config.nexusCodeFirstTokenDate) {
         const configFirstTokenTime = new Date(
-          config.claudeCodeFirstTokenDate,
+          config.nexusCodeFirstTokenDate,
         ).getTime()
         if (!isNaN(configFirstTokenTime)) {
           firstTokenTime = configFirstTokenTime
@@ -109,7 +109,7 @@ export const getCoreUserData = memoize(
       platform: getHostPlatformForAnalytics(),
       organizationUuid,
       accountUuid,
-      userType: process.env.USER_TYPE,
+      userType: process.env.NEXUS_BUILD_FLAVOR,
       subscriptionType,
       rateLimitTier,
       firstTokenTime,
@@ -147,13 +147,10 @@ function getEmail(): string | undefined {
   }
 
   // Ant-only fallbacks below (no execSync)
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return undefined
   }
 
-  if (process.env.COO_CREATOR) {
-    return `${process.env.COO_CREATOR}@anthropic.com`
-  }
 
   // If initUser() wasn't called, we return undefined instead of blocking
   return undefined
@@ -167,13 +164,10 @@ async function getEmailAsync(): Promise<string | undefined> {
   }
 
   // Ant-only fallbacks below
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return undefined
   }
 
-  if (process.env.COO_CREATOR) {
-    return `${process.env.COO_CREATOR}@anthropic.com`
-  }
 
   return getGitEmail()
 }

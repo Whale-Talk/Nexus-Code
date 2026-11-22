@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import type {
   AssistantMessage,
-  BetaToolDefinition,
+  ToolDefinition,
   ImageContentBlock,
   MessageParam,
   TextContentBlock,
@@ -15,10 +15,10 @@ import {
   getSessionId,
   setLastClassifierRequests,
 } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/metadata.js'
-import { getCacheControl } from '../../services/api/claude.js'
+import { getCacheControl } from '../../services/api/inference.js'
 import { parsePromptTooLongTokenCounts } from '../../services/api/errors.js'
 import { getDefaultMaxRetries } from '../../services/api/withRetry.js'
 import type { Tool, ToolPermissionContext, Tools } from '../../Tool.js'
@@ -32,7 +32,7 @@ import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
 import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { extractTextContent } from '../messages.js'
-import { resolveAntModel } from '../model/antModels.js'
+import { getModelCapabilityOverride } from '../model/modelSupportOverrides.js'
 import { getMainLoopModel } from '../model/model.js'
 import { getAutoModeConfig } from '../settings/settings.js'
 import { sideQuery } from '../sideQuery.js'
@@ -46,7 +46,7 @@ import {
   extractToolUseBlock,
   parseClassifierResponse,
 } from './classifierShared.js'
-import { getClaudeTempDir } from './filesystem.js'
+import { getNexusTempDir } from './filesystem.js'
 
 // Dead code elimination: conditional imports for auto mode classifier prompts.
 // At build time, the bundler inlines .txt files as string literals. At test
@@ -61,22 +61,22 @@ const BASE_PROMPT: string = feature('TRANSCRIPT_CLASSIFIER')
   : ''
 
 // External template is loaded separately so it's available for
-// `claude auto-mode defaults` even in ant builds. Ant builds use
-// permissions_anthropic.txt at runtime but should dump external defaults.
+// `nexus auto-mode defaults` even in ant builds. Ant builds use
+// permissions_provider.txt at runtime but should dump external defaults.
 const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
   : ''
 
 const NEXUS_PERMISSIONS_TEMPLATE: string =
-  feature('TRANSCRIPT_CLASSIFIER') && process.env.USER_TYPE === 'ant'
-    ? txtRequire(require('./yolo-classifier-prompts/permissions_anthropic.txt'))
+  feature('TRANSCRIPT_CLASSIFIER') && process.env.NEXUS_BUILD_FLAVOR === 'development'
+    ? txtRequire(require('./yolo-classifier-prompts/permissions_provider.txt'))
     : ''
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 
 function isUsingExternalPermissions(): boolean {
-  if (process.env.USER_TYPE !== 'ant') return true
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_auto_mode_config',
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return true
+  const config = getFeatureValue(
+    'nexus_auto_mode_config',
     {} as AutoModeConfig,
   )
   return config?.forceExternalPermissions === true
@@ -99,8 +99,8 @@ export type AutoModeRules = {
  * <user_*_to_replace> tags (user settings REPLACE these defaults), so the
  * captured tag contents ARE the defaults. Bullet items are single-line in the
  * template; each line starting with `- ` becomes one array entry.
- * Used by `claude auto-mode defaults`. Always returns external defaults,
- * never the Anthropic-internal template.
+ * Used by `nexus auto-mode defaults`. Always returns external defaults,
+ * never the Provider-internal template.
  */
 export function getDefaultExternalAutoModeRules(): AutoModeRules {
   return {
@@ -124,7 +124,7 @@ function extractTaggedBullets(tagName: string): string[] {
 
 /**
  * Returns the full external classifier system prompt with default rules (no user
- * overrides). Used by `claude auto-mode critique` to show the model how the
+ * overrides). Used by `nexus auto-mode critique` to show the model how the
  * classifier sees its instructions.
  */
 export function buildDefaultExternalSystemPrompt(): string {
@@ -147,12 +147,12 @@ export function buildDefaultExternalSystemPrompt(): string {
 }
 
 function getAutoModeDumpDir(): string {
-  return join(getClaudeTempDir(), 'auto-mode')
+  return join(getNexusTempDir(), 'auto-mode')
 }
 
 /**
  * Dump the auto mode classifier request and response bodies to the per-user
- * claude temp directory when CLAUDE_CODE_DUMP_AUTO_MODE is set. Files are
+ * nexus temp directory when NEXUS_DUMP_AUTO_MODE is set. Files are
  * named by unix timestamp: {timestamp}[.{suffix}].req.json and .res.json
  */
 async function maybeDumpAutoMode(
@@ -161,8 +161,8 @@ async function maybeDumpAutoMode(
   timestamp: number,
   suffix?: string,
 ): Promise<void> {
-  if (process.env.USER_TYPE !== 'ant') return
-  if (!isEnvTruthy(process.env.CLAUDE_CODE_DUMP_AUTO_MODE)) return
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return
+  if (!isEnvTruthy(process.env.NEXUS_DUMP_AUTO_MODE)) return
   const base = suffix ? `${timestamp}.${suffix}` : `${timestamp}`
   try {
     await mkdir(getAutoModeDumpDir(), { recursive: true })
@@ -190,7 +190,7 @@ async function maybeDumpAutoMode(
  */
 export function getAutoModeClassifierErrorDumpPath(): string {
   return join(
-    getClaudeTempDir(),
+    getNexusTempDir(),
     'auto-mode-classifier-errors',
     `${getSessionId()}.txt`,
   )
@@ -210,7 +210,7 @@ export function getAutoModeClassifierTranscript(): string | null {
 
 /**
  * Dump classifier input prompts + context-comparison diagnostics on API error.
- * Written to a session-scoped file in the claude temp dir so /share can collect
+ * Written to a session-scoped file in the nexus temp dir so /share can collect
  * it (replaces the old Desktop dump). Includes context numbers to help diagnose
  * projection divergence (classifier tokens >> main loop tokens).
  * Returns the dump path on success, null on failure.
@@ -264,7 +264,7 @@ const yoloClassifierResponseSchema = lazySchema(() =>
 
 export const YOLO_CLASSIFIER_TOOL_NAME = 'classify_result'
 
-const YOLO_CLASSIFIER_TOOL_SCHEMA: BetaToolDefinition = {
+const YOLO_CLASSIFIER_TOOL_SCHEMA: ToolDefinition = {
   type: 'custom',
   name: YOLO_CLASSIFIER_TOOL_NAME,
   description: 'Report the security classification result for the agent action',
@@ -407,7 +407,7 @@ function toCompactBlock(
       logForDebugging(
         `toAutoClassifierInput failed for ${block.name}: ${errorMessage(e)}`,
       )
-      logEvent('tengu_auto_mode_malformed_tool_input', {
+      logEvent('nexus_auto_mode_malformed_tool_input', {
         toolName:
           block.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
@@ -457,7 +457,7 @@ export function buildTranscriptForClassifier(
  * Reads from bootstrap/state.ts cache (populated by context.ts) instead of
  * importing nexusmd.ts directly — nexusmd → permissions/filesystem →
  * permissions → yoloClassifier is a cycle. context.ts already gates on
- * CLAUDE_CODE_DISABLE_CLAUDE_MDS and normalizes '' to null before caching.
+ * NEXUS_DISABLE_NEXUS_MDS and normalizes '' to null before caching.
  * If the cache is unpopulated (tests, or an entrypoint that never calls
  * getUserContext), the classifier proceeds without NEXUS.md — same as
  * pre-PR behavior.
@@ -516,7 +516,7 @@ export async function buildYoloSystemPrompt(
   // All three sections use the same <foo_to_replace>...</foo_to_replace>
   // delimiter pattern. The external template wraps its defaults inside the
   // tags, so user-provided values REPLACE the defaults entirely. The
-  // anthropic template keeps its defaults outside the tags and uses an empty
+  // provider template keeps its defaults outside the tags and uses an empty
   // tag pair at the end of each section, so user-provided values are
   // strictly ADDITIVE.
   const userAllow = allowDescriptions.length
@@ -669,32 +669,11 @@ function replaceOutputFormatWithXml(systemPrompt: string): string {
 }
 
 /**
- * Thinking config for classifier calls. The classifier wants short text-only
- * responses — API thinking blocks are ignored by extractTextContent() and waste tokens.
- *
- * For most models: send { type: 'disabled' } via sideQuery's `thinking: false`.
- *
- * Models with alwaysOnThinking (declared in tengu_ant_model_override) default
- * to adaptive thinking server-side and reject `disabled` with a 400. For those:
- * don't pass `thinking: false`, instead pad max_tokens so adaptive thinking
- * (observed 0–1114 tokens replaying go/ccshare/shawnm-20260310-202833) doesn't
- * exhaust the budget before <block> is emitted. Without headroom,
- * stop_reason=max_tokens yields an empty text response → parseXmlBlock('')
- * → null → "unparseable" → safe commands blocked.
- *
- * Returns [disableThinking, headroom] — tuple instead of named object so
- * property-name strings don't survive minification into external builds.
+ * Deliberately keep classifier output short. A model that requires reasoning
+ * needs room for reasoning before the text used for the permission decision.
  */
-function getClassifierThinkingConfig(
-  model: string,
-): [false | undefined, number] {
-  if (
-    process.env.USER_TYPE === 'ant' &&
-    resolveAntModel(model)?.alwaysOnThinking
-  ) {
-    return [undefined, 2048]
-  }
-  return [false, 0]
+function getClassifierThinkingConfig(model: string): [false | undefined, number] {
+  return getModelCapabilityOverride(model, 'alwaysOnThinking') ? [undefined, 2048] : [false, 0]
 }
 
 /**
@@ -1320,7 +1299,7 @@ type AutoModeConfig = {
    */
   twoStageClassifier?: boolean | 'fast' | 'thinking'
   /**
-   * Ant builds normally use permissions_anthropic.txt; when true, use
+   * Ant builds normally use permissions_provider.txt; when true, use
    * permissions_external.txt instead (dogfood the external template).
    */
   forceExternalPermissions?: boolean
@@ -1337,12 +1316,12 @@ type AutoModeConfig = {
  * then the main loop model.
  */
 function getClassifierModel(): string {
-  if (process.env.USER_TYPE === 'ant') {
-    const envModel = process.env.CLAUDE_CODE_AUTO_MODE_MODEL
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    const envModel = process.env.NEXUS_AUTO_MODE_MODEL
     if (envModel) return envModel
   }
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_auto_mode_config',
+  const config = getFeatureValue(
+    'nexus_auto_mode_config',
     {} as AutoModeConfig,
   )
   if (config?.model) {
@@ -1365,14 +1344,14 @@ function resolveTwoStageClassifier():
   | 'fast'
   | 'thinking'
   | undefined {
-  if (process.env.USER_TYPE === 'ant') {
-    const env = process.env.CLAUDE_CODE_TWO_STAGE_CLASSIFIER
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    const env = process.env.NEXUS_TWO_STAGE_CLASSIFIER
     if (env === 'fast' || env === 'thinking') return env
     if (isEnvTruthy(env)) return true
     if (isEnvDefinedFalsy(env)) return false
   }
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_auto_mode_config',
+  const config = getFeatureValue(
+    'nexus_auto_mode_config',
     {} as AutoModeConfig,
   )
   return config?.twoStageClassifier
@@ -1387,13 +1366,13 @@ function isTwoStageClassifierEnabled(): boolean {
 }
 
 function isJsonlTranscriptEnabled(): boolean {
-  if (process.env.USER_TYPE === 'ant') {
-    const env = process.env.CLAUDE_CODE_JSONL_TRANSCRIPT
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    const env = process.env.NEXUS_JSONL_TRANSCRIPT
     if (isEnvTruthy(env)) return true
     if (isEnvDefinedFalsy(env)) return false
   }
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_auto_mode_config',
+  const config = getFeatureValue(
+    'nexus_auto_mode_config',
     {} as AutoModeConfig,
   )
   return config?.jsonlTranscript === true
@@ -1428,7 +1407,7 @@ type AutoModeOutcome =
   | 'transcript_too_long'
 
 /**
- * Telemetry helper for tengu_auto_mode_outcome. All string fields are
+ * Telemetry helper for nexus_auto_mode_outcome. All string fields are
  * enum-like values (outcome, model name, classifier type, failure kind) —
  * never code or file paths, so the AnalyticsMetadata casts are safe.
  */
@@ -1447,7 +1426,7 @@ function logAutoModeOutcome(
   },
 ): void {
   const { classifierType, failureKind, ...rest } = extra ?? {}
-  logEvent('tengu_auto_mode_outcome', {
+  logEvent('nexus_auto_mode_outcome', {
     outcome:
       outcome as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     classifierModel:

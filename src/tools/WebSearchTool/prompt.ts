@@ -9,7 +9,7 @@ export function getWebSearchPrompt(): string {
 - Provides up-to-date information for current events and recent data
 - Returns search result information formatted as search result blocks, including links as markdown hyperlinks
 - Use this tool for accessing information beyond Nexus's knowledge cutoff
-- Searches are performed automatically within a single API call
+- The configured search service runs the query independently of the chat model
 
 CRITICAL REQUIREMENT - You MUST follow this:
   - After answering the user's question, you MUST include a "Sources:" section at the end of your response
@@ -25,7 +25,6 @@ CRITICAL REQUIREMENT - You MUST follow this:
 
 Usage notes:
   - Domain filtering is supported to include or block specific websites
-  - Web search is only available in the US
 
 IMPORTANT - Use the correct year in search queries:
   - The current month is ${currentMonthYear}. You MUST use this year when searching for recent information, documentation, or current events.

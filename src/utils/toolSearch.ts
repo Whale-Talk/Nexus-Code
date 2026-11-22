@@ -7,7 +7,7 @@
  */
 
 import memoize from 'lodash-es/memoize.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -34,10 +34,9 @@ import { getMergedBetas } from './betas.js'
 import { getContextWindowForModel } from './context.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
-import {
-  getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
-} from './model/providers.js'
+import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getModelCatalog } from '../services/api/provider/catalog.js'
+import { MODEL_ROLES } from './model/roles.js'
 import { jsonStringify } from './slowOperations.js'
 import { zodToJsonSchema } from './zodToJsonSchema.js'
 
@@ -170,15 +169,14 @@ export type ToolSearchMode = 'tst' | 'tst-auto' | 'standard'
  *   (unset)               tst (default: always defer MCP and shouldDefer tools)
  */
 export function getToolSearchMode(): ToolSearchMode {
-  // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS is a kill switch for beta API
+  // NEXUS_DISABLE_EXPERIMENTAL_BETAS is a kill switch for beta API
   // features. Tool search emits defer_loading on tool definitions and
   // tool_reference content blocks — both require the API to accept a beta
   // header. When the kill switch is set, force 'standard' so no beta shapes
   // reach the wire, even if ENABLE_TOOL_SEARCH is also set. This is the
   // explicit escape hatch for proxy gateways that the heuristic in
   // isToolSearchEnabledOptimistic doesn't cover.
-  // github.com/anthropics/claude-code/issues/20031
-  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)) {
+  if (isEnvTruthy(process.env.NEXUS_DISABLE_EXPERIMENTAL_BETAS)) {
     return 'standard'
   }
 
@@ -197,58 +195,10 @@ export function getToolSearchMode(): ToolSearchMode {
   return 'tst' // default: always defer MCP and shouldDefer tools
 }
 
-/**
- * Default patterns for models that do NOT support tool_reference.
- * New models are assumed to support tool_reference unless explicitly listed here.
- */
-const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['haiku']
-
-/**
- * Get the list of model patterns that do NOT support tool_reference.
- * Can be configured via GrowthBook for live updates without code changes.
- */
-function getUnsupportedToolReferencePatterns(): string[] {
-  try {
-    // Try to get from GrowthBook for live configuration
-    const patterns = getFeatureValue_CACHED_MAY_BE_STALE<string[] | null>(
-      'tengu_tool_search_unsupported_models',
-      null,
-    )
-    if (patterns && Array.isArray(patterns) && patterns.length > 0) {
-      return patterns
-    }
-  } catch {
-    // GrowthBook not ready, use defaults
-  }
-  return DEFAULT_UNSUPPORTED_MODEL_PATTERNS
-}
-
-/**
- * Check if a model supports tool_reference blocks (required for tool search).
- *
- * This uses a negative test: models are assumed to support tool_reference
- * UNLESS they match a pattern in the unsupported list. This ensures new
- * models work by default without code changes.
- *
- * Currently, Electron models do NOT support tool_reference. This can be
- * updated via GrowthBook feature 'tengu_tool_search_unsupported_models'.
- *
- * @param model The model name to check
- * @returns true if the model supports tool_reference, false otherwise
- */
+/** Use the physical model's declaration. An explicit tool-search setting also opts in for an undeclared model. */
 export function modelSupportsToolReference(model: string): boolean {
-  const normalizedModel = model.toLowerCase()
-  const unsupportedPatterns = getUnsupportedToolReferencePatterns()
-
-  // Check if model matches any unsupported pattern
-  for (const pattern of unsupportedPatterns) {
-    if (normalizedModel.includes(pattern.toLowerCase())) {
-      return false
-    }
-  }
-
-  // New models are assumed to support tool_reference
-  return true
+  return getModelCapabilityOverride(model, 'toolReference') ??
+    (Boolean(process.env.ENABLE_TOOL_SEARCH) && getToolSearchMode() !== 'standard')
 }
 
 /**
@@ -265,58 +215,15 @@ export function modelSupportsToolReference(model: string): boolean {
  * For the definitive check that includes model support and threshold,
  * use isToolSearchEnabled().
  */
-let loggedOptimistic = false
-
 export function isToolSearchEnabledOptimistic(): boolean {
-  const mode = getToolSearchMode()
-  if (mode === 'standard') {
-    if (!loggedOptimistic) {
-      loggedOptimistic = true
-      logForDebugging(
-        `[ToolSearch:optimistic] mode=${mode}, ENABLE_TOOL_SEARCH=${process.env.ENABLE_TOOL_SEARCH}, result=false`,
-      )
-    }
-    return false
-  }
-
-  // tool_reference is a beta content type that third-party API gateways
-  // (NEXUS_BASE_URL proxies) typically don't support. When the provider
-  // is 'firstParty' but the base URL points elsewhere, the proxy will reject
-  // tool_reference blocks with a 400. Vertex/Bedrock/Foundry are unaffected —
-  // they have their own endpoints and beta headers.
-  // https://github.com/Whale-Talk/Nexus-Code
-  //
-  // HOWEVER: some proxies DO support tool_reference (LiteLLM passthrough,
-  // Cloudflare AI Gateway, corp gateways that forward beta headers). The
-  // blanket disable breaks defer_loading for those users — all MCP tools
-  // loaded into main context instead of on-demand (gh-31936 / CC-457,
-  // likely the real cause of CC-330 "v2.1.70 defer_loading regression").
-  // This gate only applies when ENABLE_TOOL_SEARCH is unset/empty (default
-  // behavior). Setting any non-empty value — 'true', 'auto', 'auto:N' —
-  // means the user is explicitly configuring tool search and asserts their
-  // setup supports it. The falsy check (rather than === undefined) aligns
-  // with getToolSearchMode(), which also treats "" as unset.
-  if (
-    !process.env.ENABLE_TOOL_SEARCH &&
-    getAPIProvider() === 'firstParty' &&
-    !isFirstPartyAnthropicBaseUrl()
-  ) {
-    if (!loggedOptimistic) {
-      loggedOptimistic = true
-      logForDebugging(
-        `[ToolSearch:optimistic] disabled: NEXUS_BASE_URL=${process.env.NEXUS_BASE_URL} is not a first-party Anthropic host. Set ENABLE_TOOL_SEARCH=true (or auto / auto:N) if your proxy forwards tool_reference blocks.`,
-      )
-    }
-    return false
-  }
-
-  if (!loggedOptimistic) {
-    loggedOptimistic = true
-    logForDebugging(
-      `[ToolSearch:optimistic] mode=${mode}, ENABLE_TOOL_SEARCH=${process.env.ENABLE_TOOL_SEARCH}, result=true`,
-    )
-  }
-  return true
+  if (getToolSearchMode() === 'standard') return false
+  if (process.env.ENABLE_TOOL_SEARCH) return true
+  const catalog = getModelCatalog()
+  if (catalog) return [...catalog.models.values()].some(model => model.capabilities?.toolReference)
+  return MODEL_ROLES.some(role => {
+    const model = process.env[`NEXUS_${role.toUpperCase()}_MODEL`] || process.env.NEXUS_MODEL
+    return model ? modelSupportsToolReference(model) : false
+  })
 }
 
 /**
@@ -398,7 +305,7 @@ export async function isToolSearchEnabled(
     reason: string,
     extraProps?: Record<string, number>,
   ): void {
-    logEvent('tengu_tool_search_mode_decision', {
+    logEvent('nexus_tool_search_mode_decision', {
       enabled,
       mode: mode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       reason:
@@ -409,7 +316,7 @@ export async function isToolSearchEnabled(
       checkedModel:
         model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       mcpToolCount,
-      userType: (process.env.USER_TYPE ??
+      userType: (process.env.NEXUS_BUILD_FLAVOR ??
         'external') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       ...extraProps,
     })
@@ -418,8 +325,7 @@ export async function isToolSearchEnabled(
   // Check if model supports tool_reference
   if (!modelSupportsToolReference(model)) {
     logForDebugging(
-      `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
-        `This feature is only available on Claude Sonnet 4+, Opus 4+, and newer models.`,
+      `Model '${model}' has not declared support for tool references.`,
     )
     logModeDecision(false, 'standard', 'model_unsupported')
     return false
@@ -599,7 +505,7 @@ export type DeferredToolsDelta = {
 }
 
 /**
- * Call-site discriminator for the tengu_deferred_tools_pool_change event.
+ * Call-site discriminator for the nexus_deferred_tools_pool_change event.
  * The scan runs from several sites with different expected-prior semantics
  * (inc-4747):
  *   - attachments_main: main-thread getAttachments → prior=0 is a BUG on fire-2+
@@ -623,13 +529,13 @@ export type DeferredToolsDeltaScanContext = {
 
 /**
  * True → announce deferred tools via persisted delta attachments.
- * False → claude.ts keeps its per-call <available-deferred-tools>
+ * False → nexus.ts keeps its per-call <available-deferred-tools>
  * header prepend (the attachment does not fire).
  */
 export function isDeferredToolsDeltaEnabled(): boolean {
   return (
-    process.env.USER_TYPE === 'ant' ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_glacier_2xr', false)
+    process.env.NEXUS_BUILD_FLAVOR === 'development' ||
+    getFeatureValue('nexus_glacier_2xr', false)
   )
 }
 
@@ -682,7 +588,7 @@ export function getDeferredToolsDelta(
   // subagent first-fires and compact-path scans have EXPECTED prior=0 and
   // dominate the stat. callSite/querySource/attachmentTypesSeen split the
   // buckets so the real main-thread cross-turn failure is isolable in BQ.
-  logEvent('tengu_deferred_tools_pool_change', {
+  logEvent('nexus_deferred_tools_pool_change', {
     addedCount: added.length,
     removedCount: removed.length,
     priorAnnouncedCount: announced.size,

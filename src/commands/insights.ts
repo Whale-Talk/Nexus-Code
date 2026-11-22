@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
-import { queryWithModel } from '../services/api/claude.js'
+import { queryWithModel } from '../services/api/inference.js'
 import {
   AGENT_TOOL_NAME,
   LEGACY_AGENT_TOOL_NAME,
@@ -25,7 +25,7 @@ import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
 import { extractTextContent } from '../utils/messages.js'
-import { getDefaultOpusModel } from '../utils/model/model.js'
+import { getQuarkModel } from '../utils/model/model.js'
 import {
   getProjectsDir,
   getSessionFilesWithMtime,
@@ -39,12 +39,12 @@ import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
 
 // Model for facet extraction and summarization (Quark - best quality)
 function getAnalysisModel(): string {
-  return getDefaultOpusModel()
+  return getQuarkModel()
 }
 
 // Model for narrative insights (Quark - best quality)
 function getInsightsModel(): string {
-  return getDefaultOpusModel()
+  return getQuarkModel()
 }
 
 // ============================================================================
@@ -58,7 +58,7 @@ type RemoteHostInfo = {
 
 /* eslint-disable custom-rules/no-process-env-top-level */
 const getRunningRemoteHosts: () => Promise<string[]> =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? async () => {
         const { stdout, code } = await execFileNoThrow(
           'coder',
@@ -81,7 +81,7 @@ const getRunningRemoteHosts: () => Promise<string[]> =
     : async () => []
 
 const getRemoteHostSessionCount: (hs: string) => Promise<number> =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? async (homespace: string) => {
         const { stdout, code } = await execFileNoThrow(
           'ssh',
@@ -100,12 +100,12 @@ const collectFromRemoteHost: (
   hs: string,
   destDir: string,
 ) => Promise<{ copied: number; skipped: number }> =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? async (homespace: string, destDir: string) => {
         const result = { copied: 0, skipped: 0 }
 
         // Create temp directory
-        const tempDir = await mkdtemp(join(tmpdir(), 'claude-hs-'))
+        const tempDir = await mkdtemp(join(tmpdir(), 'nexus-hs-'))
 
         try {
           // SCP the projects folder
@@ -188,7 +188,7 @@ const collectAllRemoteHostData: (destDir: string) => Promise<{
   totalCopied: number
   totalSkipped: number
 }> =
-  process.env.USER_TYPE === 'ant'
+  process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? async (destDir: string) => {
         const rHosts = await getRunningRemoteHosts()
         const result: RemoteHostInfo[] = []
@@ -263,13 +263,13 @@ type SessionFacets = {
   goal_categories: Record<string, number>
   outcome: string
   user_satisfaction_counts: Record<string, number>
-  claude_helpfulness: string
+  nexus_helpfulness: string
   session_type: string
   friction_counts: Record<string, number>
   friction_detail: string
   primary_success: string
   brief_summary: string
-  user_instructions_to_claude?: string[]
+  user_instructions_to_nexus?: string[]
 }
 
 type AggregatedData = {
@@ -377,7 +377,7 @@ const LABEL_MAP: Record<string, string> = {
   wrong_approach: 'Wrong Approach',
   buggy_code: 'Buggy Code',
   user_rejected_action: 'User Rejected Action',
-  claude_got_blocked: 'Nexus Got Blocked',
+  nexus_got_blocked: 'Nexus Got Blocked',
   user_stopped_early: 'User Stopped Early',
   wrong_file_or_location: 'Wrong File/Location',
   excessive_changes: 'Excessive Changes',
@@ -416,7 +416,7 @@ const LABEL_MAP: Record<string, string> = {
 
 // Lazy getters: getNexusConfigHomeDir() is memoized and reads process.env.
 // Calling it at module scope would populate the memoize cache before
-// entrypoints can set CLAUDE_CONFIG_DIR, breaking all 150+ other callers.
+// entrypoints can set NEXUS_CONFIG_DIR, breaking all 150+ other callers.
 function getDataDir(): string {
   return join(getNexusConfigHomeDir(), 'usage-data')
 }
@@ -1015,7 +1015,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
   "goal_categories": {"category_name": count, ...},
   "outcome": "fully_achieved|mostly_achieved|partially_achieved|not_achieved|unclear_from_transcript",
   "user_satisfaction_counts": {"level": count, ...},
-  "claude_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
+  "nexus_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
   "session_type": "single_task|multi_task|iterative_refinement|exploration|quick_question",
   "friction_counts": {"friction_type": count, ...},
   "friction_detail": "One sentence describing friction or empty",
@@ -1085,8 +1085,8 @@ export function detectMultiClauding(
 
   allSessionMessages.sort((a, b) => a.ts - b.ts)
 
-  const multiClaudeSessionPairs = new Set<string>()
-  const messagesDuringMulticlaude = new Set<string>()
+  const multiNexusSessionPairs = new Set<string>()
+  const messagesDuringMultinexus = new Set<string>()
 
   // Sliding window: sessionLastIndex tracks the most recent index for each session
   let windowStart = 0
@@ -1114,12 +1114,12 @@ export function detectMultiClauding(
         const between = allSessionMessages[j]!
         if (between.sessionId !== msg.sessionId) {
           const pair = [msg.sessionId, between.sessionId].sort().join(':')
-          multiClaudeSessionPairs.add(pair)
-          messagesDuringMulticlaude.add(
+          multiNexusSessionPairs.add(pair)
+          messagesDuringMultinexus.add(
             `${allSessionMessages[prevIndex]!.ts}:${msg.sessionId}`,
           )
-          messagesDuringMulticlaude.add(`${between.ts}:${between.sessionId}`)
-          messagesDuringMulticlaude.add(`${msg.ts}:${msg.sessionId}`)
+          messagesDuringMultinexus.add(`${between.ts}:${between.sessionId}`)
+          messagesDuringMultinexus.add(`${msg.ts}:${msg.sessionId}`)
           break
         }
       }
@@ -1129,16 +1129,16 @@ export function detectMultiClauding(
   }
 
   const sessionsWithOverlaps = new Set<string>()
-  for (const pair of multiClaudeSessionPairs) {
+  for (const pair of multiNexusSessionPairs) {
     const [s1, s2] = pair.split(':')
     if (s1) sessionsWithOverlaps.add(s1)
     if (s2) sessionsWithOverlaps.add(s2)
   }
 
   return {
-    overlap_events: multiClaudeSessionPairs.size,
+    overlap_events: multiNexusSessionPairs.size,
     sessions_involved: sessionsWithOverlaps.size,
-    user_messages_during: messagesDuringMulticlaude.size,
+    user_messages_during: messagesDuringMultinexus.size,
   }
 }
 
@@ -1262,8 +1262,8 @@ function aggregateData(
       }
 
       // Helpfulness
-      result.helpfulness[sessionFacets.claude_helpfulness] =
-        (result.helpfulness[sessionFacets.claude_helpfulness] || 0) + 1
+      result.helpfulness[sessionFacets.nexus_helpfulness] =
+        (result.helpfulness[sessionFacets.nexus_helpfulness] || 0) + 1
 
       // Session types
       result.session_types[sessionFacets.session_type] =
@@ -1395,7 +1395,7 @@ Include 3 friction categories with 2 examples each.`,
 
 ## CC FEATURES REFERENCE (pick from these for features_to_try):
 1. **MCP Servers**: Connect Nexus to external tools, databases, and APIs via Model Context Protocol.
-   - How to use: Run \`claude mcp add <server-name> -- <command>\`
+   - How to use: Run \`nexus mcp add <server-name> -- <command>\`
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
 
 2. **Custom Skills**: Reusable prompts you define as markdown files that run with a single /command.
@@ -1407,7 +1407,7 @@ Include 3 friction categories with 2 examples each.`,
    - Good for: auto-formatting code, running type checks, enforcing conventions
 
 4. **Headless Mode**: Run Nexus non-interactively from scripts and CI/CD.
-   - How to use: \`claude -p "fix lint errors" --allowedTools "Edit,Read,Bash"\`
+   - How to use: \`nexus -p "fix lint errors" --allowedTools "Edit,Read,Bash"\`
    - Good for: CI/CD integration, batch code fixes, automated reviews
 
 5. **Task Agents**: Nexus spawns focused sub-agents for complex exploration or parallel work.
@@ -1447,7 +1447,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 3 opportunities. Think BIG - autonomous workflows, parallel agents, iterating against tests.`,
     maxTokens: 8192,
   },
-  ...(process.env.USER_TYPE === 'ant'
+  ...(process.env.NEXUS_BUILD_FLAVOR === 'development'
     ? [
         {
           name: 'cc_team_improvements',
@@ -1616,7 +1616,7 @@ async function generateParallelInsights(
   // Build data context string
   const facetSummaries = Array.from(facets.values())
     .slice(0, 50)
-    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.claude_helpfulness})`)
+    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.nexus_helpfulness})`)
     .join('\n')
 
   const frictionDetails = Array.from(facets.values())
@@ -1626,7 +1626,7 @@ async function generateParallelInsights(
     .join('\n')
 
   const userInstructions = Array.from(facets.values())
-    .flatMap(f => f.user_instructions_to_claude || [])
+    .flatMap(f => f.user_instructions_to_nexus || [])
     .slice(0, 15)
     .map(i => `- ${i}`)
     .join('\n')
@@ -1661,7 +1661,7 @@ async function generateParallelInsights(
     facetSummaries +
     '\n\nFRICTION DETAILS:\n' +
     frictionDetails +
-    '\n\nUSER INSTRUCTIONS TO CLAUDE:\n' +
+    '\n\nUSER INSTRUCTIONS TO NEXUS:\n' +
     (userInstructions || 'None captured')
 
   // Run sections in parallel first (excluding at_a_glance)
@@ -2189,11 +2189,11 @@ function generateHtmlReport(
 
   // Build Team Feedback section (collapsible, ant-only)
   const ccImprovements =
-    process.env.USER_TYPE === 'ant'
+    process.env.NEXUS_BUILD_FLAVOR === 'development'
       ? insights.cc_team_improvements?.improvements || []
       : []
   const modelImprovements =
-    process.env.USER_TYPE === 'ant'
+    process.env.NEXUS_BUILD_FLAVOR === 'development'
       ? insights.model_behavior_improvements?.improvements || []
       : []
   const teamFeedbackHtml =
@@ -2650,13 +2650,13 @@ function generateHtmlReport(
 // ============================================================================
 
 /**
- * Structured export format for claudescope consumption
+ * Structured export format for nexusscope consumption
  */
 export type InsightsExport = {
   metadata: {
     username: string
     generated_at: string
-    claude_code_version: string
+    nexus_code_version: string
     date_range: { start: string; end: string }
     session_count: number
     remote_hosts_collected?: string[]
@@ -2722,7 +2722,7 @@ export function buildExportData(
     metadata: {
       username: process.env.SAFEUSER || process.env.USER || 'unknown',
       generated_at: new Date().toISOString(),
-      claude_code_version: version,
+      nexus_code_version: version,
       date_range: data.date_range,
       session_count: data.total_sessions,
       ...(remote_hosts_collected &&
@@ -2805,7 +2805,7 @@ export async function generateUsageReport(options?: {
   let remoteStats: { hosts: RemoteHostInfo[]; totalCopied: number } | undefined
 
   // Optionally collect data from remote hosts first (ant-only)
-  if (process.env.USER_TYPE === 'ant' && options?.collectRemote) {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development' && options?.collectRemote) {
     const destDir = join(getNexusConfigHomeDir(), 'projects')
     const { hosts, totalCopied } = await collectAllRemoteHostData(destDir)
     remoteStats = { hosts, totalCopied }
@@ -3048,7 +3048,7 @@ const usageReport: Command = {
     let remoteHosts: string[] = []
     let hasRemoteHosts = false
 
-    if (process.env.USER_TYPE === 'ant') {
+    if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
       // Parse --homespaces flag
       collectRemote = args?.includes('--homespaces') ?? false
 
@@ -3069,35 +3069,7 @@ const usageReport: Command = {
       { collectRemote },
     )
 
-    let reportUrl = `file://${htmlPath}`
-    let uploadHint = ''
-
-    if (process.env.USER_TYPE === 'ant') {
-      // Try to upload to S3
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[-:]/g, '')
-        .replace('T', '_')
-        .slice(0, 15)
-      const username = process.env.SAFEUSER || process.env.USER || 'unknown'
-      const filename = `${username}_insights_${timestamp}.html`
-      const s3Path = `s3://anthropic-serve/atamkin/cc-user-reports/${filename}`
-      const s3Url = `https://s3-frontend.infra.ant.dev/anthropic-serve/atamkin/cc-user-reports/${filename}`
-
-      reportUrl = s3Url
-      try {
-        execFileSync('ff', ['cp', htmlPath, s3Path], {
-          timeout: 60000,
-          stdio: 'pipe', // Suppress output
-        })
-      } catch {
-        // Upload failed - fall back to local file and show upload command
-        reportUrl = `file://${htmlPath}`
-        uploadHint = `\nAutomatic upload failed. Are you on the boron namespace? Try \`use-bo\` and ensure you've run \`sso\`.
-To share, run: ff cp ${htmlPath} ${s3Path}
-Then access at: ${s3Url}`
-      }
-    }
+    const reportUrl = `file://${htmlPath}`
 
     // Build header with stats
     const sessionLabel =
@@ -3114,7 +3086,7 @@ Then access at: ${s3Url}`
 
     // Build remote host info (ant-only)
     let remoteInfo = ''
-    if (process.env.USER_TYPE === 'ant') {
+    if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
       if (remoteStats && remoteStats.totalCopied > 0) {
         const hsNames = remoteStats.hosts
           .filter(h => h.sessionCount > 0)
@@ -3150,7 +3122,7 @@ ${remoteInfo}
 
     const userSummary = `${header}${summaryText}
 
-Your full shareable insights report is ready: ${reportUrl}${uploadHint}`
+Your full shareable insights report is ready: ${reportUrl}`
 
     // Return prompt for Nexus to respond to
     return [
@@ -3172,7 +3144,7 @@ Now output the following message exactly:
 
 <message>
 Your shareable insights report is ready:
-${reportUrl}${uploadHint}
+${reportUrl}
 
 Want to dig into any section or try one of the suggestions?
 </message>`,

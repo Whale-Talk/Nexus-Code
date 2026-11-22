@@ -1,7 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
-import { fileSuffixForOauthConfig } from '../constants/oauth.js'
 import { isRunningWithBun } from './bundledMode.js'
 import { getNexusConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
@@ -11,21 +10,9 @@ import { which } from './which.js'
 type Platform = 'win32' | 'darwin' | 'linux'
 
 // Config and data paths
-export const getGlobalClaudeFile = memoize((): string => {
-  // Legacy fallback for backwards compatibility
-  if (
-    getFsImplementation().existsSync(
-      join(getNexusConfigHomeDir(), '.config.json'),
-    )
-  ) {
-    return join(getNexusConfigHomeDir(), '.config.json')
-  }
-
-  const filename = `.claude${fileSuffixForOauthConfig()}.json`
-  // Unify with getNexusConfigHomeDir: without CLAUDE_CONFIG_DIR both resolve to
-  // ~/.nexus, so dev mode (`bun run dev`) and launcher mode share config state.
-  return join(process.env.CLAUDE_CONFIG_DIR || getNexusConfigHomeDir(), filename)
-})
+export function getGlobalProfileFile(): string {
+  return join(getNexusConfigHomeDir(), 'profile.json')
+}
 
 const hasInternetAccess = memoize(async (): Promise<boolean> => {
   try {
@@ -336,12 +323,12 @@ export const env = {
 
 /**
  * Returns the host platform for analytics reporting.
- * If CLAUDE_CODE_HOST_PLATFORM is set to a valid platform value, that overrides
+ * If NEXUS_HOST_PLATFORM is set to a valid platform value, that overrides
  * the detected platform. This is useful for container/remote environments where
  * process.platform reports the container OS but the actual host platform differs.
  */
 export function getHostPlatformForAnalytics(): Platform {
-  const override = process.env.CLAUDE_CODE_HOST_PLATFORM
+  const override = process.env.NEXUS_HOST_PLATFORM
   if (override === 'win32' || override === 'darwin' || override === 'linux') {
     return override
   }

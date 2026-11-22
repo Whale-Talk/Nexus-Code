@@ -72,7 +72,7 @@ export type LoadedFrom =
   | 'mcp'
 
 /**
- * Returns a claude config directory path for a given source.
+ * Returns a nexus config directory path for a given source.
  */
 export function getSkillsPath(
   source: SettingSource | 'plugin',
@@ -344,24 +344,24 @@ export function createSkillCommand({
         argumentNames,
       )
 
-      // Replace ${CLAUDE_SKILL_DIR} with the skill's own directory so bash
+      // Replace ${NEXUS_SKILL_DIR} with the skill's own directory so bash
       // injection (!`...`) can reference bundled scripts. Normalize backslashes
       // to forward slashes on Windows so shell commands don't treat them as escapes.
       if (baseDir) {
         const skillDir =
           process.platform === 'win32' ? baseDir.replace(/\\/g, '/') : baseDir
-        finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillDir)
+        finalContent = finalContent.replace(/\$\{NEXUS_SKILL_DIR\}/g, skillDir)
       }
 
-      // Replace ${CLAUDE_SESSION_ID} with the current session ID
+      // Replace ${NEXUS_SESSION_ID} with the current session ID
       finalContent = finalContent.replace(
-        /\$\{CLAUDE_SESSION_ID\}/g,
+        /\$\{NEXUS_SESSION_ID\}/g,
         getSessionId(),
       )
 
       // Security: MCP skills are remote and untrusted — never execute inline
       // shell commands (!`…` / ```! … ```) from their markdown body.
-      // ${CLAUDE_SKILL_DIR} is meaningless for MCP skills anyway.
+      // ${NEXUS_SKILL_DIR} is meaningless for MCP skills anyway.
       if (loadedFrom !== 'mcp') {
         finalContent = await executeShellCommandsInPrompt(
           finalContent,
@@ -629,8 +629,6 @@ async function loadSkillsFromCommandsDir(
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
     const userSkillsDir = join(getNexusConfigHomeDir(), 'skills')
-    // Legacy fallback: OMC installs to ~/.claude/skills before the .nexus migration
-    const legacyUserSkillsDir = join(dirname(getNexusConfigHomeDir()), '.claude', 'skills')
     const managedSkillsDir = join(getManagedFilePath(), '.nexus', 'skills')
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
@@ -676,17 +674,13 @@ export const getSkillDirCommands = memoize(
       additionalSkillsNested,
       legacyCommands,
     ] = await Promise.all([
-      isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS)
+      isEnvTruthy(process.env.NEXUS_DISABLE_POLICY_SKILLS)
         ? Promise.resolve([])
         : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
       isSettingSourceEnabled('userSettings') && !skillsLocked
         ? (async () => {
-            // Load from ~/.nexus/skills (primary) AND ~/.claude/skills (legacy OMC)
-            const [primary, legacy] = await Promise.all([
-              loadSkillsFromSkillsDir(userSkillsDir, 'userSettings'),
-              loadSkillsFromSkillsDir(legacyUserSkillsDir, 'userSettings'),
-            ])
-            return [...primary, ...legacy]
+            // Load from ~/.nexus/skills (primary) AND ~/.nexus/skills (legacy OMC)
+            return loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
           })()
         : Promise.resolve([]),
       projectSettingsEnabled
@@ -723,7 +717,7 @@ export const getSkillDirCommands = memoize(
     ]
 
     // Dedup by skill NAME, not file identity. Legacy-fallback dirs
-    // (~/.claude/skills vs ~/.nexus/skills) hold physical copies, not
+    // (~/.nexus/skills vs ~/.nexus/skills) hold physical copies, not
     // symlinks — dev:ino dedup can't catch them, and every skill would
     // appear once per source directory in the typeahead.
     // Order in allSkillsWithPaths encodes priority (managed > user primary >
@@ -857,8 +851,8 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      // Primary: .nexus/skills, legacy fallback: .claude/skills (pre-rename projects)
-      for (const dirName of ['.nexus', '.claude']) {
+      // Primary: .nexus/skills, legacy fallback: .nexus/skills (pre-rename projects)
+      for (const dirName of ['.nexus']) {
         const skillDir = join(currentDir, dirName, 'skills')
 
         // Skip if we've already checked this path (hit or miss) — avoids
@@ -869,7 +863,7 @@ export async function discoverSkillDirsForPaths(
           try {
             await fs.stat(skillDir)
             // Skills dir exists. Before loading, check if the containing dir
-            // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
+            // is gitignored — blocks e.g. node_modules/pkg/.nexus/skills from
             // loading silently. `git check-ignore` handles nested .gitignore,
             // .git/info/exclude, and global gitignore. Fails open outside a
             // git repo (exit 128 → false); the invocation-time trust dialog
@@ -945,7 +939,7 @@ export async function addSkillDirectories(dirs: string[]): Promise<void> {
       `[skills] Dynamically discovered ${newSkillCount} skills from ${dirs.length} directories`,
     )
     if (addedSkills.length > 0) {
-      logEvent('tengu_dynamic_skills_changed', {
+      logEvent('nexus_dynamic_skills_changed', {
         source:
           'file_operation' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         previousCount: previousSkillNamesForLogging.size,
@@ -1027,7 +1021,7 @@ export function activateConditionalSkillsForPaths(
   }
 
   if (activated.length > 0) {
-    logEvent('tengu_dynamic_skills_changed', {
+    logEvent('nexus_dynamic_skills_changed', {
       source:
         'conditional_paths' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       previousCount: dynamicSkills.size - activated.length,

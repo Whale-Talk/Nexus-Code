@@ -73,7 +73,7 @@ import {
   SUBAGENT_REJECT_MESSAGE,
   SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
 } from '../messages.js'
-import type { ModelAlias } from '../model/aliases.js'
+import type { ModelSelection } from '../model/roles.js'
 import {
   applyPermissionUpdates,
   persistPermissionUpdates,
@@ -152,12 +152,14 @@ function createInProcessCanUseTool(
     if (result.behavior !== 'ask') {
       return result
     }
+    const isSandboxOverride = result.decisionReason?.type === 'sandboxOverride'
 
     // For bash commands, try classifier auto-approval before showing leader dialog.
     // Agents await the classifier result (rather than racing it against user
     // interaction like the main agent).
     if (
       feature('BASH_CLASSIFIER') &&
+      !isSandboxOverride &&
       tool.name === BASH_TOOL_NAME &&
       result.pendingClassifierCheck
     ) {
@@ -182,11 +184,13 @@ function createInProcessCanUseTool(
 
     const appState = toolUseContext.getAppState()
 
-    const description = await (tool as Tool).description(input as never, {
-      isNonInteractiveSession: toolUseContext.options.isNonInteractiveSession,
-      toolPermissionContext: appState.toolPermissionContext,
-      tools: toolUseContext.options.tools,
-    })
+    const description = isSandboxOverride
+      ? result.message
+      : await (tool as Tool).description(input as never, {
+          isNonInteractiveSession: toolUseContext.options.isNonInteractiveSession,
+          toolPermissionContext: appState.toolPermissionContext,
+          tools: toolUseContext.options.tools,
+        })
 
     if (abortController.signal.aborted) {
       return { behavior: 'ask', message: SUBAGENT_REJECT_MESSAGE }
@@ -260,16 +264,17 @@ function createInProcessCanUseTool(
                 onAbortListener,
               )
               reportPermissionWait()
-              persistPermissionUpdates(permissionUpdates)
+              const allowedUpdates = isSandboxOverride ? [] : permissionUpdates
+              persistPermissionUpdates(allowedUpdates)
               // Write back permission updates to the leader's shared context
-              if (permissionUpdates.length > 0) {
+              if (allowedUpdates.length > 0) {
                 const setToolPermissionContext =
                   getLeaderSetToolPermissionContext()
                 if (setToolPermissionContext) {
                   const currentAppState = toolUseContext.getAppState()
                   const updatedContext = applyPermissionUpdates(
                     currentAppState.toolPermissionContext,
-                    permissionUpdates,
+                    allowedUpdates,
                   )
                   // Preserve the leader's mode to prevent workers'
                   // transformed 'acceptEdits' context from leaking back
@@ -284,6 +289,7 @@ function createInProcessCanUseTool(
                 behavior: 'allow',
                 updatedInput,
                 userModified: false,
+                ...(isSandboxOverride && { decisionReason: result.decisionReason }),
                 acceptFeedback: trimmedFeedback || undefined,
                 ...(contentBlocks &&
                   contentBlocks.length > 0 && { contentBlocks }),
@@ -311,22 +317,17 @@ function createInProcessCanUseTool(
                 assistantMessage,
                 toolUseID,
               )
-              if (freshResult.behavior === 'allow') {
-                decisionMade = true
-                abortController.signal.removeEventListener(
-                  'abort',
-                  onAbortListener,
-                )
-                reportPermissionWait()
-                setToolUseConfirmQueue(queue =>
-                  queue.filter(item => item.toolUseID !== toolUseID),
-                )
-                resolve({
-                  ...freshResult,
-                  updatedInput: input,
-                  userModified: false,
-                })
-              }
+              if (freshResult.behavior === 'ask' || decisionMade) return
+              decisionMade = true
+              abortController.signal.removeEventListener(
+                'abort',
+                onAbortListener,
+              )
+              reportPermissionWait()
+              setToolUseConfirmQueue(queue =>
+                queue.filter(item => item.toolUseID !== toolUseID),
+              )
+              resolve(freshResult)
             },
           },
         ])
@@ -340,7 +341,7 @@ function createInProcessCanUseTool(
         toolUseId: toolUseID,
         input,
         description,
-        permissionSuggestions: result.suggestions,
+        permissionSuggestions: isSandboxOverride ? undefined : result.suggestions,
         workerId: identity.agentId,
         workerName: identity.agentName,
         workerColor: identity.color,
@@ -358,7 +359,7 @@ function createInProcessCanUseTool(
           contentBlocks?: ContentBlockParam[],
         ) {
           cleanup()
-          persistPermissionUpdates(permissionUpdates)
+          if (!isSandboxOverride) persistPermissionUpdates(permissionUpdates)
           const finalInput =
             updatedInput && Object.keys(updatedInput).length > 0
               ? updatedInput
@@ -367,6 +368,7 @@ function createInProcessCanUseTool(
             behavior: 'allow',
             updatedInput: finalInput,
             userModified: false,
+            ...(isSandboxOverride && { decisionReason: result.decisionReason }),
             ...(contentBlocks && contentBlocks.length > 0 && { contentBlocks }),
           })
         },
@@ -497,7 +499,7 @@ export type InProcessRunnerConfig = {
   /** Short description of the task (used as summary for the initial prompt header) */
   description?: string
   /** request_id of the API call that spawned this teammate, for lineage
-   *  tracing on tengu_api_* events. */
+   *  tracing on nexus_api_* events. */
   invokingRequestId?: string
 }
 
@@ -946,8 +948,8 @@ export async function runInProcessTeammate(
 
       // Log agent memory loaded event for in-process teammates
       if (agentDefinition.memory) {
-        logEvent('tengu_agent_memory_loaded', {
-          ...(process.env.USER_TYPE === 'ant'
+        logEvent('nexus_agent_memory_loaded', {
+          ...(process.env.NEXUS_BUILD_FLAVOR === 'development'
             ? {
                 agent_type:
                   agentDefinition.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1195,7 +1197,7 @@ export async function runInProcessTeammate(
             forkContextMessages,
             querySource: 'agent:custom',
             override: { abortController: currentWorkAbortController },
-            model: model as ModelAlias | undefined,
+            model: model as ModelSelection | undefined,
             preserveToolUseResults: true,
             availableTools: toolUseContext.options.tools,
             allowedTools,

@@ -218,7 +218,7 @@ export function parseMultipleKeypresses(
   const inputString = isFlush ? '' : inputToString(input)
 
   // Get or create tokenizer
-  const tokenizer = prevState._tokenizer ?? createTokenizer({ x10Mouse: true })
+  const tokenizer = prevState._tokenizer ?? createTokenizer({ keyboardInput: true })
 
   // Tokenize the input
   const tokens = isFlush ? tokenizer.flush() : tokenizer.feed(inputString)
@@ -331,6 +331,11 @@ const keyName: Record<string, string> = {
   '[12~': 'f2',
   '[13~': 'f3',
   '[14~': 'f4',
+  // Windows Terminal uses CSI in Kitty mode. F3 is CSI 13~ to avoid
+  // collisions with cursor-position reports (CSI row;col R).
+  '[P': 'f1',
+  '[Q': 'f2',
+  '[S': 'f4',
   /* from Cygwin and used in libuv */
   '[[A': 'f1',
   '[[B': 'f2',

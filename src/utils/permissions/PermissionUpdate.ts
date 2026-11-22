@@ -46,6 +46,15 @@ export function hasRules(updates: PermissionUpdate[] | undefined): boolean {
   return extractRules(updates).length > 0
 }
 
+/** Keep hook rules separate from the user's bypass mode selection. */
+export function filterHookPermissionUpdates(
+  updates: readonly PermissionUpdate[],
+): PermissionUpdate[] {
+  return updates.filter(
+    update => update.type !== 'setMode' || update.mode !== 'bypassPermissions',
+  )
+}
+
 /**
  * Applies a single permission update to the context and returns the updated context
  * @param context The current permission context

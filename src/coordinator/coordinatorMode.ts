@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { ASYNC_AGENT_ALLOWED_TOOLS } from '../constants/tools.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { isFeatureEnabled } from '../services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -23,7 +23,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 // getCoordinatorUserContext's scratchpadDir parameter (dependency injection
 // from QueryEngine.ts, which lives higher in the dep graph).
 function isScratchpadGateEnabled(): boolean {
-  return checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_scratch')
+  return isFeatureEnabled('nexus_scratch')
 }
 
 const INTERNAL_WORKER_TOOLS = new Set([
@@ -35,7 +35,7 @@ const INTERNAL_WORKER_TOOLS = new Set([
 
 export function isCoordinatorMode(): boolean {
   if (feature('COORDINATOR_MODE')) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
+    return isEnvTruthy(process.env.NEXUS_COORDINATOR_MODE)
   }
   return false
 }
@@ -63,12 +63,12 @@ export function matchSessionMode(
 
   // Flip the env var — isCoordinatorMode() reads it live, no caching
   if (sessionIsCoordinator) {
-    process.env.CLAUDE_CODE_COORDINATOR_MODE = '1'
+    process.env.NEXUS_COORDINATOR_MODE = '1'
   } else {
-    delete process.env.CLAUDE_CODE_COORDINATOR_MODE
+    delete process.env.NEXUS_COORDINATOR_MODE
   }
 
-  logEvent('tengu_coordinator_mode_switched', {
+  logEvent('nexus_coordinator_mode_switched', {
     to: sessionMode as unknown as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
 
@@ -85,7 +85,7 @@ export function getCoordinatorUserContext(
     return {}
   }
 
-  const workerTools = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  const workerTools = isEnvTruthy(process.env.NEXUS_SIMPLE)
     ? [BASH_TOOL_NAME, FILE_READ_TOOL_NAME, FILE_EDIT_TOOL_NAME]
         .sort()
         .join(', ')
@@ -109,7 +109,7 @@ export function getCoordinatorUserContext(
 }
 
 export function getCoordinatorSystemPrompt(): string {
-  const workerCapabilities = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  const workerCapabilities = isEnvTruthy(process.env.NEXUS_SIMPLE)
     ? 'Workers have access to Bash, Read, and Edit tools, plus MCP tools from configured MCP servers.'
     : 'Workers have access to standard tools, MCP tools from configured MCP servers, and project skills via the Skill tool. Delegate skill invocations (e.g. /commit, /verify) to workers.'
 
@@ -311,7 +311,7 @@ ${SEND_MESSAGE_TOOL_NAME}({ to: "xyz-456", message: "Two tests still failing at 
 
 1. Implementation: "Fix the null pointer in src/auth/validate.ts:42. The user field can be undefined when the session expires. Add a null check and return early with an appropriate error. Commit and report the hash."
 
-2. Precise git operation: "Create a new branch from main called 'fix/session-expiry'. Cherry-pick only commit abc123 onto it. Push and create a draft PR targeting main. Add anthropics/claude-code as reviewer. Report the PR URL."
+2. Precise git operation: "Create a new branch from main called 'fix/session-expiry'. Cherry-pick only commit abc123 onto it. Push and create a draft PR targeting main. Report the PR URL."
 
 3. Correction (continued worker, short): "The tests failed on the null check you added — validate.test.ts:58 expects 'Invalid session' but you changed it to 'Session expired'. Fix the assertion. Commit and report the hash."
 

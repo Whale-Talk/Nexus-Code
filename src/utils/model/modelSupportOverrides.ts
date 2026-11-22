@@ -1,50 +1,26 @@
-import memoize from 'lodash-es/memoize.js'
-import { getAPIProvider } from './providers.js'
+import { getCatalogModel, getModelCatalog, type ModelCapability } from '../../services/api/provider/catalog.js'
+import { MODEL_ROLES } from './roles.js'
 
-export type ModelCapabilityOverride =
-  | 'effort'
-  | 'max_effort'
-  | 'thinking'
-  | 'adaptive_thinking'
-  | 'interleaved_thinking'
+export function getModelCapabilityOverride(model: string, capability: ModelCapability): boolean | undefined {
+  const entry = getCatalogModel(model)
+  const configured = entry?.capabilities?.[capability]
+  if (configured !== undefined) return configured
 
-const TIERS = [
-  {
-    modelEnvVar: 'NEXUS_QUARK_MODEL',
-    capabilitiesEnvVar: 'NEXUS_QUARK_MODEL_SUPPORTED_CAPABILITIES',
-  },
-  {
-    modelEnvVar: 'NEXUS_ATOM_MODEL',
-    capabilitiesEnvVar: 'NEXUS_ATOM_MODEL_SUPPORTED_CAPABILITIES',
-  },
-  {
-    modelEnvVar: 'NEXUS_ELECTRON_MODEL',
-    capabilitiesEnvVar: 'NEXUS_ELECTRON_MODEL_SUPPORTED_CAPABILITIES',
-  },
-] as const
-
-/**
- * Check whether a 3p model capability override is set for a model that matches one of
- * the pinned NEXUS_*_MODEL env vars.
- */
-export const get3PModelCapabilityOverride = memoize(
-  (model: string, capability: ModelCapabilityOverride): boolean | undefined => {
-    if (getAPIProvider() === 'firstParty') {
-      return undefined
+  if (!getModelCatalog()) {
+    for (const role of MODEL_ROLES) {
+      const prefix = `NEXUS_${role.toUpperCase()}_MODEL`
+      const pinned = process.env[prefix] || process.env.NEXUS_MODEL
+      const available = process.env[`${prefix}_SUPPORTED_CAPABILITIES`]
+      if (pinned === model && available !== undefined) {
+        const names = available.toLowerCase().split(',').map(name => name.trim().replaceAll('_', ''))
+        return names.includes(capability.toLowerCase())
+      }
     }
-    const m = model.toLowerCase()
-    for (const tier of TIERS) {
-      const pinned = process.env[tier.modelEnvVar]
-      const capabilities = process.env[tier.capabilitiesEnvVar]
-      if (!pinned || capabilities === undefined) continue
-      if (m !== pinned.toLowerCase()) continue
-      return capabilities
-        .toLowerCase()
-        .split(',')
-        .map(s => s.trim())
-        .includes(capability)
-    }
-    return undefined
-  },
-  (model, capability) => `${model.toLowerCase()}:${capability}`,
-)
+  }
+
+  const id = (entry?.id ?? model).replace(/\[1m\]$/i, '')
+  if (['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-flash'].includes(id)) {
+    if (capability === 'thinking' || capability === 'effort' || capability === 'maxEffort') return true
+  }
+  return undefined
+}

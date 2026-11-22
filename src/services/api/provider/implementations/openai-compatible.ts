@@ -1,30 +1,10 @@
-// Provider 适配器: OpenAI-compatible 后端 (DeepSeek relay PoC)。
-//
-// 职责 (P1-B):
-//   1. 请求面: Anthropic 形态 ModelRequest → AI SDK prompt
-//      (@ai-sdk/openai-compatible 内部再转成 OpenAI chat.completions JSON,
-//      /v1/chat/completions 路径)
-//   2. 流面: AI SDK fullStream 事件 → Anthropic SSE 形状的 StreamEvent
-//      (relay 走 OpenAI 协议, 消费端只认 Anthropic 事件形状)
-//   3. 头透传: new-api 会话分组头 X-Conversation-ID / X-Message-ID /
-//      X-Parent-Message-ID (模式对齐 client.ts:438-453)
-//   4. 错误映射: AI SDK 错误 → provider/errors.ts 的 app 错误类
-//
-// 已知限制 (PoC):
-//   - DeepSeek thinking 无 Anthropic signature — thinking 块 signature 置 ''
-//     (与 claude.ts:2035-2036 的初始化一致)
-//   - OpenAI 协议无 stop_sequence — message_delta.stop_sequence 恒为 null
-//   - request.thinking 不映射 — DeepSeek 推理由模型侧自动开启, 不送
-//     reasoning_effort 参数
-//   - AI SDK 内部重试关闭 (maxRetries: 0) — 重试语义交给仓库 withRetry
-//   - 不直接 import '@anthropic-ai/sdk' — 只消费 provider/types.ts 契约
-
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { OpenAICompatibleProvider } from '@ai-sdk/openai-compatible'
 import {
   APICallError,
   generateText,
   jsonSchema,
+  Output,
   streamText,
   type AsyncIterableStream,
   type FinishReason,
@@ -36,17 +16,18 @@ import {
   type ToolSet,
 } from 'ai'
 import { randomUUID } from 'crypto'
+import { captureStreamMetadata } from '../streamMetadata.js'
 import type {
   AssistantMessage,
   ContentBlock,
   ModelRequest,
   ProviderAdapter,
   StreamEvent,
-  StreamResponse,
+  ChannelStream,
   ToolChoice,
   ToolResultContentBlock,
   Usage,
-  WithResponse,
+  ModelResponse,
 } from '../types.js'
 import {
   APIConnectionError,
@@ -77,7 +58,7 @@ export interface OpenAICompatibleAdapterOptions {
 
 /**
  * 归一化 openai-compatible baseURL（供适配器与测试共用）：
- * - 裸域名/根路径（无路径段）→ 自动补 /v1（relay 场景，与 anthropic 归一化对称）
+ * - 裸域名/根路径（无路径段）→ 自动补 /v1（relay 场景，与 Messages 适配器一致）
  * - 含路径 → 原样使用，用户负责完整 API 前缀（如智谱 /api/paas/v4）
  */
 export function normalizeOpenAICompatibleBaseURL(baseURL: string): string {
@@ -95,44 +76,26 @@ export function createOpenAICompatibleAdapter(
   options: OpenAICompatibleAdapterOptions,
 ): ProviderAdapter {
   const baseURL = normalizeOpenAICompatibleBaseURL(options.baseURL)
+  const transport = options.fetch ?? globalThis.fetch
 
-  const provider = createOpenAICompatible({
+  const providerOptions = {
     name: options.name ?? 'openai-compatible',
     baseURL,
     ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
     ...(options.headers !== undefined ? { headers: options.headers } : {}),
-    ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+    fetch: Object.assign((input: RequestInfo | URL, init?: RequestInit) =>
+      transport(input, { ...init, redirect: 'error' }), transport),
     includeUsage: options.includeUsage ?? true,
-  })
+  }
+  const provider = createOpenAICompatible(providerOptions)
+  const tracking = { lastAssistantMessageId: '' }
 
   return {
     streamText: (request, signal) =>
-      streamRequest(request, provider, signal),
+      streamRequest(request, providerOptions, tracking, signal),
     generateText: (request, signal) =>
-      generateRequest(request, provider, signal),
+      generateRequest(request, provider, tracking, signal),
   }
-}
-
-/**
- * 注册表友好工厂 (index.ts registerProvider 签名: () => Promise<{ adapter }>)。
- * 环境变量驱动: NEXUS_BASE_URL + NEXUS_AUTH_TOKEN / NEXUS_API_KEY。
- */
-export function createOpenAICompatibleProvider(): Promise<{
-  adapter: ProviderAdapter
-}> {
-  const baseURL = process.env.NEXUS_BASE_URL
-  const apiKey =
-    process.env.NEXUS_AUTH_TOKEN || process.env.NEXUS_API_KEY
-  if (!baseURL) {
-    return Promise.reject(
-      new Error(
-        'createOpenAICompatibleProvider: NEXUS_BASE_URL 未设置',
-      ),
-    )
-  }
-  return Promise.resolve({
-    adapter: createOpenAICompatibleAdapter({ baseURL, apiKey }),
-  })
 }
 
 // ============================================================================
@@ -140,15 +103,15 @@ export function createOpenAICompatibleProvider(): Promise<{
 // ============================================================================
 
 /** 上一条 assistant 消息 id — 作为下一条请求的 X-Parent-Message-ID */
-let lastAssistantMessageId = ''
+type TrackingState = { lastAssistantMessageId: string }
 
 /**
  * 构建会话跟踪头。仅在配置了会话 id 时注入 (与 client.ts 行为一致,
  * 不向直连后端泄漏会话信息)。
  */
-function buildTrackingHeaders(): Record<string, string> {
+function buildTrackingHeaders(tracking: TrackingState): Record<string, string> {
   const conversationId =
-    process.env.CLAUDE_CONVERSATION_ID || process.env.X_CONVERSATION_ID
+    process.env.NEXUS_CONVERSATION_ID || process.env.X_CONVERSATION_ID
   if (!conversationId) {
     return {}
   }
@@ -156,8 +119,8 @@ function buildTrackingHeaders(): Record<string, string> {
     'X-Conversation-ID': conversationId,
     'X-Message-ID': randomUUID(),
   }
-  if (lastAssistantMessageId) {
-    headers['X-Parent-Message-ID'] = lastAssistantMessageId
+  if (tracking.lastAssistantMessageId) {
+    headers['X-Parent-Message-ID'] = tracking.lastAssistantMessageId
   }
   return headers
 }
@@ -177,7 +140,7 @@ function toolResultText(block: ToolResultContentBlock): string {
 }
 
 /**
- * Anthropic 消息形态 → AI SDK ModelMessage。
+ * 会话 消息形态 → AI SDK ModelMessage。
  * 转换规则:
  *   - user text/image → user 消息 (图片用 FilePart, openai-compatible 只认
  *     'text'/'file' part, 弃用的 'image' part 会抛 UnsupportedFunctionalityError)
@@ -294,7 +257,7 @@ function toModelMessages(request: ModelRequest): ModelMessage[] {
   return out
 }
 
-/** Anthropic ToolDefinition → AI SDK ToolSet (无 execute — 工具执行在仓库侧) */
+/** 会话 ToolDefinition → AI SDK ToolSet (无 execute — 工具执行在仓库侧) */
 function toToolSet(request: ModelRequest): ToolSet | undefined {
   if (!request.tools || request.tools.length === 0) {
     return undefined
@@ -338,6 +301,7 @@ function toToolChoice(
 function buildCallArgs(
   request: ModelRequest,
   model: LanguageModel,
+  tracking: TrackingState,
   signal: AbortSignal | undefined,
   onResponse?: (response: Response) => void,
 ) {
@@ -349,27 +313,28 @@ function buildCallArgs(
     ...(request.system && request.system.length > 0
       ? { system: request.system.map(s => s.text).join('\n\n') }
       : {}),
-    ...(request.max_tokens !== undefined
-      ? { maxOutputTokens: request.max_tokens }
+    ...(request.maxOutputTokens !== undefined
+      ? { maxOutputTokens: request.maxOutputTokens }
       : {}),
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }
       : {}),
-    ...(request.stop_sequences !== undefined &&
-    request.stop_sequences.length > 0
-      ? { stopSequences: request.stop_sequences }
+    ...(request.stopSequences !== undefined &&
+    request.stopSequences.length > 0
+      ? { stopSequences: request.stopSequences }
       : {}),
     ...(tools !== undefined
       ? {
           tools,
-          ...(request.tool_choice !== undefined
-            ? { toolChoice: toToolChoice(request.tool_choice) }
+          ...(request.toolChoice !== undefined
+            ? { toolChoice: toToolChoice(request.toolChoice) }
             : {}),
         }
       : {}),
     abortSignal: signal,
     // new-api 会话分组头 (每次请求新 X-Message-ID)
-    headers: buildTrackingHeaders(),
+    headers: buildTrackingHeaders(tracking),
+    ...(request.outputFormat ? { output: Output.object({ schema: jsonSchema(request.outputFormat.schema as JSONSchema7) }) } : {}),
     // 重试交给仓库 withRetry — 关闭 AI SDK 内部重试避免双重重试
     maxRetries: 0,
     ...(onResponse !== undefined ? { onResponse } : {}),
@@ -377,13 +342,13 @@ function buildCallArgs(
 }
 
 // ============================================================================
-// 流面映射 — AI SDK fullStream → Anthropic SSE 形状 StreamEvent
+// 流面映射 — AI SDK fullStream → 会话 SSE 形状 StreamEvent
 // ============================================================================
 
 /**
- * OpenAI finish_reason → Anthropic stop_reason。
+ * OpenAI finish_reason → 会话 stop_reason。
  *   stop → end_turn / length → max_tokens / tool_calls → tool_use
- *   content-filter / error / other → null (Anthropic 无对应语义)
+ *   content-filter / error / other → null (会话 无对应语义)
  */
 function mapStopReason(finishReason: FinishReason): AssistantMessage['stop_reason'] {
   switch (finishReason) {
@@ -432,6 +397,9 @@ function mapError(error: unknown, signal: AbortSignal | undefined): unknown {
   if (APICallError.isInstance(error)) {
     const statusCode = error.statusCode
     if (statusCode !== undefined) {
+      if (statusCode === 401 || statusCode === 403) {
+        return new AuthenticationError(statusCode, new Headers(error.responseHeaders))
+      }
       let body: Record<string, unknown> | undefined
       if (error.responseBody) {
         try {
@@ -439,9 +407,6 @@ function mapError(error: unknown, signal: AbortSignal | undefined): unknown {
         } catch {
           body = undefined
         }
-      }
-      if (statusCode === 401) {
-        return new AuthenticationError(error.message)
       }
       if (statusCode === 404) {
         return new NotFoundError(error.message, body)
@@ -464,7 +429,7 @@ function mapError(error: unknown, signal: AbortSignal | undefined): unknown {
 /**
  * fullStream → StreamEvent 事件迭代器。
  *
- * 事件形状对齐 Anthropic SSE (消费端 claude.ts 的 for-await 只认此形状):
+ * 事件形状对齐 会话 SSE (消费端 inference.ts 的 for-await 只认此形状):
  *   - reasoning-start/delta/end → thinking 块 (content_block_start/delta/stop,
  *     delta 为 thinking_delta; DeepSeek 无 signature, 置 '')
  *   - text-start/delta/end → text 块 (text_delta)
@@ -479,13 +444,14 @@ function mapError(error: unknown, signal: AbortSignal | undefined): unknown {
 async function* streamEvents(
   modelId: string,
   fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>,
+  tracking: TrackingState,
   controllerSignal: AbortSignal,
   outerSignal: AbortSignal | undefined,
   onOuterAbort: () => void,
 ): AsyncGenerator<StreamEvent> {
   let messageId: string | null = null
   let nextIndex = 0
-  // AI SDK part id → Anthropic content block index (支持多工具调用并行交错)
+  // AI SDK part id → 会话 content block index (支持多工具调用并行交错)
   const openBlocks = new Map<
     string,
     { index: number; kind: 'text' | 'thinking' | 'tool_use'; args: string }
@@ -498,7 +464,7 @@ async function* streamEvents(
       return null
     }
     messageId = randomUUID()
-    lastAssistantMessageId = messageId
+    tracking.lastAssistantMessageId = messageId
     return {
       type: 'message_start',
       message: {
@@ -592,7 +558,7 @@ async function* streamEvents(
               content_block: { type: 'thinking', thinking: '', signature: '' },
             }
           }
-          // DeepSeek thinking 无 Anthropic signature — 置 '' 保持字段存在
+          // DeepSeek thinking 无 会话 signature — 置 '' 保持字段存在
           yield {
             type: 'content_block_delta',
             index: block.index,
@@ -625,7 +591,7 @@ async function* streamEvents(
                 type: 'tool_use',
                 id: part.id,
                 name: part.toolName,
-                // 消费端以字符串累积 JSON (claude.ts:2000), 类型面要求 object
+                // 消费端以字符串累积 JSON (inference.ts:2000), 类型面要求 object
                 input: '' as unknown as Record<string, unknown>,
               },
             }
@@ -741,11 +707,12 @@ async function* streamEvents(
 
 async function streamRequest(
   request: ModelRequest,
-  provider: OpenAICompatibleProvider,
+  options: Parameters<typeof createOpenAICompatible>[0],
+  tracking: TrackingState,
   signal: AbortSignal | undefined,
-): Promise<StreamResponse> {
+): Promise<ChannelStream> {
   // 内部 controller: 既驱动 AI SDK 调用, 也暴露给消费端 (cleanupStream 会
-  // 调 controller.abort(), 见 claude.ts:2911-2912)
+  // 调 controller.abort(), 见 inference.ts:2911-2912)
   const controller = new AbortController()
   const onOuterAbort = () => controller.abort()
   if (signal) {
@@ -756,52 +723,61 @@ async function streamRequest(
     }
   }
 
-  const result = streamText(
-    buildCallArgs(request, provider(request.model), controller.signal),
-  )
+  const response = captureStreamMetadata(controller.signal)
+  const fetch = options.fetch ?? globalThis.fetch
+  const provider = createOpenAICompatible({
+    ...options,
+    fetch: Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const res = await fetch(input, init)
+      response.receive(res)
+      return res
+    }, fetch),
+  })
+  let result
+  try {
+    result = streamText({
+      ...buildCallArgs(request, provider(request.model), tracking, controller.signal),
+      // Errors are mapped by streamEvents. The SDK default logs raw API details.
+      onError: ({ error }) => response.fail(mapError(error, signal)),
+    })
+  } catch (error) {
+    response.fail(error)
+    signal?.removeEventListener('abort', onOuterAbort)
+    throw error
+  }
 
-  const stream: StreamResponse = {
+  const stream: ChannelStream = {
     controller,
+    metadata: response.metadata,
     [Symbol.asyncIterator]() {
       return streamEvents(
         request.model,
         result.fullStream,
+        tracking,
         controller.signal,
         signal,
         onOuterAbort,
       )
     },
   }
-  // 扩展面: metadata — 绑定 AI SDK result.response (PromiseLike, 流结束后 resolve)
-  // claude.ts 桥接读取 stream.metadata.status 做错误处理; 对 OpenAI 兼容端点,
-  // 响应头在流结束时才可用, 桥接的 await 会延迟到流完成 (正常流无感知)。
-  const metadata = (async () => {
-    const res = await result.response
-    const headers = res.headers ?? {}
-    const requestId = headers['x-request-id'] ?? headers['request-id'] ?? res.id ?? ''
-    return {
-      // OpenAI 兼容端点无独立 status — 请求级错误以流事件 error 呈现,
-      // 桥接的 status >= 400 检查对正常流始终通过。
-      status: 200,
-      headers: new Headers(headers),
-      requestID: requestId,
-    }
-  })()
-  return Object.assign(stream, { metadata })
+  // Transport headers arrive before the first delta; result.response waits for
+  // the whole reply and rejects separately when the API denies access.
+  return stream
 }
 
 // ============================================================================
-// 非流式映射 — generateText → WithResponse<AssistantMessage>
+// 非流式映射 — generateText → ModelResponse<AssistantMessage>
 // ============================================================================
 
 async function generateRequest(
   request: ModelRequest,
   provider: OpenAICompatibleProvider,
+  tracking: TrackingState,
   signal: AbortSignal | undefined,
-): Promise<WithResponse<AssistantMessage>> {
+): Promise<ModelResponse<AssistantMessage>> {
   try {
     const result = await generateText(
-      buildCallArgs(request, provider(request.model), signal),
+      buildCallArgs(request, provider(request.model), tracking, signal),
     )
 
     const content: ContentBlock[] = []
@@ -832,12 +808,12 @@ async function generateRequest(
       stop_sequence: null,
       usage: toUsage(result.usage),
     }
-    lastAssistantMessageId = message.id
+    tracking.lastAssistantMessageId = message.id
 
     const responseHeaders = result.response.headers ?? {}
     return {
       data: message,
-      request_id:
+      requestId:
         responseHeaders['x-request-id'] ??
         responseHeaders['request-id'] ??
         result.response.id,

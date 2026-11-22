@@ -9,7 +9,6 @@ import {
   getFlagSettingsPath,
   getInlinePlugins,
   getMainLoopModelOverride,
-  getSessionBypassPermissionsMode,
   getSessionId,
 } from '../../bootstrap/state.js'
 import type { AppState } from '../../state/AppState.js'
@@ -35,6 +34,7 @@ import {
   resetBackendDetection,
 } from '../../utils/swarm/backends/registry.js'
 import { getTeammateModeFromSnapshot } from '../../utils/swarm/backends/teammateModeSnapshot.js'
+import { getInheritedPermissionModeFlag } from '../../utils/swarm/spawnUtils.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
 import { isPaneBackend } from '../../utils/swarm/backends/types.js'
 import {
@@ -131,7 +131,7 @@ export type SpawnTeammateConfig = {
   description?: string
   /** request_id of the API call whose response contained the tool_use that
    *  spawned this teammate. Threaded through to TeammateAgentContext for
-   *  lineage tracing on tengu_api_* events. */
+   *  lineage tracing on nexus_api_* events. */
   invokingRequestId?: string
 }
 
@@ -209,26 +209,8 @@ function buildInheritedCliFlags(options?: {
   planModeRequired?: boolean
   permissionMode?: PermissionMode
 }): string {
-  const flags: string[] = []
   const { planModeRequired, permissionMode } = options || {}
-
-  // Propagate permission mode to teammates, but NOT if plan mode is required
-  // Plan mode takes precedence over bypass permissions for safety
-  if (planModeRequired) {
-    // Don't inherit bypass permissions when plan mode is required
-  } else if (
-    permissionMode === 'bypassPermissions' ||
-    getSessionBypassPermissionsMode()
-  ) {
-    flags.push('--dangerously-skip-permissions')
-  } else if (permissionMode === 'acceptEdits') {
-    flags.push('--permission-mode acceptEdits')
-  } else if (permissionMode === 'auto') {
-    // Teammates inherit auto mode so the classifier auto-approves their tool
-    // calls too. The teammate's own startup (permissionSetup.ts) handles
-    // GrowthBook gate checks and setAutoModeActive(true) independently.
-    flags.push('--permission-mode auto')
-  }
+  const flags = [getInheritedPermissionModeFlag(planModeRequired, permissionMode)]
 
   // Propagate --model if explicitly set via CLI
   const modelOverride = getMainLoopModelOverride()
@@ -300,7 +282,7 @@ export async function generateUniqueTeammateName(
 /**
  * Handle spawn operation using split-pane view (default).
  * When inside tmux: Creates teammates in a shared window with leader on left, teammates on right.
- * When outside tmux: Creates a claude-swarm session with all teammates in a tiled layout.
+ * When outside tmux: Creates a nexus-swarm session with all teammates in a tiled layout.
  */
 async function handleSpawnSplitPane(
   input: SpawnInput,
@@ -384,7 +366,7 @@ async function handleSpawnSplitPane(
   // Create a pane in the swarm view
   // - Inside tmux: splits current window (leader on left, teammates on right)
   // - In iTerm2 with it2: uses native iTerm2 split panes
-  // - Outside both: creates claude-swarm session with tiled teammates
+  // - Outside both: creates nexus-swarm session with tiled teammates
   const { paneId, isFirstTeammate } = await createTeammatePaneInSwarmView(
     sanitizedName,
     teammateColor,
@@ -400,7 +382,7 @@ async function handleSpawnSplitPane(
   // Note: We spawn without a prompt - initial instructions are sent via mailbox
   const binaryPath = getTeammateCommand()
 
-  // Build teammate identity CLI args (replaces CLAUDE_CODE_* env vars)
+  // Build teammate identity CLI args (replaces NEXUS_* env vars)
   const teammateArgs = [
     `--agent-id ${quote([teammateId])}`,
     `--agent-name ${quote([sanitizedName])}`,
@@ -417,7 +399,7 @@ async function handleSpawnSplitPane(
   // Pass plan_mode_required to prevent inheriting bypass permissions
   let inheritedFlags = buildInheritedCliFlags({
     planModeRequired: plan_mode_required,
-    permissionMode: appState.toolPermissionContext.mode,
+    permissionMode: getAppState().toolPermissionContext.mode,
   })
 
   // If teammate has a custom model, add --model flag (or replace inherited one)
@@ -435,7 +417,7 @@ async function handleSpawnSplitPane(
 
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
-  // Includes CLAUDECODE, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
+  // Includes NEXUS_TERMINAL, NEXUS_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
   const envStr = buildInheritedEnvVars()
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 
@@ -607,7 +589,7 @@ async function handleSpawnSeparateWindow(
   // Note: We spawn without a prompt - initial instructions are sent via mailbox
   const binaryPath = getTeammateCommand()
 
-  // Build teammate identity CLI args (replaces CLAUDE_CODE_* env vars)
+  // Build teammate identity CLI args (replaces NEXUS_* env vars)
   const teammateArgs = [
     `--agent-id ${quote([teammateId])}`,
     `--agent-name ${quote([sanitizedName])}`,
@@ -624,7 +606,7 @@ async function handleSpawnSeparateWindow(
   // Pass plan_mode_required to prevent inheriting bypass permissions
   let inheritedFlags = buildInheritedCliFlags({
     planModeRequired: plan_mode_required,
-    permissionMode: appState.toolPermissionContext.mode,
+    permissionMode: getAppState().toolPermissionContext.mode,
   })
 
   // If teammate has a custom model, add --model flag (or replace inherited one)
@@ -642,7 +624,7 @@ async function handleSpawnSeparateWindow(
 
   const flagsStr = inheritedFlags ? ` ${inheritedFlags}` : ''
   // Propagate env vars that teammates need but may not inherit from tmux split-window shells.
-  // Includes CLAUDECODE, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
+  // Includes NEXUS_TERMINAL, NEXUS_EXPERIMENTAL_AGENT_TEAMS, and API provider vars.
   const envStr = buildInheritedEnvVars()
   const spawnCommand = `cd ${quote([workingDir])} && env ${envStr} ${quote([binaryPath])} ${teammateArgs}${flagsStr}`
 

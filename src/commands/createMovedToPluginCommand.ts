@@ -41,14 +41,14 @@ export function createMovedToPluginCommand({
       args: string,
       context: ToolUseContext,
     ): Promise<ContentBlockParam[]> {
-      if (process.env.USER_TYPE === 'ant') {
+      if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
         return [
           {
             type: 'text',
             text: `This command has been moved to a plugin. Tell the user:
 
 1. To install the plugin, run:
-   claude plugin install ${pluginName}@claude-code-marketplace
+   nexus plugin install ${pluginName}@nexus-code-marketplace
 
 2. After installation, use /${pluginName}:${pluginCommand} to run this command
 

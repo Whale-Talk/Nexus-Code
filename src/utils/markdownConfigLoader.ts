@@ -26,7 +26,7 @@ import { getManagedFilePath } from './settings/managedPath.js'
 import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
 
 // Nexus configuration directory names
-export const CLAUDE_CONFIG_DIRECTORIES = [
+export const NEXUS_CONFIG_DIRECTORIES = [
   'commands',
   'agents',
   'output-styles',
@@ -35,7 +35,7 @@ export const CLAUDE_CONFIG_DIRECTORIES = [
   ...(feature('TEMPLATES') ? (['templates'] as const) : []),
 ] as const
 
-export type ClaudeConfigDirectory = (typeof CLAUDE_CONFIG_DIRECTORIES)[number]
+export type NexusConfigDirectory = (typeof NEXUS_CONFIG_DIRECTORIES)[number]
 
 export type MarkdownFile = {
   filePath: string
@@ -206,7 +206,7 @@ function resolveStopBoundary(cwd: string): string | null {
 
 /**
  * Traverses from the current directory up to the git root (or home directory if not in a git repo),
- * collecting all .nexus directories along the way (with .claude legacy fallback).
+ * collecting all .nexus directories along the way (with .nexus legacy fallback).
  *
  * Stopping at git root prevents commands/skills from parent directories outside the repository
  * from leaking into projects. For example, if ~/projects/.nexus/commands/ exists, it won't
@@ -214,10 +214,10 @@ function resolveStopBoundary(cwd: string): string | null {
  *
  * @param subdir Subdirectory (eg. "commands", "agents")
  * @param cwd Current working directory to start from
- * @returns Array of directory paths containing .nexus/subdir (or legacy .claude/subdir), from most specific (cwd) to least specific
+ * @returns Array of directory paths containing .nexus/subdir (or legacy .nexus/subdir), from most specific (cwd) to least specific
  */
 export function getProjectDirsUpToHome(
-  subdir: ClaudeConfigDirectory,
+  subdir: NexusConfigDirectory,
   cwd: string,
 ): string[] {
   const home = resolve(homedir()).normalize('NFC')
@@ -235,9 +235,9 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    // Primary: .nexus/<subdir>, legacy fallback: .claude/<subdir> (pre-rename projects)
-    for (const dirName of ['.nexus', '.claude']) {
-      const claudeSubdir = join(current, dirName, subdir)
+    // Primary: .nexus/<subdir>, legacy fallback: .nexus/<subdir> (pre-rename projects)
+    for (const dirName of ['.nexus']) {
+      const nexusSubdir = join(current, dirName, subdir)
       // Filter to existing dirs. This is a perf filter (avoids spawning
       // ripgrep on non-existent dirs downstream) and the worktree fallback
       // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
@@ -245,8 +245,8 @@ export function getProjectDirsUpToHome(
       // than silently swallowing them. Downstream loadMarkdownFiles handles
       // the TOCTOU window (dir disappearing before read) gracefully.
       try {
-        statSync(claudeSubdir)
-        dirs.push(claudeSubdir)
+        statSync(nexusSubdir)
+        dirs.push(nexusSubdir)
       } catch (e: unknown) {
         if (!isFsInaccessible(e)) throw e
       }
@@ -284,13 +284,11 @@ export function getProjectDirsUpToHome(
  */
 export const loadMarkdownFilesForSubdir = memoize(
   async function (
-    subdir: ClaudeConfigDirectory,
+    subdir: NexusConfigDirectory,
     cwd: string,
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
     const userDir = join(getNexusConfigHomeDir(), subdir)
-    // Legacy fallback: OMC installs to ~/.claude/<subdir> before the .nexus migration
-    const legacyUserDir = join(dirname(getNexusConfigHomeDir()), '.claude', subdir)
     const managedDir = join(getManagedFilePath(), '.nexus', subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
@@ -303,7 +301,7 @@ export const loadMarkdownFilesForSubdir = memoize(
     // is absent. A standard `git worktree add` checks out the full tree, so the
     // worktree already has identical .nexus/<subdir> content — loading the main
     // repo's copy too would duplicate every command/agent/skill
-    // (anthropics/claude-code#29599, #28182, #26992).
+    // (Whale-Talk/Nexus-Code#29599, #28182, #26992).
     //
     // projectDirs already reflects existence (getProjectDirsUpToHome checked
     // each dir), so we compare against that instead of stat'ing again.
@@ -317,9 +315,9 @@ export const loadMarkdownFilesForSubdir = memoize(
         dir => normalizePathForComparison(dir) === worktreeSubdir,
       )
       if (!worktreeHasSubdir) {
-        const mainClaudeSubdir = join(canonicalRoot, '.nexus', subdir)
-        if (!projectDirs.includes(mainClaudeSubdir)) {
-          projectDirs.push(mainClaudeSubdir)
+        const mainNexusSubdir = join(canonicalRoot, '.nexus', subdir)
+        if (!projectDirs.includes(mainNexusSubdir)) {
+          projectDirs.push(mainNexusSubdir)
         }
       }
     }
@@ -333,17 +331,12 @@ export const loadMarkdownFilesForSubdir = memoize(
           source: 'policySettings' as const,
         })),
       ),
-      // Conditionally load user files (primary ~/.nexus + legacy ~/.claude)
+      // Load the configured Nexus user directory.
       isSettingSourceEnabled('userSettings') &&
       !(subdir === 'agents' && isRestrictedToPluginOnly('agents'))
-        ? Promise.all([
-            loadMarkdownFiles(userDir).then(_ =>
-              _.map(file => ({ ...file, baseDir: userDir, source: 'userSettings' as const })),
-            ),
-            loadMarkdownFiles(legacyUserDir).then(_ =>
-              _.map(file => ({ ...file, baseDir: legacyUserDir, source: 'userSettings' as const })),
-            ),
-          ]).then(([a, b]) => [...a, ...b])
+        ? loadMarkdownFiles(userDir).then(files =>
+            files.map(file => ({ ...file, baseDir: userDir, source: 'userSettings' as const })),
+          )
         : Promise.resolve([]),
       // Conditionally load project files from all directories up to home
       isSettingSourceEnabled('projectSettings') &&
@@ -373,7 +366,7 @@ export const loadMarkdownFilesForSubdir = memoize(
     // symlinked to a directory within the project hierarchy, causing the same
     // physical file to be discovered through different paths.
     // Dedup by basename (name.ext), not inode. Legacy-fallback dirs
-    // (~/.claude/<subdir> vs ~/.nexus/<subdir>) hold physical copies, not
+    // (~/.nexus/<subdir> vs ~/.nexus/<subdir>) hold physical copies, not
     // symlinks — inode dedup can't catch them, and every agent/command
     // would appear once per source directory. First occurrence wins;
     // allFiles order encodes source priority (managed > user primary >
@@ -400,7 +393,7 @@ export const loadMarkdownFilesForSubdir = memoize(
       )
     }
 
-    logEvent(`tengu_dir_search`, {
+    logEvent(`nexus_dir_search`, {
       durationMs: Date.now() - searchStartTime,
       managedFilesFound: managedFiles.length,
       userFilesFound: userFiles.length,
@@ -413,7 +406,7 @@ export const loadMarkdownFilesForSubdir = memoize(
     return deduplicatedFiles
   },
   // Custom resolver creates cache key from both subdir and cwd parameters
-  (subdir: ClaudeConfigDirectory, cwd: string) => `${subdir}:${cwd}`,
+  (subdir: NexusConfigDirectory, cwd: string) => `${subdir}:${cwd}`,
 )
 
 /**
@@ -422,7 +415,7 @@ export const loadMarkdownFilesForSubdir = memoize(
  * This implementation exists alongside ripgrep for the following reasons:
  * 1. Ripgrep has poor startup performance in native builds (noticeable on app startup)
  * 2. Provides a fallback when ripgrep is unavailable
- * 3. Can be explicitly enabled via CLAUDE_CODE_USE_NATIVE_FILE_SEARCH env var
+ * 3. Can be explicitly enabled via NEXUS_USE_NATIVE_FILE_SEARCH env var
  *
  * Symlink handling:
  * - Follows symlinks (equivalent to ripgrep's --follow flag)
@@ -539,10 +532,10 @@ async function loadMarkdownFiles(dir: string): Promise<
 > {
   // File search strategy:
   // - Default: ripgrep (faster, battle-tested)
-  // - Fallback: native Node.js (when CLAUDE_CODE_USE_NATIVE_FILE_SEARCH is set)
+  // - Fallback: native Node.js (when NEXUS_USE_NATIVE_FILE_SEARCH is set)
   //
   // Why both? Ripgrep has poor startup performance in native builds.
-  const useNative = isEnvTruthy(process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH)
+  const useNative = isEnvTruthy(process.env.NEXUS_USE_NATIVE_FILE_SEARCH)
   const signal = AbortSignal.timeout(3000)
   let files: string[]
   try {

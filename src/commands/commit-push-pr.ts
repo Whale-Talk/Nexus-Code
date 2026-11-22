@@ -5,7 +5,7 @@ import {
 } from '../utils/attribution.js'
 import { getDefaultBranch } from '../utils/git.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
-import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
+import { getAttributionPrivacyInstructions, isAttributionHidden } from '../utils/attributionPrivacy.js'
 
 const ALLOWED_TOOLS = [
   'Bash(git checkout --branch:*)',
@@ -20,7 +20,7 @@ const ALLOWED_TOOLS = [
   'Bash(gh pr merge:*)',
   'ToolSearch',
   'mcp__slack__send_message',
-  'mcp__claude_ai_Slack__slack_send_message',
+  'mcp__nexus_ai_Slack__slack_send_message',
 ]
 
 function getPromptContent(
@@ -35,8 +35,6 @@ function getPromptContent(
   const username = process.env.USER || ''
 
   let prefix = ''
-  let reviewerArg = ' and `--reviewer anthropics/claude-code`'
-  let addReviewerArg = ' (and add `--add-reviewer anthropics/claude-code`)'
   let changelogSection = `
 
 ## Changelog
@@ -46,10 +44,8 @@ function getPromptContent(
   let slackStep = `
 
 5. After creating/updating the PR, check if the user's NEXUS.md mentions posting to Slack channels. If it does, use ToolSearch to search for "slack send message" tools. If ToolSearch finds a Slack tool, ask the user if they'd like you to post the PR URL to the relevant Slack channel. Only post if the user confirms. If ToolSearch returns no results or errors, skip this step silently—do not mention the failure, do not attempt workarounds, and do not try alternative approaches.`
-  if (process.env.USER_TYPE === 'ant' && isUndercover()) {
-    prefix = getUndercoverInstructions() + '\n'
-    reviewerArg = ''
-    addReviewerArg = ''
+  if (isAttributionHidden()) {
+    prefix = getAttributionPrivacyInstructions() + '\n'
     changelogSection = ''
     slackStep = ''
   }
@@ -87,7 +83,7 @@ EOF
 )"
 \`\`\`
 3. Push the branch to origin
-4. If a PR already exists for this branch (check the gh pr view output above), update the PR title and body using \`gh pr edit\` to reflect the current diff${addReviewerArg}. Otherwise, create a pull request using \`gh pr create\` with heredoc syntax for the body${reviewerArg}.
+4. If a PR already exists for this branch (check the gh pr view output above), update the PR title and body using \`gh pr edit\` to reflect the current diff. Otherwise, create a pull request using \`gh pr create\` with heredoc syntax for the body.
    - IMPORTANT: Keep PR titles short (under 70 characters). Use the body for details.
 \`\`\`
 gh pr create --title "Short, descriptive title" --body "$(cat <<'EOF'

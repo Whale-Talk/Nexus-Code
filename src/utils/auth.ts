@@ -4,27 +4,21 @@ import { execa } from 'execa'
 import { mkdir, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
-import { CLAUDE_AI_PROFILE_SCOPE } from 'src/constants/oauth.js'
+import { HOSTED_ACCOUNT_PROFILE_SCOPE } from 'src/constants/oauth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { getModelStrings } from 'src/utils/model/modelStrings.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
 } from '../bootstrap/state.js'
 import {
-  getMockSubscriptionType,
-  shouldUseMockSubscription,
-} from '../services/mockRateLimits.js'
-import {
   isOAuthTokenExpired,
   refreshOAuthToken,
-  shouldUseClaudeAIAuth,
+  shouldUseHostedAccountAuth,
 } from '../services/oauth/client.js'
-import { getOauthProfileFromOauthToken } from '../services/oauth/getOauthProfile.js'
 import type { OAuthTokens, SubscriptionType } from '../services/oauth/types.js'
 import {
   getApiKeyFromFileDescriptor,
@@ -40,7 +34,6 @@ import {
   isValidAwsStsOutput,
 } from './aws.js'
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
-import { clearBetasCaches } from './betas.js'
 import {
   type AccountInfo,
   checkHasTrustDialogAccepted,
@@ -85,75 +78,24 @@ const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
  * to the user's ~/.nexus/settings.json API-key config (apiKeyHelper,
  * env.NEXUS_API_KEY, env.NEXUS_AUTH_TOKEN). Those settings exist for
  * the user's terminal CLI, not managed sessions. Without this guard, a user
- * who runs `claude` in their terminal with an API key sees every CCD session
+ * who runs `nexus` in their terminal with an API key sees every CCD session
  * also use that key — and fail if it's stale/wrong-org.
  */
 function isManagedOAuthContext(): boolean {
   return (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ||
-    process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'
+    isEnvTruthy(process.env.NEXUS_REMOTE) ||
+    process.env.NEXUS_ENTRYPOINT === 'nexus-desktop'
   )
 }
 
 /** Whether we are supporting direct 1P auth. */
 // this code is closely related to getAuthTokenSource
-export function isAnthropicAuthEnabled(): boolean {
-  // Nexus: no account concept — always API-key based, never OAuth.
-  // This disables the login/OAuth onboarding flow entirely.
-  if (process.env.NEXUS_BASE_URL) return false
-
-  // --bare: API-key-only, never OAuth.
-  if (isBareMode()) return false
-
-  // `claude ssh` remote: ANTHROPIC_UNIX_SOCKET tunnels API calls through a
-  // local auth-injecting proxy. The launcher sets CLAUDE_CODE_OAUTH_TOKEN as a
-  // placeholder iff the local side is a subscriber (so the remote includes the
-  // oauth-2025 beta header to match what the proxy will inject). The remote's
-  // ~/.claude settings (apiKeyHelper, settings.env.NEXUS_API_KEY) MUST NOT
-  // flip this — they'd cause a header mismatch with the proxy and a bogus
-  // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
-  }
-
-  const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-
-  // Check if user has configured an external API key source
-  // This allows externally-provided API keys to work (without requiring proxy configuration)
-  const settings = getSettings_DEPRECATED() || {}
-  const apiKeyHelper = settings.apiKeyHelper
-  const hasExternalAuthToken =
-    process.env.NEXUS_AUTH_TOKEN ||
-    apiKeyHelper ||
-    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
-
-  // Check if API key is from an external source (not managed by /login)
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource({
-    skipRetrievingKeyFromApiKeyHelper: true,
-  })
-  const hasExternalApiKey =
-    apiKeySource === 'NEXUS_API_KEY' || apiKeySource === 'apiKeyHelper'
-
-  // Disable Anthropic auth if:
-  // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
-  // 2. User has an external API key (regardless of proxy configuration)
-  // 3. User has an external auth token (regardless of proxy configuration)
-  // this may cause issues if users have complex proxy / gateway "client-side creds" auth scenarios,
-  // e.g. if they want to set X-Api-Key to a gateway key but use Anthropic OAuth for the Authorization
-  // if we get reports of that, we should probably add an env var to force OAuth enablement
-  const shouldDisableAuth =
-    is3P ||
-    (hasExternalAuthToken && !isManagedOAuthContext()) ||
-    (hasExternalApiKey && !isManagedOAuthContext())
-
-  return !shouldDisableAuth
+export function isHostedLoginEnabled(): boolean {
+  return false
 }
 
 /** Where the auth token is being sourced from, if any. */
-// this code is closely related to isAnthropicAuthEnabled
+// this code is closely related to isHostedLoginEnabled
 export function getAuthTokenSource() {
   // --bare: API-key-only. apiKeyHelper (from --settings) is the only
   // bearer-token-shaped source allowed. OAuth env vars, FD tokens, and
@@ -171,8 +113,8 @@ export function getAuthTokenSource() {
     return { source: 'NEXUS_AUTH_TOKEN' as const, hasToken: true }
   }
 
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
+  if (process.env.NEXUS_OAUTH_TOKEN) {
+    return { source: 'NEXUS_OAUTH_TOKEN' as const, hasToken: true }
   }
 
   // Check for OAuth token from file descriptor (or its CCR disk fallback)
@@ -184,9 +126,9 @@ export function getAuthTokenSource() {
     // doesn't exist. Call sites fall through correctly — the new source is
     // !== 'none' (cli/handlers/auth.ts → oauth_token) and not in the
     // isEnvVarToken set (auth.ts:1844 → generic re-login message).
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
+    if (process.env.NEXUS_OAUTH_TOKEN_FILE_DESCRIPTOR) {
       return {
-        source: 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
+        source: 'NEXUS_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
         hasToken: true,
       }
     }
@@ -203,9 +145,9 @@ export function getAuthTokenSource() {
     return { source: 'apiKeyHelper' as const, hasToken: true }
   }
 
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (shouldUseClaudeAIAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
-    return { source: 'claude.ai' as const, hasToken: true }
+  const oauthTokens = getHostedAccountOAuthTokens()
+  if (shouldUseHostedAccountAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
+    return { source: 'hosted-account' as const, hasToken: true }
   }
 
   return { source: 'none' as const, hasToken: false }
@@ -217,34 +159,27 @@ export type ApiKeySource =
   | '/login managed key'
   | 'none'
 
-export function getAnthropicApiKey(): null | string {
-  const { key } = getAnthropicApiKeyWithSource()
+export function getProviderApiKey(): null | string {
+  const { key } = getProviderApiKeyWithSource()
   return key
 }
 
-/**
- * Nexus: true when NEXUS_BASE_URL points at a custom relay (any host
- * other than api.anthropic.com). Used to prefer env API keys in interactive
- * sessions where official OAuth would otherwise take over.
- */
-function isCustomAnthropicBaseUrl(): boolean {
-  const baseUrl = process.env.NEXUS_BASE_URL
-  if (!baseUrl) return false
+function hasExplicitModelEndpoint(): boolean {
   try {
-    return new URL(baseUrl).host !== 'api.anthropic.com'
+    return ['https:', 'http:'].includes(new URL(process.env.NEXUS_BASE_URL || '').protocol)
   } catch {
     return false
   }
 }
 
-export function hasAnthropicApiKeyAuth(): boolean {
-  const { key, source } = getAnthropicApiKeyWithSource({
+export function hasProviderApiKeyAuth(): boolean {
+  const { key, source } = getProviderApiKeyWithSource({
     skipRetrievingKeyFromApiKeyHelper: true,
   })
   return key !== null && source !== 'none'
 }
 
-export function getAnthropicApiKeyWithSource(
+export function getProviderApiKeyWithSource(
   opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
 ): {
   key: null | string
@@ -269,14 +204,13 @@ export function getAnthropicApiKeyWithSource(
   }
 
   // On homespace, don't use NEXUS_API_KEY (use Console key instead)
-  // https://anthropic.slack.com/archives/C08428WSLKV/p1747331773214779
   const apiKeyEnv = isRunningOnHomespace()
     ? undefined
     : process.env.NEXUS_API_KEY
 
-  // Always check for direct environment variable when the user ran claude --print.
+  // Always check for direct environment variable when the user ran nexus --print.
   // This is useful for CI, etc.
-  if ((preferThirdPartyAuthentication() || isCustomAnthropicBaseUrl()) && apiKeyEnv) {
+  if ((preferThirdPartyAuthentication() || hasExplicitModelEndpoint()) && apiKeyEnv) {
     return {
       key: apiKeyEnv,
       source: 'NEXUS_API_KEY',
@@ -295,11 +229,11 @@ export function getAnthropicApiKeyWithSource(
 
     if (
       !apiKeyEnv &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+      !process.env.NEXUS_OAUTH_TOKEN &&
+      !process.env.NEXUS_OAUTH_TOKEN_FILE_DESCRIPTOR
     ) {
       throw new Error(
-        'NEXUS_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
+        'NEXUS_API_KEY or NEXUS_OAUTH_TOKEN env var is required',
       )
     }
 
@@ -450,11 +384,11 @@ export function isAwsCredentialExportFromProjectSettings(): boolean {
 
 /**
  * Calculate TTL in milliseconds for the API key helper cache
- * Uses CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var if set and valid,
+ * Uses NEXUS_API_KEY_HELPER_TTL_MS env var if set and valid,
  * otherwise defaults to 5 minutes
  */
 export function calculateApiKeyHelperTTL(): number {
-  const envTtl = process.env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS
+  const envTtl = process.env.NEXUS_API_KEY_HELPER_TTL_MS
 
   if (envTtl) {
     const parsed = parseInt(envTtl, 10)
@@ -462,7 +396,7 @@ export function calculateApiKeyHelperTTL(): number {
       return parsed
     }
     logForDebugging(
-      `Found CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
+      `Found NEXUS_API_KEY_HELPER_TTL_MS env var, but it was not a valid number. Got ${envTtl}`,
       { level: 'error' },
     )
   }
@@ -571,7 +505,7 @@ async function _executeApiKeyHelper(
         `Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('apiKeyHelper invoked before trust check', error)
-      logEvent('tengu_apiKeyHelper_missing_trust11', {})
+      logEvent('nexus_apiKeyHelper_missing_trust11', {})
       return null
     }
   }
@@ -646,7 +580,7 @@ async function runAwsAuthRefresh(): Promise<boolean> {
         `Security: awsAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('awsAuthRefresh invoked before trust check', error)
-      logEvent('tengu_awsAuthRefresh_missing_trust', {})
+      logEvent('nexus_awsAuthRefresh_missing_trust', {})
       return false
     }
   }
@@ -708,7 +642,7 @@ export function refreshAwsAuth(awsAuthRefresh: string): Promise<boolean> {
               'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
             )
           : chalk.red(
-              'Error running awsAuthRefresh (in settings or ~/.claude.json):',
+              'Error running awsAuthRefresh (in settings or ~/.nexus/profile.json):',
             )
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.error(message)
@@ -743,7 +677,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
         `Security: awsCredentialExport executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('awsCredentialExport invoked before trust check', error)
-      logEvent('tengu_awsCredentialExport_missing_trust', {})
+      logEvent('nexus_awsCredentialExport_missing_trust', {})
       return null
     }
   }
@@ -786,7 +720,7 @@ async function getAwsCredsFromCredentialExport(): Promise<{
       }
     } catch (e) {
       const message = chalk.red(
-        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):',
+        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.nexus/profile.json):',
       )
       if (e instanceof Error) {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -910,7 +844,7 @@ async function runGcpAuthRefresh(): Promise<boolean> {
         `Security: gcpAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('gcpAuthRefresh invoked before trust check', error)
-      logEvent('tengu_gcpAuthRefresh_missing_trust', {})
+      logEvent('nexus_gcpAuthRefresh_missing_trust', {})
       return false
     }
   }
@@ -976,7 +910,7 @@ export function refreshGcpAuth(gcpAuthRefresh: string): Promise<boolean> {
               'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
             )
           : chalk.red(
-              'Error running gcpAuthRefresh (in settings or ~/.claude.json):',
+              'Error running gcpAuthRefresh (in settings or ~/.nexus/profile.json):',
             )
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.error(message)
@@ -1065,10 +999,9 @@ export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
 
   // Safe to prefetch - either not from project settings or trust already established
   void refreshAndGetAwsCredentials()
-  getModelStrings()
 }
 
-/** @private Use {@link getAnthropicApiKey} or {@link getAnthropicApiKeyWithSource} */
+/** @private Use {@link getProviderApiKey} or {@link getProviderApiKeyWithSource} */
 export const getApiKeyFromConfigOrMacOSKeychain = memoize(
   (): { key: string; source: ApiKeySource } | null => {
     if (isBareMode()) return null
@@ -1141,19 +1074,19 @@ export async function saveApiKey(apiKey: string): Promise<void> {
         reject: false,
       })
 
-      logEvent('tengu_api_key_saved_to_keychain', {})
+      logEvent('nexus_api_key_saved_to_keychain', {})
       savedToKeychain = true
     } catch (e) {
       logError(e)
-      logEvent('tengu_api_key_keychain_error', {
+      logEvent('nexus_api_key_keychain_error', {
         error: errorMessage(
           e,
         ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      logEvent('tengu_api_key_saved_to_config', {})
+      logEvent('nexus_api_key_saved_to_config', {})
     }
   } else {
-    logEvent('tengu_api_key_saved_to_config', {})
+    logEvent('nexus_api_key_saved_to_config', {})
   }
 
   const normalizedKey = normalizeApiKeyForConfig(apiKey)
@@ -1216,14 +1149,14 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   success: boolean
   warning?: string
 } {
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
-    logEvent('tengu_oauth_tokens_not_claude_ai', {})
+  if (!shouldUseHostedAccountAuth(tokens.scopes)) {
+    logEvent('nexus_oauth_tokens_not_nexus_ai', {})
     return { success: true }
   }
 
   // Skip saving inference-only tokens (they come from env vars)
   if (!tokens.refreshToken || !tokens.expiresAt) {
-    logEvent('tengu_oauth_tokens_inference_only', {})
+    logEvent('nexus_oauth_tokens_inference_only', {})
     return { success: true }
   }
 
@@ -1233,9 +1166,9 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
 
   try {
     const storageData = secureStorage.read() || {}
-    const existingOauth = storageData.claudeAiOauth
+    const existingOauth = storageData.hostedAccountOauth
 
-    storageData.claudeAiOauth = {
+    storageData.hostedAccountOauth = {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
@@ -1252,18 +1185,17 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
     const updateStatus = secureStorage.update(storageData)
 
     if (updateStatus.success) {
-      logEvent('tengu_oauth_tokens_saved', { storageBackend })
+      logEvent('nexus_oauth_tokens_saved', { storageBackend })
     } else {
-      logEvent('tengu_oauth_tokens_save_failed', { storageBackend })
+      logEvent('nexus_oauth_tokens_save_failed', { storageBackend })
     }
 
-    getClaudeAIOAuthTokens.cache?.clear?.()
-    clearBetasCaches()
+    getHostedAccountOAuthTokens.cache?.clear?.()
     clearToolSchemaCache()
     return updateStatus
   } catch (error) {
     logError(error)
-    logEvent('tengu_oauth_tokens_save_exception', {
+    logEvent('nexus_oauth_tokens_save_exception', {
       storageBackend,
       error: errorMessage(
         error,
@@ -1273,52 +1205,7 @@ export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
   }
 }
 
-export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
-  // --bare: API-key-only. No OAuth env tokens, no keychain, no credentials file.
-  if (isBareMode()) return null
-
-  // Check for force-set OAuth token from environment variable
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
-    }
-  }
-
-  // Check for OAuth token from file descriptor
-  const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
-  if (oauthTokenFromFd) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: oauthTokenFromFd,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
-    }
-  }
-
-  try {
-    const secureStorage = getSecureStorage()
-    const storageData = secureStorage.read()
-    const oauthData = storageData?.claudeAiOauth
-
-    if (!oauthData?.accessToken) {
-      return null
-    }
-
-    return oauthData
-  } catch (error) {
-    logError(error)
-    return null
-  }
-})
+export const getHostedAccountOAuthTokens = memoize((): OAuthTokens | null => null)
 
 /**
  * Clears all OAuth token caches. Call this on 401 errors to ensure
@@ -1327,7 +1214,7 @@ export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
  * server (e.g., due to clock corrections after token was issued).
  */
 export function clearOAuthTokenCache(): void {
-  getClaudeAIOAuthTokens.cache?.clear?.()
+  getHostedAccountOAuthTokens.cache?.clear?.()
   clearKeychainCache()
 }
 
@@ -1352,11 +1239,10 @@ async function invalidateOAuthCacheIfDiskChanged(): Promise<void> {
     // the memoize so it delegates to the keychain cache's 30s TTL instead
     // of caching forever on top. `security find-generic-password` is
     // ~15ms; bounded to once per 30s by the keychain cache.
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getHostedAccountOAuthTokens.cache?.clear?.()
   }
 }
 
-// In-flight dedup: when N claude.ai proxy connectors hit 401 with the same
 // token simultaneously (common at startup — #20930), only one should clear
 // caches and re-read the keychain. Without this, each call's clearOAuthTokenCache()
 // nukes readInFlight in macOsKeychainStorage and triggers a fresh spawn —
@@ -1396,7 +1282,7 @@ async function handleOAuth401ErrorImpl(
 ): Promise<boolean> {
   // Clear caches and re-read from keychain (async — sync read blocks ~100ms/call)
   clearOAuthTokenCache()
-  const currentTokens = await getClaudeAIOAuthTokensAsync()
+  const currentTokens = await getHostedAccountOAuthTokensAsync()
 
   if (!currentTokens?.refreshToken) {
     return false
@@ -1404,7 +1290,7 @@ async function handleOAuth401ErrorImpl(
 
   // If keychain has a different token, another tab already refreshed - use it
   if (currentTokens.accessToken !== failedAccessToken) {
-    logEvent('tengu_oauth_401_recovered_from_keychain', {})
+    logEvent('nexus_oauth_401_recovered_from_keychain', {})
     return true
   }
 
@@ -1417,21 +1303,21 @@ async function handleOAuth401ErrorImpl(
  * Delegates to the sync memoized version for env var / file descriptor tokens
  * (which don't hit the keychain), and only uses async for storage reads.
  */
-export async function getClaudeAIOAuthTokensAsync(): Promise<OAuthTokens | null> {
+export async function getHostedAccountOAuthTokensAsync(): Promise<OAuthTokens | null> {
   if (isBareMode()) return null
 
   // Env var and FD tokens are sync and don't hit the keychain
   if (
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+    process.env.NEXUS_OAUTH_TOKEN ||
     getOAuthTokenFromFileDescriptor()
   ) {
-    return getClaudeAIOAuthTokens()
+    return getHostedAccountOAuthTokens()
   }
 
   try {
     const secureStorage = getSecureStorage()
     const storageData = await secureStorage.readAsync()
-    const oauthData = storageData?.claudeAiOauth
+    const oauthData = storageData?.hostedAccountOauth
     if (!oauthData?.accessToken) {
       return null
     }
@@ -1475,7 +1361,7 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
 
   // First check if token is expired with cached value
   // Skip this check if force=true (server already told us token is bad)
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   if (!force) {
     if (!tokens?.refreshToken || !isOAuthTokenExpired(tokens.expiresAt)) {
       return false
@@ -1486,15 +1372,15 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
     return false
   }
 
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
+  if (!shouldUseHostedAccountAuth(tokens.scopes)) {
     return false
   }
 
   // Re-read tokens async to check if they're still expired
   // Another process might have refreshed them
-  getClaudeAIOAuthTokens.cache?.clear?.()
+  getHostedAccountOAuthTokens.cache?.clear?.()
   clearKeychainCache()
-  const freshTokens = await getClaudeAIOAuthTokensAsync()
+  const freshTokens = await getHostedAccountOAuthTokensAsync()
   if (
     !freshTokens?.refreshToken ||
     !isOAuthTokenExpired(freshTokens.expiresAt)
@@ -1503,32 +1389,32 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
 
   // Tokens are still expired, try to acquire lock and refresh
-  const claudeDir = getNexusConfigHomeDir()
-  await mkdir(claudeDir, { recursive: true })
+  const nexusDir = getNexusConfigHomeDir()
+  await mkdir(nexusDir, { recursive: true })
 
   let release
   try {
-    logEvent('tengu_oauth_token_refresh_lock_acquiring', {})
-    release = await lockfile.lock(claudeDir)
-    logEvent('tengu_oauth_token_refresh_lock_acquired', {})
+    logEvent('nexus_oauth_token_refresh_lock_acquiring', {})
+    release = await lockfile.lock(nexusDir)
+    logEvent('nexus_oauth_token_refresh_lock_acquired', {})
   } catch (err) {
     if ((err as { code?: string }).code === 'ELOCKED') {
       // Another process has the lock, let's retry if we haven't exceeded max retries
       if (retryCount < MAX_RETRIES) {
-        logEvent('tengu_oauth_token_refresh_lock_retry', {
+        logEvent('nexus_oauth_token_refresh_lock_retry', {
           retryCount: retryCount + 1,
         })
         // Wait a bit before retrying
         await sleep(1000 + Math.random() * 1000)
         return checkAndRefreshOAuthTokenIfNeededImpl(retryCount + 1, force)
       }
-      logEvent('tengu_oauth_token_refresh_lock_retry_limit_reached', {
+      logEvent('nexus_oauth_token_refresh_lock_retry_limit_reached', {
         maxRetries: MAX_RETRIES,
       })
       return false
     }
     logError(err)
-    logEvent('tengu_oauth_token_refresh_lock_error', {
+    logEvent('nexus_oauth_token_refresh_lock_error', {
       error: errorMessage(
         err,
       ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1537,57 +1423,56 @@ async function checkAndRefreshOAuthTokenIfNeededImpl(
   }
   try {
     // Check one more time after acquiring lock
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getHostedAccountOAuthTokens.cache?.clear?.()
     clearKeychainCache()
-    const lockedTokens = await getClaudeAIOAuthTokensAsync()
+    const lockedTokens = await getHostedAccountOAuthTokensAsync()
     if (
       !lockedTokens?.refreshToken ||
       !isOAuthTokenExpired(lockedTokens.expiresAt)
     ) {
-      logEvent('tengu_oauth_token_refresh_race_resolved', {})
+      logEvent('nexus_oauth_token_refresh_race_resolved', {})
       return false
     }
 
-    logEvent('tengu_oauth_token_refresh_starting', {})
+    logEvent('nexus_oauth_token_refresh_starting', {})
     const refreshedTokens = await refreshOAuthToken(lockedTokens.refreshToken, {
-      // For Claude.ai subscribers, omit scopes so the default
-      // CLAUDE_AI_OAUTH_SCOPES applies — this allows scope expansion
+      // HOSTED_ACCOUNT_OAUTH_SCOPES applies — this allows scope expansion
       // (e.g. adding user:file_upload) on refresh without re-login.
-      scopes: shouldUseClaudeAIAuth(lockedTokens.scopes)
+      scopes: shouldUseHostedAccountAuth(lockedTokens.scopes)
         ? undefined
         : lockedTokens.scopes,
     })
     saveOAuthTokensIfNeeded(refreshedTokens)
 
     // Clear the cache after refreshing token
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getHostedAccountOAuthTokens.cache?.clear?.()
     clearKeychainCache()
     return true
   } catch (error) {
     logError(error)
 
-    getClaudeAIOAuthTokens.cache?.clear?.()
+    getHostedAccountOAuthTokens.cache?.clear?.()
     clearKeychainCache()
-    const currentTokens = await getClaudeAIOAuthTokensAsync()
+    const currentTokens = await getHostedAccountOAuthTokensAsync()
     if (currentTokens && !isOAuthTokenExpired(currentTokens.expiresAt)) {
-      logEvent('tengu_oauth_token_refresh_race_recovered', {})
+      logEvent('nexus_oauth_token_refresh_race_recovered', {})
       return true
     }
 
     return false
   } finally {
-    logEvent('tengu_oauth_token_refresh_lock_releasing', {})
+    logEvent('nexus_oauth_token_refresh_lock_releasing', {})
     await release()
-    logEvent('tengu_oauth_token_refresh_lock_released', {})
+    logEvent('nexus_oauth_token_refresh_lock_released', {})
   }
 }
 
-export function isClaudeAISubscriber(): boolean {
-  if (!isAnthropicAuthEnabled()) {
+export function isHostedAccountSubscriber(): boolean {
+  if (!isHostedLoginEnabled()) {
     return false
   }
 
-  return shouldUseClaudeAIAuth(getClaudeAIOAuthTokens()?.scopes)
+  return shouldUseHostedAccountAuth(getHostedAccountOAuthTokens()?.scopes)
 }
 
 /**
@@ -1600,28 +1485,26 @@ export function isClaudeAISubscriber(): boolean {
  */
 export function hasProfileScope(): boolean {
   return (
-    getClaudeAIOAuthTokens()?.scopes?.includes(CLAUDE_AI_PROFILE_SCOPE) ?? false
+    getHostedAccountOAuthTokens()?.scopes?.includes(HOSTED_ACCOUNT_PROFILE_SCOPE) ?? false
   )
 }
 
 export function is1PApiCustomer(): boolean {
   // 1P API customers are users who are NOT:
-  // 1. Claude.ai subscribers (Max, Pro, Enterprise, Team)
   // 2. Vertex AI users
   // 3. AWS Bedrock users
   // 4. Foundry users
 
   // Exclude Vertex, Bedrock, and Foundry customers
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.NEXUS_USE_BEDROCK) ||
+    isEnvTruthy(process.env.NEXUS_USE_VERTEX) ||
+    isEnvTruthy(process.env.NEXUS_USE_FOUNDRY)
   ) {
     return false
   }
 
-  // Exclude Claude.ai subscribers
-  if (isClaudeAISubscriber()) {
+  if (isHostedAccountSubscriber()) {
     return false
   }
 
@@ -1630,23 +1513,23 @@ export function is1PApiCustomer(): boolean {
 }
 
 /**
- * Gets OAuth account information when Anthropic auth is enabled.
+ * Gets OAuth account information when Provider auth is enabled.
  * Returns undefined when using external API keys or third-party services.
  */
 export function getOauthAccountInfo(): AccountInfo | undefined {
-  return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
+  return isHostedLoginEnabled() ? getGlobalConfig().oauthAccount : undefined
 }
 
 /**
  * Checks if overage/extra usage provisioning is allowed for this organization.
- * This mirrors the logic in apps/claude-ai `useIsOverageProvisioningAllowed` hook as closely as possible.
+ * This mirrors the logic in apps/nexus-ai `useIsOverageProvisioningAllowed` hook as closely as possible.
  */
 export function isOverageProvisioningAllowed(): boolean {
   const accountInfo = getOauthAccountInfo()
   const billingType = accountInfo?.billingType
 
   // Must be a Nexus subscriber with a supported subscription type
-  if (!isClaudeAISubscriber() || !billingType) {
+  if (!isHostedAccountSubscriber() || !billingType) {
     return false
   }
 
@@ -1665,7 +1548,7 @@ export function isOverageProvisioningAllowed(): boolean {
 
 // Returns whether the user has Quark access at all, regardless of whether they
 // are a subscriber or PayG.
-export function hasOpusAccess(): boolean {
+export function hasQuarkAccess(): boolean {
   const subscriptionType = getSubscriptionType()
 
   return (
@@ -1681,15 +1564,11 @@ export function hasOpusAccess(): boolean {
 }
 
 export function getSubscriptionType(): SubscriptionType | null {
-  // Check for mock subscription type first (ANT-only testing)
-  if (shouldUseMockSubscription()) {
-    return getMockSubscriptionType()
-  }
 
-  if (!isAnthropicAuthEnabled()) {
+  if (!isHostedLoginEnabled()) {
     return null
   }
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = getHostedAccountOAuthTokens()
   if (!oauthTokens) {
     return null
   }
@@ -1708,7 +1587,7 @@ export function isTeamSubscriber(): boolean {
 export function isTeamPremiumSubscriber(): boolean {
   return (
     getSubscriptionType() === 'team' &&
-    getRateLimitTier() === 'default_claude_max_5x'
+    getRateLimitTier() === 'default_nexus_max_5x'
   )
 }
 
@@ -1721,10 +1600,10 @@ export function isProSubscriber(): boolean {
 }
 
 export function getRateLimitTier(): string | null {
-  if (!isAnthropicAuthEnabled()) {
+  if (!isHostedLoginEnabled()) {
     return null
   }
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = getHostedAccountOAuthTokens()
   if (!oauthTokens) {
     return null
   }
@@ -1745,16 +1624,16 @@ export function getSubscriptionName(): string {
     case 'pro':
       return 'Nexus Pro'
     default:
-      return 'Claude API'
+      return 'Nexus API'
   }
 }
 
 /** Check if using third-party services (Bedrock or Vertex or Foundry) */
 export function isUsing3PServices(): boolean {
   return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.NEXUS_USE_BEDROCK) ||
+    isEnvTruthy(process.env.NEXUS_USE_VERTEX) ||
+    isEnvTruthy(process.env.NEXUS_USE_FOUNDRY)
   )
 }
 
@@ -1797,7 +1676,7 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
 
   // Return cached headers if still valid (debounce)
   const debounceMs = parseInt(
-    process.env.CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
+    process.env.NEXUS_OTEL_HEADERS_HELPER_DEBOUNCE_MS ||
       DEFAULT_OTEL_HEADERS_DEBOUNCE_MS.toString(),
   )
   if (
@@ -1867,7 +1746,7 @@ function isConsumerPlan(plan: SubscriptionType): plan is 'max' | 'pro' {
 export function isConsumerSubscriber(): boolean {
   const subscriptionType = getSubscriptionType()
   return (
-    isClaudeAISubscriber() &&
+    isHostedAccountSubscriber() &&
     subscriptionType !== null &&
     isConsumerPlan(subscriptionType)
   )
@@ -1883,30 +1762,30 @@ export type UserAccountInfo = {
 
 export function getAccountInformation() {
   const apiProvider = getAPIProvider()
-  // Only provide account info for first-party Anthropic API
-  if (apiProvider !== 'firstParty') {
+  // Only provide account info for first-party Provider API
+  if (apiProvider !== 'channel') {
     return undefined
   }
   const { source: authTokenSource } = getAuthTokenSource()
   const accountInfo: UserAccountInfo = {}
   if (
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
+    authTokenSource === 'NEXUS_OAUTH_TOKEN' ||
+    authTokenSource === 'NEXUS_OAUTH_TOKEN_FILE_DESCRIPTOR'
   ) {
     accountInfo.tokenSource = authTokenSource
-  } else if (isClaudeAISubscriber()) {
+  } else if (isHostedAccountSubscriber()) {
     accountInfo.subscription = getSubscriptionName()
   } else {
     accountInfo.tokenSource = authTokenSource
   }
-  const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
+  const { key: apiKey, source: apiKeySource } = getProviderApiKeyWithSource()
   if (apiKey) {
     accountInfo.apiKeySource = apiKeySource
   }
 
   // We don't know the organization if we're relying on an external API key or auth token
   if (
-    authTokenSource === 'claude.ai' ||
+    authTokenSource === 'hosted-account' ||
     apiKeySource === '/login managed key'
   ) {
     // Get organization name from OAuth account info
@@ -1917,107 +1796,13 @@ export function getAccountInformation() {
   }
   const email = getOauthAccountInfo()?.emailAddress
   if (
-    (authTokenSource === 'claude.ai' ||
+    (authTokenSource === 'hosted-account' ||
       apiKeySource === '/login managed key') &&
     email
   ) {
     accountInfo.email = email
   }
   return accountInfo
-}
-
-/**
- * Result of org validation — either success or a descriptive error.
- */
-export type OrgValidationResult =
-  | { valid: true }
-  | { valid: false; message: string }
-
-/**
- * Validate that the active OAuth token belongs to the organization required
- * by `forceLoginOrgUUID` in managed settings. Returns a result object
- * rather than throwing so callers can choose how to surface the error.
- *
- * Fails closed: if `forceLoginOrgUUID` is set and we cannot determine the
- * token's org (network error, missing profile data), validation fails.
- */
-export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
-  // `claude ssh` remote: real auth lives on the local machine and is injected
-  // by the proxy. The placeholder token can't be validated against the profile
-  // endpoint. The local side already ran this check before establishing the session.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return { valid: true }
-  }
-
-  if (!isAnthropicAuthEnabled()) {
-    return { valid: true }
-  }
-
-  const requiredOrgUuid =
-    getSettingsForSource('policySettings')?.forceLoginOrgUUID
-  if (!requiredOrgUuid) {
-    return { valid: true }
-  }
-
-  // Ensure the access token is fresh before hitting the profile endpoint.
-  // No-op for env-var tokens (refreshToken is null).
-  await checkAndRefreshOAuthTokenIfNeeded()
-
-  const tokens = getClaudeAIOAuthTokens()
-  if (!tokens) {
-    return { valid: true }
-  }
-
-  // Always fetch the authoritative org UUID from the profile endpoint.
-  // Even keychain-sourced tokens verify server-side: the cached org UUID
-  // in ~/.claude.json is user-writable and cannot be trusted.
-  const { source } = getAuthTokenSource()
-  const isEnvVarToken =
-    source === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    source === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
-
-  const profile = await getOauthProfileFromOauthToken(tokens.accessToken)
-  if (!profile) {
-    // Fail closed — we can't verify the org
-    return {
-      valid: false,
-      message:
-        `Unable to verify organization for the current authentication token.\n` +
-        `This machine requires organization ${requiredOrgUuid} but the profile could not be fetched.\n` +
-        `This may be a network error, or the token may lack the user:profile scope required for\n` +
-        `verification (tokens from 'claude setup-token' do not include this scope).\n` +
-        `Try again, or obtain a full-scope token via 'claude auth login'.`,
-    }
-  }
-
-  const tokenOrgUuid = profile.organization.uuid
-  if (tokenOrgUuid === requiredOrgUuid) {
-    return { valid: true }
-  }
-
-  if (isEnvVarToken) {
-    const envVarName =
-      source === 'CLAUDE_CODE_OAUTH_TOKEN'
-        ? 'CLAUDE_CODE_OAUTH_TOKEN'
-        : 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
-    return {
-      valid: false,
-      message:
-        `The ${envVarName} environment variable provides a token for a\n` +
-        `different organization than required by this machine's managed settings.\n\n` +
-        `Required organization: ${requiredOrgUuid}\n` +
-        `Token organization:   ${tokenOrgUuid}\n\n` +
-        `Remove the environment variable or obtain a token for the correct organization.`,
-    }
-  }
-
-  return {
-    valid: false,
-    message:
-      `Your authentication token belongs to organization ${tokenOrgUuid},\n` +
-      `but this machine requires organization ${requiredOrgUuid}.\n\n` +
-      `Please log in with the correct organization: claude auth login`,
-  }
 }
 
 class GcpCredentialsTimeoutError extends Error {}

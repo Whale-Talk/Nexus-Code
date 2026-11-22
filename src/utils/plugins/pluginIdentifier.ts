@@ -3,7 +3,7 @@ import type {
   SettingSource,
 } from '../settings/constants.js'
 import {
-  ALLOWED_OFFICIAL_MARKETPLACE_NAMES,
+  ALLOWED_FEATURED_MARKETPLACE_NAMES,
   type PluginScope,
 } from './schemas.js'
 
@@ -67,7 +67,7 @@ export function buildPluginId(name: string, marketplace?: string): string {
 }
 
 /**
- * Check if a marketplace name is an official (Anthropic-controlled) marketplace.
+ * Check if a marketplace name is an official (Provider-controlled) marketplace.
  * Used for telemetry redaction — official plugin identifiers are safe to log to
  * general-access additional_metadata; third-party identifiers go only to the
  * PII-tagged _PROTO_* BQ columns.
@@ -77,7 +77,7 @@ export function isOfficialMarketplaceName(
 ): boolean {
   return (
     marketplace !== undefined &&
-    ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(marketplace.toLowerCase())
+    ALLOWED_FEATURED_MARKETPLACE_NAMES.has(marketplace.toLowerCase())
   )
 }
 
