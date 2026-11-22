@@ -1,6 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type { ToolResultContentBlock, ToolUseContentBlock } from './services/api/provider/types.js'
 import { loadAccountContextWindow } from './services/api/provider/modelContext.js'
+import { getCatalogModel } from './services/api/provider/catalog.js'
 
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
@@ -1211,6 +1212,7 @@ async function* queryLoop(
         if (
           capEnabled &&
           maxOutputTokensOverride === undefined &&
+          getCatalogModel(currentModel)?.outputBudget === undefined &&
           !process.env.NEXUS_MAX_OUTPUT_TOKENS
         ) {
           logEvent('nexus_max_tokens_escalate', {

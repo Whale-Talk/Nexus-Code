@@ -99,12 +99,12 @@ test('GLM HTTP 200 authentication business errors are reported without returning
   }
 })
 
-test('model discovery returns context limits while preserving models with invalid or absent metadata', async () => {
+test('model discovery returns context and output limits while preserving models with invalid or absent metadata', async () => {
   const intercept = async () => Response.json({ data: [
-    { id: 'deepseek', context_window: 1_000_000 },
+    { id: 'deepseek', context_window: 1_000_000, max_output_tokens: 131_072 },
     { id: 'kimi-open', context_length: 1_048_576 },
-    { id: 'kimi-code', limit: { context: 262_144 } },
-    { id: 'invalid', context_length: 0, context_window: -2, limit: { context: 1.5 } },
+    { id: 'kimi-code', limit: { context: 262_144, output: 24_000 } },
+    { id: 'invalid', context_length: 0, context_window: -2, limit: { context: 1.5, output: -7 }, max_output_tokens: '8192' },
     { id: 'unsafe', context_length: Number.MAX_SAFE_INTEGER + 1, limit: false },
     { id: 'string', context_window: '262144' },
     { id: 'mixed', context_window: 16_384, context_length: 'wrong', limit: [] },
@@ -113,14 +113,14 @@ test('model discovery returns context limits while preserving models with invali
   const mock = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(intercept, { preconnect: fetch.preconnect }))
   try {
     expect(await fetchChannelModels(localChannel, signal)).toEqual([
-      { id: 'deepseek', contextWindow: 1_000_000 },
+      { id: 'deepseek', contextWindow: 1_000_000, maxOutputTokens: 131_072 },
       { id: 'kimi-open', contextWindow: 1_048_576 },
-      { id: 'kimi-code', contextWindow: 262_144 },
+      { id: 'kimi-code', contextWindow: 262_144, maxOutputTokens: 24_000 },
       { id: 'invalid' },
       { id: 'unsafe' },
       { id: 'string' },
       { id: 'mixed', contextWindow: 16_384 },
-      { id: 'only-output' },
+      { id: 'only-output', maxOutputTokens: 131_072 },
     ])
   } finally {
     mock.mockRestore()
@@ -139,12 +139,15 @@ test('model discovery ignores remote URLs, pins pagination and never follows red
     paths.push(url.pathname + url.search)
     if (url.pathname.startsWith('/redirect/')) return Response.redirect(secondary.url.href, 307)
     if (url.searchParams.has('after_id')) return Response.json({
-      data: [{ id: 'two', context_length: 1_048_576 }, { id: 'one', limit: { context: 262_144 } },
-        { id: 'three', context_window: 32_768 }],
+      data: [
+        { id: 'two', context_length: 1_048_576, max_output_tokens: 8_192 },
+        { id: 'one', limit: { context: 262_144, output: 98_304 } },
+        { id: 'three', context_window: 32_768 },
+      ],
       has_more: false,
     })
     return Response.json({
-      data: [{ id: 'one' }, { id: 'two', context_length: 262_144 }],
+      data: [{ id: 'one', max_output_tokens: 12_000 }, { id: 'two', context_length: 262_144 }],
       has_more: true,
       last_id: 'two',
       next: secondary.url.href,
@@ -152,8 +155,8 @@ test('model discovery ignores remote URLs, pins pagination and never follows red
   } })
   try {
     expect(await fetchChannelModels({ ...localChannel, baseURL: primary.url.href }, signal)).toEqual([
-      { id: 'one', contextWindow: 262_144 },
-      { id: 'two', contextWindow: 262_144 },
+      { id: 'one', contextWindow: 262_144, maxOutputTokens: 12_000 },
+      { id: 'two', contextWindow: 262_144, maxOutputTokens: 8_192 },
       { id: 'three', contextWindow: 32_768 },
     ])
     await expect(fetchChannelModelIds({ ...localChannel, baseURL: new URL('/redirect', primary.url).href }, signal)).rejects.toThrow(/重定向/)

@@ -8,6 +8,7 @@ import {
   type CatalogConfig,
   type ModelRole,
 } from '../services/api/provider/catalog.js'
+import { displayChannelName } from '../services/api/provider/presets.js'
 import { isModelAllowed } from '../utils/model/modelAllowlist.js'
 import { Select, type OptionWithDescription } from './CustomSelect/index.js'
 import { Pane } from './design-system/Pane.js'
@@ -36,18 +37,24 @@ function readCatalog(): CatalogState {
   }
 }
 
-function displayBinding(value: string): string {
+function displayBinding(value: string, config?: CatalogConfig): string {
   if (!value) return '尚未配置'
   const separator = value.indexOf('::')
-  return separator < 0 ? value : `${value.slice(0, separator)} / ${value.slice(separator + 2)}`
+  if (separator < 0) return value
+  const id = value.slice(0, separator)
+  const channel = config?.channels[id]
+  return `${channel ? displayChannelName(id, channel) : id} / ${value.slice(separator + 2)}`
 }
 
-export function RoleModelSettings({ onClose }: {
+export function RoleModelSettings({ onClose, onManageChannels, onReasoning, initialFocus }: {
   onClose: () => void
+  onManageChannels?: () => void
+  onReasoning?: () => void
+  initialFocus?: string
 }) {
   const [catalog, setCatalog] = useState(readCatalog)
   const [screen, setScreen] = useState<Screen>({ kind: 'roles' })
-  const [lastRole, setLastRole] = useState<ModelRole>('quark')
+  const [lastRole, setLastRole] = useState(initialFocus ?? 'quark')
   const [form, setForm] = useState<FormState>()
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -63,11 +70,12 @@ export function RoleModelSettings({ onClose }: {
   if (form) {
     return <ModelChannelForm
       channelId={form.channel}
+      bindRole={form.role}
       onCancel={() => setForm(undefined)}
-      onSave={channel => {
+      onSave={(channel, result) => {
         setCatalog(readCatalog())
-        go({ kind: 'models', role: form.role, channel })
-        setNotice(`已保存渠道 ${channel}，请选择要绑定的模型。`)
+        go(result.boundRole ? { kind: 'roles' } : { kind: 'models', role: form.role, channel })
+        setNotice(result.message)
         setForm(undefined)
       }}
     />
@@ -99,10 +107,14 @@ export function RoleModelSettings({ onClose }: {
         ? `沿用现有连接 ${new URL(config.channels.current.baseURL).host}。选择角色调整绑定。`
         : '选择要配置的角色。绑定适用于此用户的所有项目。'
       options = roles.map(role => ({
-        label: roleNames[role], value: role, description: displayBinding(config.roles[role]),
+        label: roleNames[role], value: role, description: displayBinding(config.roles[role], config),
       }))
+      if (onManageChannels) options.push({ value: 'channels', label: '管理渠道与模型', description: '新增渠道、密钥和模型高级参数' })
+      if (onReasoning) options.push({ value: 'reasoning', label: '推理偏好', description: '设置思考模式和推理强度' })
       focus = lastRole
       choose = value => {
+        if (value === 'channels') return onManageChannels?.()
+        if (value === 'reasoning') return onReasoning?.()
         const role = value as ModelRole
         setLastRole(role)
         go({ kind: 'channels', role })
@@ -116,7 +128,7 @@ export function RoleModelSettings({ onClose }: {
       options = Object.keys(config.channels).map(id => {
         const channel = config.channels[id]!
         return {
-          label: id, value: id,
+          label: displayChannelName(id, channel), value: id,
           description: `${new URL(channel.baseURL).host} · ${channel.models.length} 个模型`,
         }
       })

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   addChannelModels, addModelChannel, getCatalogDefault, getEditableModelCatalog,
-  getModelCatalog, requireCatalogModel, saveDiscoveredChannelModel,
-  saveRoleBinding, subscribeModelCatalog, updateModelChannelConnection,
+  getModelCatalog, isUnconfiguredModelCatalog, requireCatalogModel, saveDiscoveredChannelModel,
+  saveModelBudgetSettings, saveRoleBinding, subscribeModelCatalog, updateModelChannelConnection,
 } from './catalog.js'
 import { resolveProviderRoute } from './index.js'
 
@@ -119,17 +119,88 @@ test('model directory caps are saved separately and invalidated when the connect
   await withCatalog(config, () => {
     const first = getEditableModelCatalog().channels.deepseek!
     saveDiscoveredChannelModel('deepseek', first, { id: 'shared[1m]', contextWindow: 256_000 })
-    saveDiscoveredChannelModel('deepseek', first, { id: 'new', contextWindow: 128_000 })
+    saveDiscoveredChannelModel('deepseek', first, { id: 'shared[1m]', maxOutputTokens: 20_000 })
+    saveDiscoveredChannelModel('deepseek', first, { id: 'new', contextWindow: 128_000, maxOutputTokens: 12_000 })
     expect(requireCatalogModel('deepseek::shared[1m]')).toMatchObject({
-      contextWindow: 1_000_000, discoveredContextWindow: 256_000,
+      contextWindow: 1_000_000, discoveredContextWindow: 256_000, discoveredMaxOutputTokens: 20_000,
     })
     expect(requireCatalogModel('deepseek::new').discoveredContextWindow).toBe(128_000)
     updateModelChannelConnection('deepseek', first, { ...first, baseURL: first.baseURL + '/new' })
     expect(requireCatalogModel('deepseek::shared[1m]').contextWindow).toBe(1_000_000)
     expect(requireCatalogModel('deepseek::new').discoveredContextWindow).toBeUndefined()
+    expect(requireCatalogModel('deepseek::new').discoveredMaxOutputTokens).toBeUndefined()
+    expect(requireCatalogModel('deepseek::shared[1m]').discoveredMaxOutputTokens).toBeUndefined()
     expect(() => saveDiscoveredChannelModel('deepseek', first, { id: 'new', contextWindow: 128_000 }))
       .toThrow(/渠道连接已变更/)
   })
+})
+
+test('model budget updates are atomic, preserve discovered limits and can clear both overrides', async () => {
+  await withCatalog(config, directory => {
+    const channel = getEditableModelCatalog().channels.deepseek!
+    const current = { contextWindow: 1_000_000 }
+    const next = { contextWindow: 65_536, outputBudget: 12_000 }
+    saveDiscoveredChannelModel('deepseek', channel, { id: 'shared[1m]', contextWindow: 256_000, maxOutputTokens: 8_192 })
+    saveModelBudgetSettings('deepseek', 'shared[1m]', channel, current, next)
+    expect(requireCatalogModel('deepseek::shared[1m]')).toMatchObject({
+      ...next, discoveredContextWindow: 256_000, discoveredMaxOutputTokens: 8_192,
+    })
+
+    const file = join(directory, 'models.json')
+    const saved = readFileSync(file, 'utf8')
+    expect(() => saveModelBudgetSettings('deepseek', 'shared[1m]', channel, current, {})).toThrow(/模型预算已变更/)
+    expect(() => saveModelBudgetSettings('deepseek', 'shared[1m]', { ...channel, baseURL: channel.baseURL + '/changed' },
+      next, {})).toThrow(/渠道连接已变更/)
+    expect(() => saveModelBudgetSettings('deepseek', 'shared[1m]', channel, next, { contextWindow: 0 })).toThrow(/正整数/)
+    expect(() => saveModelBudgetSettings('deepseek', 'shared[1m]', channel, next,
+      { outputBudget: Number.MAX_SAFE_INTEGER + 1 })).toThrow(/正整数/)
+    expect(readFileSync(file, 'utf8')).toBe(saved)
+
+    saveModelBudgetSettings('deepseek', 'shared[1m]', channel, next, {})
+    const cleared = requireCatalogModel('deepseek::shared[1m]')
+    expect(cleared.contextWindow).toBeUndefined()
+    expect(cleared.outputBudget).toBeUndefined()
+    expect(cleared.discoveredContextWindow).toBe(256_000)
+    expect(cleared.discoveredMaxOutputTokens).toBe(8_192)
+  })
+})
+
+test('explicit initialization replaces only the unused launcher connection and rejects late credential changes', async () => {
+  const env = {
+    NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
+    NEXUS_PROVIDER: 'messages',
+    NEXUS_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_QUARK_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_ATOM_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_ELECTRON_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_API_KEY: '',
+  }
+  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]))
+  Object.assign(process.env, env)
+  try {
+    await withCatalog(undefined, directory => {
+      const initial = getEditableModelCatalog()
+      expect(isUnconfiguredModelCatalog(initial)).toBe(true)
+      const next = { protocol: 'openai-compatible' as const, baseURL: 'https://work.test/v1', models: [{ id: 'first' }] }
+      process.env.NEXUS_API_KEY = 'late-configured-fixture'
+      expect(isUnconfiguredModelCatalog(initial)).toBe(false)
+      expect(() => addModelChannel('new', next, { initializeRoles: true })).toThrow(/已配置/)
+      expect(existsSync(join(directory, 'models.json'))).toBe(false)
+
+      delete process.env.NEXUS_API_KEY
+      const saved = addModelChannel('new', next, { initializeRoles: true })
+      expect(Object.keys(saved.channels)).toEqual(['new'])
+      expect(saved.roles).toEqual({ quark: 'new::first', atom: 'new::first', electron: 'new::first' })
+      expect(isUnconfiguredModelCatalog(saved)).toBe(false)
+      expect(() => addModelChannel('other', next, { initializeRoles: true })).toThrow(/已配置/)
+      expect(Object.keys(getEditableModelCatalog().channels)).toEqual(['new'])
+    })
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
 })
 
 test('each channel sends its own wire model and credentials', async () => {

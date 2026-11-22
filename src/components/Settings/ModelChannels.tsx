@@ -5,11 +5,15 @@ import {
   channelSchema, findCredentialOriginConflict, updateModelChannelConnection,
   type CatalogConfig, type ChannelConnection, type ProviderKind,
 } from '../../services/api/provider/catalog.js'
+import { displayChannelName } from '../../services/api/provider/presets.js'
 import { Select } from '../CustomSelect/index.js'
 import { ChannelField, ModelChannelForm, protocolOptions } from '../ModelChannelForm.js'
 import { ChannelCredentials, loadEditableCatalog } from './ChannelCredentials.js'
+import { ChannelModelTest } from './ChannelModelTest.js'
+import { ModelBudgetEditor, modelBudgetDetails } from './ModelBudgetEditor.js'
 
-type Page = 'list' | 'channel' | 'new' | 'models' | 'registered' | 'modelDetail' | 'edit' | 'key'
+type Page = 'list' | 'channel' | 'new' | 'models' | 'registered' | 'modelDetail' | 'edit' | 'key' |
+  'budget' | 'testPick' | 'test'
 type EditStep = 'protocol' | 'url' | 'key' | 'confirm'
 function protocolLabel(protocol: ProviderKind) {
   return protocolOptions.find(item => item.value === protocol)?.label ?? protocol
@@ -95,6 +99,7 @@ export function ModelChannels({ onClose }: { onClose: () => void }) {
   const [page, setPage] = useState<Page>('list')
   const [id, setId] = useState('')
   const [modelId, setModelId] = useState('')
+  const [testBack, setTestBack] = useState<Page>('testPick')
   const [notice, setNotice] = useState('')
   const { rows, columns } = useTerminalSize()
   function reload(next: Page, message = '') {
@@ -110,49 +115,69 @@ export function ModelChannels({ onClose }: { onClose: () => void }) {
   const channel = catalog.channels[id]
   if (page === 'new' || (channel && page === 'models')) return <ModelChannelForm channelId={page === 'new' ? undefined : id}
     onCancel={() => reload(page === 'new' ? 'list' : 'channel')}
-    onSave={savedId => { setId(savedId); reload('channel', page === 'new' ? '已保存新渠道。' : '已添加模型。') }} />
+    onSave={(savedId, result) => { setId(savedId); reload('channel', result.message) }} />
   if (channel && page === 'edit') return <EditConnection id={id} catalog={catalog} onClose={message => reload('channel', message)} />
   if (channel && page === 'key') return <ChannelCredentials initialChannelId={id} onClose={message => reload('channel', message)} />
+  const model = channel?.models.find(item => item.id === modelId)
+  if (channel && model && page === 'budget') return <ModelBudgetEditor channelId={id} channel={channel} model={model}
+    onClose={message => reload('modelDetail', message)} />
+  if (channel && page === 'test') return <ChannelModelTest channelId={id} modelId={modelId}
+    connection={channel} onClose={() => reload(testBack)} />
   if (channel && page === 'modelDetail') {
-    const model = channel.models.find(item => item.id === modelId)
+    const details = modelBudgetDetails(id, modelId)
+    const source = { manual: '手动', channel: '渠道返回', official: '官方规格', fallback: '估算值' }[details.contextSource]
     return <Box flexDirection="column">
       <Text bold>{model?.name ?? modelId}</Text>
-      <Text>模型 ID　{modelId}</Text>
-      <Text>渠道　{id} · {channel.baseURL}</Text>
-      {model?.contextWindow && <Text>上下文窗口　{model.contextWindow.toLocaleString()} tokens</Text>}
-      {model?.maxOutputTokens && <Text>最大输出　{model.maxOutputTokens.toLocaleString()} tokens</Text>}
-      <Select clickToSelect options={[{ value: 'back', label: '返回模型列表' }]} onChange={() => reload('registered')} onCancel={() => reload('registered')} />
+      <Text wrap="truncate-end">模型 ID　{modelId}</Text>
+      <Text wrap="truncate-end">上下文窗口　{details.contextWindow.toLocaleString()} tokens · {source}</Text>
+      <Text wrap="truncate-end">单次输出预算　{details.outputBudget.toLocaleString()} tokens · {model?.outputBudget === undefined ? '自动' : '手动'}</Text>
+      {notice && <Text color="success" wrap="truncate-end">{notice}</Text>}
+      <Select clickToSelect options={[
+        ...(model ? [{ value: 'budget', label: '高级设置' }, { value: 'test', label: '测试对话' }] : []),
+        { value: 'back', label: '返回模型列表' },
+      ]} onChange={(value: string) => {
+        if (value === 'test') {
+          setTestBack('modelDetail')
+          reload('test')
+        } else reload(value === 'budget' ? 'budget' : 'registered')
+      }} onCancel={() => reload('registered')} />
     </Box>
   }
-  if (channel && page === 'registered') return <Box flexDirection="column">
-    <Text bold>{id} · 已配置的模型</Text>
+  if (channel && (page === 'registered' || page === 'testPick')) return <Box flexDirection="column">
+    <Text bold>{id} · {page === 'testPick' ? '选择模型测试对话' : '已配置的模型'}</Text>
     <Select clickToSelect options={[...channel.models.map(model => {
       const used = (['quark', 'atom', 'electron'] as const).filter(role => catalog.roles[role] === `${id}::${model.id}`)
       const description = [model.name && model.name !== model.id ? model.name : '',
         used.map(role => role[0]!.toUpperCase() + role.slice(1)).join('、')].filter(Boolean).join(' · ')
       return { value: `model:${model.id}`, label: model.id, description }
     }), { value: 'back', label: '返回渠道' }]}
-      visibleOptionCount={Math.max(2, Math.min(8, rows - 4))} onChange={(value: string) => {
+      visibleOptionCount={Math.max(2, Math.min(8, rows - 4))}
+      defaultFocusValue={modelId ? `model:${modelId}` : undefined} onChange={(value: string) => {
         if (value === 'back') return reload('channel')
         setModelId(value.slice('model:'.length))
-        reload('modelDetail')
+        if (page === 'testPick') {
+          setTestBack('testPick')
+          reload('test')
+        } else reload('modelDetail')
       }} onCancel={() => reload('channel')} />
-    <Text dimColor>↑↓ 浏览 · Enter 查看详情 · Esc 返回</Text>
+    <Text dimColor>↑↓ 浏览 · Enter {page === 'testPick' ? '选择' : '查看详情'} · Esc 返回</Text>
   </Box>
   if (channel && page === 'channel') return <Box flexDirection="column">
-    <Text bold>{id}</Text>
-    <Text>{protocolLabel(channel.protocol)} · {channel.baseURL}</Text>
-    <Text dimColor>密钥变量　{channel.apiKeyEnv ?? '无需密钥'}</Text>
-    <Text>已配置 {channel.models.length} 个模型</Text>
-    {notice && <Text color="success">{notice}</Text>}
+    <Text bold>{displayChannelName(id, channel)}</Text>
+    <Text wrap="truncate-end">{protocolLabel(channel.protocol)} · {channel.baseURL}</Text>
+    <Text dimColor wrap="truncate-end">{credentialState(channel)} · {channel.models.length} 个模型</Text>
+    {notice && <Text color="success" wrap="truncate-end">{notice}</Text>}
     <Select clickToSelect options={[
-      { value: 'models', label: '添加模型' }, { value: 'edit', label: '编辑连接' },
-      { value: 'key', label: '渠道密钥' }, { value: 'registered', label: '查看已配置的模型' }, { value: 'list', label: '返回渠道列表' },
-    ]} onChange={(value: Page) => reload(value)} onCancel={() => reload('list')} />
+      { value: 'registered', label: '查看已配置的模型' },
+      { value: 'models', label: '添加模型' },
+      { value: 'key', label: '渠道密钥' }, { value: 'edit', label: '编辑连接' },
+      { value: 'testPick', label: '测试对话' }, { value: 'list', label: '返回渠道列表' },
+    ]} visibleOptionCount={Math.max(2, Math.min(6, rows - 5))}
+      onChange={(value: Page) => reload(value)} onCancel={() => reload('list')} />
   </Box>
   const options = Object.keys(catalog.channels).map(name => {
     const item = catalog.channels[name]!
-    return { value: name, label: name, description: `${item.models.length} 个模型 · ${item.baseURL}` }
+    return { value: name, label: displayChannelName(name, item), description: `${item.models.length} 个模型 · ${credentialState(item)}` }
   })
   return <Box flexDirection="column">
     <Text bold>模型渠道</Text>
@@ -167,4 +192,9 @@ export function ModelChannels({ onClose }: { onClose: () => void }) {
         reload('channel')
       }} onCancel={onClose} />
   </Box>
+}
+
+function credentialState(channel: ChannelConnection): string {
+  if (!channel.apiKeyEnv) return '无需密钥'
+  return process.env[channel.apiKeyEnv]?.trim() ? '已配置密钥' : '需要密钥'
 }

@@ -32,6 +32,7 @@ import {
 } from '../../utils/api.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
+  getModelBudgetDetails,
   getModelMaxOutputTokens,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
@@ -57,7 +58,7 @@ import {
   asSystemPrompt,
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
-import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
+import { tokenCountFromLastAPIResponse, tokenCountWithEstimation } from '../../utils/tokens.js'
 import {
   markModelRequestSucceeded,
   recordModelRateLimit,
@@ -151,7 +152,9 @@ import {
 } from '../analytics/index.js'
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
+import { estimateRequestTokens, roughTokenCountEstimation } from '../tokenEstimation.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
+import { getCatalogModel } from './provider/catalog.js'
 import { resolveProviderRoute, tagResponseRoute } from './provider/index.js'
 import type {
   AssistantMessage as ProviderAssistantMessage,
@@ -1214,6 +1217,10 @@ async function* queryModel(
     }
   }
 
+  const turnBudget = isAgenticQuery && getCatalogModel(options.model)?.outputBudget !== undefined
+    ? getModelBudgetDetails(options.model)
+    : undefined
+  let estimatedPromptTokens: number | undefined
   const paramsFromContext = (retryContext: RetryContext) => {
     const extraBodyParams = getExtraBodyParams()
 
@@ -1229,11 +1236,36 @@ async function* queryModel(
       outputConfig.format = options.outputFormat
     }
 
-    // Retry context gets preference because it tries to course correct if we exceed the context window limit
-    const maxOutputTokens =
-      retryContext?.maxTokensOverride ||
-      options.maxOutputTokensOverride ||
-      getMaxOutputTokensForModel(options.model)
+    const enablePromptCaching =
+      options.enablePromptCaching ?? getPromptCachingEnabled(retryContext.model)
+    const requestMessages = addCacheBreakpoints(
+      messagesForAPI,
+      enablePromptCaching,
+      options.querySource,
+      options.skipCacheWrite,
+    )
+
+    // Retries may reduce the requested budget near a context limit. They cannot
+    // raise an explicit turn budget, including when retrying a truncated reply.
+    const requestedOutputTokens = retryContext.maxTokensOverride || options.maxOutputTokensOverride
+    let maxOutputTokens: number
+    if (turnBudget) {
+      estimatedPromptTokens ??= Math.max(
+        tokenCountWithEstimation(messagesForAPI),
+        estimateRequestTokens(requestMessages, allTools) +
+          system.reduce((count, block) => count + roughTokenCountEstimation(block.text), 0),
+      )
+      const configuredBudget = validateBoundedIntEnvVar(
+        'NEXUS_MAX_OUTPUT_TOKENS', process.env.NEXUS_MAX_OUTPUT_TOKENS,
+        turnBudget.outputBudget, turnBudget.outputBudget,
+      ).effective
+      // A rough estimate can be high. Keep one token available so the
+      // provider can return its own overflow error and normal recovery can run.
+      const remaining = Math.max(1, turnBudget.contextWindow - estimatedPromptTokens)
+      maxOutputTokens = Math.min(requestedOutputTokens ?? configuredBudget, configuredBudget, remaining)
+    } else {
+      maxOutputTokens = requestedOutputTokens || getMaxOutputTokensForModel(options.model)
+    }
 
     const wantsThinking =
       thinkingConfig.type !== 'disabled' &&
@@ -1263,12 +1295,11 @@ async function* queryModel(
           thinkingBudget = thinkingConfig.budgetTokens
         }
         thinkingBudget = Math.min(maxOutputTokens - 1, thinkingBudget)
-        reasoning = { mode: 'budget', tokens: thinkingBudget }
+        reasoning = turnBudget && thinkingBudget <= 0
+          ? { mode: 'off' }
+          : { mode: 'budget', tokens: thinkingBudget }
       }
     }
-
-    const enablePromptCaching =
-      options.enablePromptCaching ?? getPromptCachingEnabled(retryContext.model)
 
     // Re-evaluate speed after retry cooldowns.
     let speed: RequestParams['speed']
@@ -1290,12 +1321,7 @@ async function* queryModel(
     return {
       ...extraBodyParams,
       model: normalizeModelStringForAPI(options.model),
-      messages: addCacheBreakpoints(
-        messagesForAPI,
-        enablePromptCaching,
-        options.querySource,
-        options.skipCacheWrite,
-      ),
+      messages: requestMessages,
       system,
       tools: allTools,
       toolChoice: options.toolChoice,
@@ -1821,10 +1847,13 @@ async function* queryModel(
               logEvent('nexus_max_tokens_reached', {
                 max_tokens: maxOutputTokens,
               })
+              const hint = turnBudget
+                ? "Adjust this model's output budget in Nexus settings."
+                : 'To configure this behavior, set the NEXUS_MAX_OUTPUT_TOKENS environment variable.'
               yield createAssistantAPIErrorMessage({
                 content: `${API_ERROR_MESSAGE_PREFIX}: Nexus's response exceeded the ${
                   maxOutputTokens
-                } output token maximum. To configure this behavior, set the NEXUS_MAX_OUTPUT_TOKENS environment variable.`,
+                } output token maximum. ${hint}`,
                 apiError: 'max_output_tokens',
                 error: 'max_output_tokens',
               })

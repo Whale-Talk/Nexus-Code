@@ -1,4 +1,5 @@
 import { getCatalogModel, getModelCatalog, type ChannelConnection } from './catalog.js'
+import type { ModelDirectoryEntry } from './listModels.js'
 import { getOfficialModelService, type OfficialModelService } from './officialChannels.js'
 
 const binary1m = 1_048_576
@@ -68,7 +69,7 @@ function getContextRoute(model: string) {
 type AccountDirectory = {
   apiKey: string
   validUntil: number
-  windows?: Map<string, number>
+  models?: Map<string, ModelDirectoryEntry>
   loading?: Promise<void>
 }
 const accountDirectories = new Map<string, AccountDirectory>()
@@ -81,22 +82,41 @@ function accountApiKey(connection: ChannelConnection): string | undefined {
   return connection.apiKeyEnv ? process.env[connection.apiKeyEnv]?.trim() || undefined : undefined
 }
 
-export function getKnownContextWindow(model: string): number | undefined {
+function getAccountModel(connection: ChannelConnection, id: string): ModelDirectoryEntry | undefined {
+  const directory = accountDirectories.get(accountDirectoryKey(connection))
+  if (directory && directory.apiKey === accountApiKey(connection)) {
+    return directory.models?.get(id.replace(legacyContextSuffix, ''))
+  }
+}
+
+export type KnownContextSource = 'manual' | 'channel' | 'official'
+
+export function getKnownContextLimit(model: string): { contextWindow: number; contextSource: KnownContextSource } | undefined {
   const route = getContextRoute(model)
   if (!route) return undefined
   const { connection, entry, id } = route
-  if (entry?.contextWindow !== undefined) return entry.contextWindow
+  if (entry?.contextWindow !== undefined) return { contextWindow: entry.contextWindow, contextSource: 'manual' }
   const service = getOfficialModelService(connection.protocol, connection.baseURL)
-  if (service === 'kimi-code' && kimiAccountModels.has(id.replace(legacyContextSuffix, ''))) {
-    const directory = accountDirectories.get(accountDirectoryKey(connection))
-    if (directory && directory.apiKey === accountApiKey(connection)) {
-      const window = directory.windows?.get(id.replace(legacyContextSuffix, ''))
-      if (window !== undefined) return window
-    }
-    // A saved discovery may belong to a different subscription after a key change.
-    return getDocumentedContextWindow(service, id)
-  }
-  return entry?.discoveredContextWindow ?? (service && getDocumentedContextWindow(service, id))
+  // A saved discovery may belong to a different subscription after a key change.
+  const discovered = service === 'kimi-code' && kimiAccountModels.has(id.replace(legacyContextSuffix, ''))
+    ? getAccountModel(connection, id)?.contextWindow : entry?.discoveredContextWindow
+  if (discovered !== undefined) return { contextWindow: discovered, contextSource: 'channel' }
+  const documented = service && getDocumentedContextWindow(service, id)
+  if (documented !== undefined) return { contextWindow: documented, contextSource: 'official' }
+}
+
+export function getKnownContextWindow(model: string): number | undefined {
+  return getKnownContextLimit(model)?.contextWindow
+}
+
+export function getKnownOutputLimit(model: string): number | undefined {
+  const route = getContextRoute(model)
+  if (!route) return undefined
+  const { connection, entry, id } = route
+  if (entry?.maxOutputTokens !== undefined) return entry.maxOutputTokens
+  const service = getOfficialModelService(connection.protocol, connection.baseURL)
+  return service === 'kimi-code' && kimiAccountModels.has(id.replace(legacyContextSuffix, ''))
+    ? getAccountModel(connection, id)?.maxOutputTokens : entry?.discoveredMaxOutputTokens
 }
 
 /** Some Kimi Code IDs share a name across accounts with different limits. */
@@ -122,10 +142,7 @@ export async function loadAccountContextWindow(model: string, signal: AbortSigna
     try {
       const { fetchChannelModels } = await import('./listModels.js')
       const models = await fetchChannelModels(connection, AbortSignal.timeout(3_000), apiKey)
-      current.windows = new Map()
-      for (const entry of models) {
-        if (entry.contextWindow !== undefined) current.windows.set(entry.id, entry.contextWindow)
-      }
+      current.models = new Map(models.map(entry => [entry.id, entry]))
       current.validUntil = Date.now() + 10 * 60_000
     } catch {
       current.validUntil = Date.now() + 60_000

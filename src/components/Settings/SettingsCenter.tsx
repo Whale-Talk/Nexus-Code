@@ -9,7 +9,6 @@ import { isCommandEnabled, type Command, type LocalJSXCommandContext, type Local
 import { truncateToWidth } from '../../utils/format.js'
 import { Select } from '../CustomSelect/index.js'
 import { RoleModelSettings } from '../RoleModelSettings.js'
-import { ChannelCredentials } from './ChannelCredentials.js'
 import { Settings } from './Settings.js'
 import { WebSettings } from './WebSettings.js'
 
@@ -26,9 +25,7 @@ const mainEntries = [
   { value: 'advanced', label: '更多设置', description: '代理、技能与扩展' },
 ]
 const modelEntries = [
-  { value: 'roles', label: '角色绑定', description: '为 Quark、Atom、Electron 分别选择渠道和模型' },
-  { value: 'channels', label: '模型渠道', description: '管理 API 地址和协议，读取或手填模型 ID' },
-  { value: 'keys', label: '渠道密钥', description: '为模型渠道管理 API 密钥' },
+  { value: 'channels', label: '管理渠道与模型', description: '管理 API 地址和协议，读取或手填模型 ID' },
   { value: 'reasoning', label: '推理偏好', description: '调整思考和推理相关选项' },
 ]
 const extraEntries = [
@@ -93,11 +90,11 @@ export function SettingsCenter({ context, onClose }: Props) {
     setMessage(options?.display === 'system' || options?.display === 'skip' ? '' : result ?? '')
     setPage(parentMenu)
   }, [onClose, parentMenu])
-  const isMenu = page === 'home' || page === 'models' || page === 'advanced'
+  const isMenu = page === 'home' || page === 'advanced'
   const entry = [...mainEntries, ...modelEntries, ...advanced].find(item => item.value === page)
   let panel: React.ReactNode
   if (isMenu) {
-    const entries = page === 'advanced' ? advanced : page === 'models' ? modelEntries : mainEntries.filter(item =>
+    const entries = page === 'advanced' ? advanced : mainEntries.filter(item =>
       ['models', 'web', 'general', 'status'].includes(item.value) ||
       (item.value === 'advanced' ? advanced.length > 0 : findCommand(item.value)),
     )
@@ -125,10 +122,13 @@ export function SettingsCenter({ context, onClose }: Props) {
         }} />
       <Box marginTop={1}><Text dimColor wrap="truncate-end">↑↓ 移动 · Enter 打开 · Esc {page === 'home' ? '返回聊天' : '返回设置中心'}</Text></Box>
     </>
-  } else if (page === 'roles') {
-    panel = <RoleModelSettings onClose={() => back()} />
-  } else if (page === 'keys') {
-    panel = <ChannelCredentials onClose={back} />
+  } else if (page === 'models') {
+    function openModelPage(value: string) {
+      setMenuFocus(previous => ({ ...previous, models: value }))
+      setPage(value)
+    }
+    panel = <RoleModelSettings onClose={() => back()} initialFocus={menuFocus.models}
+      onManageChannels={() => openModelPage('channels')} onReasoning={() => openModelPage('reasoning')} />
   } else if (page === 'reasoning') {
     panel = <Settings defaultTab="Config" context={context} onClose={back} modelSettings />
   } else if (page === 'channels') {
