@@ -36,6 +36,7 @@ test('bypass availability does not approve project writes in plan mode', async (
   expect(bypass).toMatchObject({ behavior: 'allow', decisionReason: { type: 'mode', mode: 'bypassPermissions' } })
 })
 
+// The PowerShell parser can spend two five-second attempts on a cold runner.
 test('plan accepts its exact plan file and read-only commands but blocks builds', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'nexus-plan-permissions-'))
   const previous = process.env.NEXUS_CONFIG_DIR
@@ -56,7 +57,7 @@ test('plan accepts its exact plan file and read-only commands but blocks builds'
     getPlansDirectory.cache.clear?.()
     rmSync(directory, { recursive: true, force: true })
   }
-})
+}, 20_000)
 
 test('hook approvals and forced prompts cannot override the plan restriction', async () => {
   const context = createContext('plan')
