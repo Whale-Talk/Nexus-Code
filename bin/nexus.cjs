@@ -119,10 +119,10 @@ const defaultSettings = {
     MCP_TIMEOUT: '60000',
     API_TIMEOUT_MS: '3000000',
     NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
-    NEXUS_MODEL: 'deepseek-v4-pro[1m]',
+    NEXUS_MODEL: 'deepseek-v4-pro',
     // 子代理模型由角色选定，兼容用户显式设置的 NEXUS_SUBAGENT_MODEL。
   },
-  model: 'deepseek-v4-pro[1m]',
+  model: 'deepseek-v4-pro',
 }
 
 

@@ -226,8 +226,8 @@ wt -w new new-tab --reloadEnvironment -d "$PWD" node.exe .\bin\nexus.cjs
       "baseURL": "https://api.deepseek.com/anthropic",
       "apiKeyEnv": "DEEPSEEK_API_KEY",
       "models": [
-        { "id": "deepseek-v4-pro", "contextWindow": 1000000 },
-        { "id": "deepseek-flash", "contextWindow": 1000000 }
+        { "id": "deepseek-v4-pro" },
+        { "id": "deepseek-flash" }
       ]
     },
     "coding": {
@@ -241,6 +241,8 @@ wt -w new new-tab --reloadEnvironment -d "$PWD" node.exe .\bin\nexus.cjs
 ```
 
 每个物理模型可单独设置 `contextWindow`、`maxOutputTokens`、`capabilities` 和 `pricing`。例如，同名模型在两个渠道上的上下文长度、推理支持和价格可以不同。未配置价格时只统计用量。输入、输出和缓存价格均以美元／百万 token 计，网络搜索以美元／次计。
+
+DeepSeek、智谱 GLM、Kimi 和小米 MiMo 的已知官方模型会按实际渠道使用其上下文窗口，直接填写官方模型 ID 即可。Kimi Code 里窗口随套餐变化的模型，在首次用于对话时读取当前账号的模型目录，查询失败时使用 256K。中转渠道在「从渠道读取模型列表」能返回窗口大小时，可在保存或更新模型时一并使用。手动填写的 `contextWindow` 优先，已有 `NEXUS_MAX_CONTEXT_TOKENS` 等限制仍生效。旧的 `[1m]` 配置可继续使用，官方 API 收到原始模型 ID。
 
 已有 Nexus 配置目录升级时，启动器将旧 Messages 协议设置写成 `messages`，并将原来的用户偏好复制到 `profile.json`。它保留会话文件和用户填写的模型 ID。环境变量请使用 `NEXUS_*`，角色可直接填写 `quark`、`atom`、`electron` 或在代理中指定 `inherit`。
 

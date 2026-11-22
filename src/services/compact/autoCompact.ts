@@ -31,10 +31,6 @@ const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
 // Returns the context window size minus the max output tokens for the model
 export function getEffectiveContextWindowSize(model: string): number {
-  const reservedTokensForSummary = Math.min(
-    getMaxOutputTokensForModel(model),
-    MAX_OUTPUT_TOKENS_FOR_SUMMARY,
-  )
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
 
   const autoCompactWindow = process.env.NEXUS_AUTO_COMPACT_WINDOW
@@ -45,7 +41,15 @@ export function getEffectiveContextWindowSize(model: string): number {
     }
   }
 
+  const reservedTokensForSummary = Math.min(
+    getMaxOutputTokensForModel(model),
+    headroom(contextWindow, MAX_OUTPUT_TOKENS_FOR_SUMMARY),
+  )
   return contextWindow - reservedTokensForSummary
+}
+
+function headroom(window: number, preferred: number): number {
+  return Math.min(preferred, Math.floor(window / 2))
 }
 
 export type AutoCompactTrackingState = {
@@ -73,7 +77,7 @@ export function getAutoCompactThreshold(model: string): number {
   const effectiveContextWindow = getEffectiveContextWindowSize(model)
 
   const autocompactThreshold =
-    effectiveContextWindow - AUTOCOMPACT_BUFFER_TOKENS
+    effectiveContextWindow - headroom(effectiveContextWindow, AUTOCOMPACT_BUFFER_TOKENS)
 
   // Override for easier testing of autocompact
   const envPercent = process.env.NEXUS_AUTOCOMPACT_PCT_OVERRIDE
@@ -110,8 +114,8 @@ export function calculateTokenWarningState(
     Math.round(((threshold - tokenUsage) / threshold) * 100),
   )
 
-  const warningThreshold = threshold - WARNING_THRESHOLD_BUFFER_TOKENS
-  const errorThreshold = threshold - ERROR_THRESHOLD_BUFFER_TOKENS
+  const warningThreshold = threshold - headroom(threshold, WARNING_THRESHOLD_BUFFER_TOKENS)
+  const errorThreshold = threshold - headroom(threshold, ERROR_THRESHOLD_BUFFER_TOKENS)
 
   const isAboveWarningThreshold = tokenUsage >= warningThreshold
   const isAboveErrorThreshold = tokenUsage >= errorThreshold
@@ -121,7 +125,7 @@ export function calculateTokenWarningState(
 
   const actualContextWindow = getEffectiveContextWindowSize(model)
   const defaultBlockingLimit =
-    actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
+    actualContextWindow - headroom(actualContextWindow, MANUAL_COMPACT_BUFFER_TOKENS)
 
   // Allow override for testing
   const blockingLimitOverride = process.env.NEXUS_BLOCKING_LIMIT_OVERRIDE
@@ -245,6 +249,7 @@ export async function autoCompactIfNeeded(
   querySource?: QuerySource,
   tracking?: AutoCompactTrackingState,
   snipTokensFreed?: number,
+  contextModel = toolUseContext.options.mainLoopModel,
 ): Promise<{
   wasCompacted: boolean
   compactionResult?: CompactionResult
@@ -264,10 +269,9 @@ export async function autoCompactIfNeeded(
     return { wasCompacted: false }
   }
 
-  const model = toolUseContext.options.mainLoopModel
   const shouldCompact = await shouldAutoCompact(
     messages,
-    model,
+    contextModel,
     querySource,
     snipTokensFreed,
   )
@@ -280,7 +284,7 @@ export async function autoCompactIfNeeded(
     isRecompactionInChain: tracking?.compacted === true,
     turnsSincePreviousCompact: tracking?.turnCounter ?? -1,
     previousCompactTurnId: tracking?.turnId,
-    autoCompactThreshold: getAutoCompactThreshold(model),
+    autoCompactThreshold: getAutoCompactThreshold(contextModel),
     querySource,
   }
 

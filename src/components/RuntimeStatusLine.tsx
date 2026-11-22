@@ -5,6 +5,7 @@ import { Box, Text } from '../ink.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import { useOptionalKeybindingContext } from '../keybindings/KeybindingContext.js'
 import { getCatalogModel, getModelCatalog } from '../services/api/provider/catalog.js'
+import { getDisplayContextModelId } from '../services/api/provider/modelContext.js'
 import { truncateToWidth } from '../utils/format.js'
 import { isModelRole, type ModelRole } from '../utils/model/roles.js'
 import { getModeColor, type PermissionMode } from '../utils/permissions/PermissionMode.js'
@@ -29,7 +30,7 @@ export function modelRouteLabel(model: string | undefined): string | undefined {
   if (!channel && !getModelCatalog() && process.env.NEXUS_BASE_URL) {
     try { channel = new URL(process.env.NEXUS_BASE_URL).hostname } catch {}
   }
-  const id = (entry?.id ?? model).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, '')
+  const id = getDisplayContextModelId(model).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, '')
   return channel ? `${channel}/${id}` : id
 }
 

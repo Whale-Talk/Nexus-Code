@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from 'bun:test'
-import { fetchChannelModelIds, requiresModelDirectoryScope, type ModelDirectoryScope } from './listModels.js'
+import { fetchChannelModelIds, fetchChannelModels, requiresModelDirectoryScope, type ModelDirectoryScope } from './listModels.js'
 
 const signal = new AbortController().signal
 const localChannel = { protocol: 'openai-compatible', baseURL: 'http://localhost:1234' } as const
@@ -99,6 +99,34 @@ test('GLM HTTP 200 authentication business errors are reported without returning
   }
 })
 
+test('model discovery returns context limits while preserving models with invalid or absent metadata', async () => {
+  const intercept = async () => Response.json({ data: [
+    { id: 'deepseek', context_window: 1_000_000 },
+    { id: 'kimi-open', context_length: 1_048_576 },
+    { id: 'kimi-code', limit: { context: 262_144 } },
+    { id: 'invalid', context_length: 0, context_window: -2, limit: { context: 1.5 } },
+    { id: 'unsafe', context_length: Number.MAX_SAFE_INTEGER + 1, limit: false },
+    { id: 'string', context_window: '262144' },
+    { id: 'mixed', context_window: 16_384, context_length: 'wrong', limit: [] },
+    { id: 'only-output', max_output_tokens: 131_072, limit: { output: 131_072 } },
+  ] })
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(intercept, { preconnect: fetch.preconnect }))
+  try {
+    expect(await fetchChannelModels(localChannel, signal)).toEqual([
+      { id: 'deepseek', contextWindow: 1_000_000 },
+      { id: 'kimi-open', contextWindow: 1_048_576 },
+      { id: 'kimi-code', contextWindow: 262_144 },
+      { id: 'invalid' },
+      { id: 'unsafe' },
+      { id: 'string' },
+      { id: 'mixed', contextWindow: 16_384 },
+      { id: 'only-output' },
+    ])
+  } finally {
+    mock.mockRestore()
+  }
+})
+
 test('model discovery ignores remote URLs, pins pagination and never follows redirects', async () => {
   let redirected = 0
   const secondary = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => {
@@ -110,13 +138,26 @@ test('model discovery ignores remote URLs, pins pagination and never follows red
     const url = new URL(req.url)
     paths.push(url.pathname + url.search)
     if (url.pathname.startsWith('/redirect/')) return Response.redirect(secondary.url.href, 307)
-    if (url.searchParams.has('after_id')) return Response.json({ data: [{ id: 'two' }], has_more: false })
-    return Response.json({ data: [{ id: 'one' }], has_more: true, last_id: 'one', next: secondary.url.href })
+    if (url.searchParams.has('after_id')) return Response.json({
+      data: [{ id: 'two', context_length: 1_048_576 }, { id: 'one', limit: { context: 262_144 } },
+        { id: 'three', context_window: 32_768 }],
+      has_more: false,
+    })
+    return Response.json({
+      data: [{ id: 'one' }, { id: 'two', context_length: 262_144 }],
+      has_more: true,
+      last_id: 'two',
+      next: secondary.url.href,
+    })
   } })
   try {
-    expect(await fetchChannelModelIds({ ...localChannel, baseURL: primary.url.href }, signal)).toEqual(['one', 'two'])
+    expect(await fetchChannelModels({ ...localChannel, baseURL: primary.url.href }, signal)).toEqual([
+      { id: 'one', contextWindow: 262_144 },
+      { id: 'two', contextWindow: 262_144 },
+      { id: 'three', contextWindow: 32_768 },
+    ])
     await expect(fetchChannelModelIds({ ...localChannel, baseURL: new URL('/redirect', primary.url).href }, signal)).rejects.toThrow(/重定向/)
-    expect(paths).toEqual(['/v1/models', '/v1/models?after_id=one', '/redirect/models'])
+    expect(paths).toEqual(['/v1/models', '/v1/models?after_id=two', '/redirect/models'])
     expect(redirected).toBe(0)
   } finally {
     primary.stop(true)

@@ -3,9 +3,9 @@ import { useTerminalSize } from '../hooks/useTerminalSize.js'
 import { Box, Text, useInput } from '../ink.js'
 import {
   addChannelModels, addModelChannel, channelIdSchema, channelSchema,
-  getEditableModelCatalog, type ModelChannel, type ProviderKind,
+  getEditableModelCatalog, saveDiscoveredChannelModel, type ModelChannel, type ProviderKind,
 } from '../services/api/provider/catalog.js'
-import { fetchChannelModelIds, requiresModelDirectoryScope, type ModelDirectoryScope } from '../services/api/provider/listModels.js'
+import { fetchChannelModels, requiresModelDirectoryScope, type ModelDirectoryEntry, type ModelDirectoryScope } from '../services/api/provider/listModels.js'
 import { findCredentialOriginConflict } from '../services/api/provider/channelCredentials.js'
 import { Select } from './CustomSelect/select.js'
 import { Pane } from './design-system/Pane.js'
@@ -46,28 +46,33 @@ function DiscoverModels({ connection, apiKey, directoryScope, existing, onPick, 
   apiKey?: string
   directoryScope?: ModelDirectoryScope
   existing: ReadonlySet<string>
-  onPick: (id: string) => void
+  onPick: (model: ModelDirectoryEntry) => void
   onManual: () => void
   onRetry: () => void
   onBack: () => void
 }) {
-  const [result, setResult] = useState<string[] | string>()
+  const [result, setResult] = useState<ModelDirectoryEntry[] | string>()
   const { baseURL, protocol, apiKeyEnv } = connection
   useEffect(() => {
     const controller = new AbortController()
-    void fetchChannelModelIds({ baseURL, protocol, apiKeyEnv }, controller.signal, apiKey, directoryScope)
-      .then(ids => { if (!controller.signal.aborted) setResult(ids) })
+    void fetchChannelModels({ baseURL, protocol, apiKeyEnv }, controller.signal, apiKey, directoryScope)
+      .then(models => { if (!controller.signal.aborted) setResult(models) })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setResult(cause instanceof Error ? cause.message : '读取失败')
       })
     return () => controller.abort()
   }, [baseURL, protocol, apiKeyEnv, apiKey, directoryScope])
   const options = Array.isArray(result)
-    ? result.filter(id => !existing.has(id)).map(id => ({ label: id, value: `model:${id}` }))
+    ? result.filter(model => !existing.has(model.id) || model.contextWindow !== undefined)
+      .map(model => ({
+        label: model.id, value: `model:${model.id}`,
+        description: model.contextWindow === undefined ? undefined :
+          `${existing.has(model.id) ? '已添加 · ' : ''}上下文 ${model.contextWindow.toLocaleString()} tokens`,
+      }))
     : []
   return <>
     <Text color={typeof result === 'string' ? 'warning' : undefined}>{result === undefined ? '正在读取渠道模型…' : typeof result === 'string' ? result
-      : options.length ? '选择要添加的模型' : '渠道没有返回可新增的模型。'}</Text>
+      : options.length ? '选择要添加或更新上下文上限的模型' : '渠道没有返回可新增或可更新的模型。'}</Text>
     <Select key={result === undefined ? 'loading' : 'result'} clickToSelect options={[
       ...options,
       { value: 'manual', label: '手工输入模型 ID' },
@@ -77,7 +82,10 @@ function DiscoverModels({ connection, apiKey, directoryScope, existing, onPick, 
       if (value === 'manual') onManual()
       else if (value === 'retry') onRetry()
       else if (value === 'back') onBack()
-      else onPick(value.slice('model:'.length))
+      else if (Array.isArray(result)) {
+        const model = result.find(item => `model:${item.id}` === value)
+        if (model) onPick(model)
+      }
     }} />
   </>
 }
@@ -95,6 +103,7 @@ export function ModelChannelForm({ channelId, onSave, onCancel }: {
   const [source, setSource] = useState<'choose' | 'directory' | 'secret' | 'read' | 'manual'>('choose')
   const [discoveryKey, setDiscoveryKey] = useState('')
   const [discoveryAttempt, setDiscoveryAttempt] = useState(0)
+  const [directoryModel, setDirectoryModel] = useState<ModelDirectoryEntry>()
   const [directoryScope, setDirectoryScope] = useState<ModelDirectoryScope>()
   if (catalog instanceof Error) return <Pane color="permission">
     <Text color="error">{catalog.message}</Text>
@@ -102,6 +111,7 @@ export function ModelChannelForm({ channelId, onSave, onCancel }: {
       onChange={(value: string) => value === 'retry' ? reloadCatalog(loadEditableCatalog()) : onCancel()} onCancel={onCancel} />
   </Pane>
   const ids = source === 'read' ? [draft.models] : modelIdsFrom(draft.models)
+  const selectedDirectoryModel = source === 'read' ? directoryModel : undefined
   const hasFirstChannel = Object.keys(catalog.channels).length > 0
   const connection = (channelId && catalog.channels[channelId]) ||
     { protocol, baseURL: draft.url, apiKeyEnv: draft.key || undefined }
@@ -194,11 +204,12 @@ export function ModelChannelForm({ channelId, onSave, onCancel }: {
   function save() {
     try {
       checkConnection()
-      if (channelId) addChannelModels(channelId, ids)
+      if (channelId && selectedDirectoryModel) saveDiscoveredChannelModel(channelId, connection, selectedDirectoryModel)
+      else if (channelId) addChannelModels(channelId, ids)
       else addModelChannel(draft.id, {
         protocol, baseURL: draft.url,
         ...(draft.key ? { apiKeyEnv: draft.key } : {}),
-        models: ids.map(id => ({ id })),
+        models: ids.map(id => ({ id, discoveredContextWindow: selectedDirectoryModel?.contextWindow })),
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '保存失败，请重试。')
@@ -231,9 +242,11 @@ export function ModelChannelForm({ channelId, onSave, onCancel }: {
           </>}
           {discoveryKey ? <Text>输入的密钥将用于本次运行。需要长期保存时可在「渠道密钥」设置。</Text> : null}
           <Text>模型　{ids.join('、')}</Text>
+          {selectedDirectoryModel?.contextWindow !== undefined &&
+            <Text>渠道上下文　{selectedDirectoryModel.contextWindow.toLocaleString()} tokens</Text>}
           {!hasFirstChannel && <Text>三个角色将先使用首个模型，保存后可分别选择。</Text>}
         </Box>
-        <Select clickToSelect options={[{ value: 'save', label: channelId ? '保存新增模型' : '保存渠道' }, { value: 'back', label: '返回修改' }]}
+        <Select clickToSelect options={[{ value: 'save', label: channelId ? '保存模型' : '保存渠道' }, { value: 'back', label: '返回修改' }]}
           onChange={(value: string) => value === 'save' ? save() : back()} onCancel={back} />
       </> : step === 'models' && source === 'choose' ? <>
         <Text>添加模型到 {draft.id}</Text>
@@ -258,7 +271,11 @@ export function ModelChannelForm({ channelId, onSave, onCancel }: {
         connection={connection} apiKey={discoveryKey || undefined} directoryScope={directoryScope}
         existing={new Set(catalog.channels[draft.id]?.models.map(model => model.id))}
         onManual={() => { setError(''); setSource('manual') }} onRetry={() => readModels()}
-        onBack={back} onPick={id => { setDraft(previous => ({ ...previous, models: id })); go('confirm') }} /> : <>
+        onBack={back} onPick={model => {
+          setDirectoryModel(model)
+          setDraft(previous => ({ ...previous, models: model.id }))
+          go('confirm')
+        }} /> : <>
         <Box flexDirection="column"><Text bold>{fields[step][0]}</Text><Text dimColor>{fields[step][1]}</Text></Box>
         <Box key={step}><ChannelField initialValue={draft[step]} onBack={back} onSubmit={submit}
           onChange={value => { setError(''); setDraft(previous => ({ ...previous, [step]: value })) }} /></Box>
