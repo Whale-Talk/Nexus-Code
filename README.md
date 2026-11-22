@@ -16,10 +16,19 @@ Windows 终端演示，使用示例项目与本地模拟渠道。
 
 Quark、Atom、Electron 是内核原生角色。命令隔离使用本地依赖 `@anthropic-ai/sandbox-runtime`。
 
-### 🧠 DeepSeek Thinking 原生支持
-- thinking 流式实时渲染，蓝色代码高亮，`ctrl+o` 展开/折叠
-- budget 格式 `{type:'enabled', budget_tokens:N}`（DeepSeek 兼容）
-- reasoning 块统一映射（含 signature）
+### 🧠 多渠道思考模式
+
+在「模型」→「推理偏好」切换思考，或用 `/effort` 调整强度。设置只列出当前模型支持的档位。终端可用 **Ctrl+O** 查看接口返回的可读思考内容。
+
+| 官方渠道 | 思考开关 | 推理强度 |
+|---|---|---|
+| DeepSeek V4 Pro / Flash | Messages 和 Chat Completions 均可开关 | 低、高、最高 |
+| GLM 5.2、5.1、5、4.7、4.6 | Chat Completions 可开关 | GLM 5.2 支持高、最高 |
+| GLM 5.3 / Flash / FlashX | 始终思考 | Chat Completions 支持低、高、最高。Messages 使用服务端默认值 |
+| Kimi K3 / K3.1 Pro | 始终思考 | Messages 和 Chat Completions 均支持低、高、最高 |
+| MiMo V2.6 Flash / Pro / Pro Ultraspeed | Messages 和 Chat Completions 均可开关 | 使用模型默认强度 |
+
+Nexus 根据已配置的渠道地址、协议和模型 ID 选择思考参数。中转站如果确认实现了某家厂商的参数，可在 `models.json` 对应模型条目中添加 `"reasoningDialect": "deepseek"`、`"glm"`、`"kimi"` 或 `"mimo"`。
 
 ### ⚛️ 三个可配置的模型角色
 

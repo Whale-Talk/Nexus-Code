@@ -66,6 +66,7 @@ export function resolveProviderRoute(model: string, legacyApiKeyOverride?: strin
       source: { origin: new URL(channel.baseURL).origin, channel: selected.channel, keyVariable: channel.apiKeyEnv },
       adapter: adapterFor(selected.channel, { protocol: channel.protocol, baseURL: channel.baseURL, apiKey }),
       model: wireModelId(channel.baseURL, selected.id),
+      reasoningDialect: selected.reasoningDialect,
     }
   }
 
@@ -77,7 +78,7 @@ export function resolveProviderRoute(model: string, legacyApiKeyOverride?: strin
   if (!baseURL) throw new Error('NEXUS_BASE_URL 未设置，请使用 /nexus-config 配置服务地址')
   const keyVariable = singleChannelKeyVariable()
   const apiKey = legacyApiKeyOverride ?? process.env[keyVariable]
-  return { adapter: adapterFor('', { protocol, baseURL, apiKey }), model: wireModelId(baseURL, model),
+  return { adapter: adapterFor('', { protocol, baseURL, apiKey }), model: wireModelId(baseURL, model), reasoningDialect: undefined,
     source: { origin: new URL(baseURL).origin, keyVariable: legacyApiKeyOverride === undefined ? keyVariable : undefined } }
 }
 

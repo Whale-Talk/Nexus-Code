@@ -16,6 +16,7 @@ import {
   type ToolSet,
 } from 'ai'
 import { randomUUID } from 'crypto'
+import { getReasoningProfile, getWireReasoningEffort } from '../reasoning.js'
 import { captureStreamMetadata } from '../streamMetadata.js'
 import type {
   AssistantMessage,
@@ -87,15 +88,35 @@ export function createOpenAICompatibleAdapter(
       transport(input, { ...init, redirect: 'error' }), transport),
     includeUsage: options.includeUsage ?? true,
   }
-  const provider = createOpenAICompatible(providerOptions)
   const tracking = { lastAssistantMessageId: '' }
 
   return {
     streamText: (request, signal) =>
       streamRequest(request, providerOptions, tracking, signal),
     generateText: (request, signal) =>
-      generateRequest(request, provider, tracking, signal),
+      generateRequest(request, createRequestProvider(providerOptions, request), tracking, signal),
   }
+}
+
+function createRequestProvider(
+  options: Parameters<typeof createOpenAICompatible>[0],
+  request: ModelRequest,
+): OpenAICompatibleProvider {
+  const profile = getReasoningProfile('openai-compatible', options.baseURL, request.model, request.reasoningDialect)
+  const effort = getWireReasoningEffort(profile, request)
+  const thinking = profile?.thinking === 'toggle' && request.reasoning
+    ? { type: request.reasoning.mode === 'off' ? 'disabled' : 'enabled' }
+    : undefined
+  const omitTemperature = profile?.thinking === 'always' || thinking?.type === 'enabled'
+  return createOpenAICompatible({
+    ...options,
+    transformRequestBody: body => ({
+      ...body,
+      ...(omitTemperature ? { temperature: undefined } : {}),
+      ...(thinking ? { thinking } : {}),
+      ...(effort ? { reasoning_effort: effort } : {}),
+    }),
+  })
 }
 
 // ============================================================================
@@ -725,14 +746,14 @@ async function streamRequest(
 
   const response = captureStreamMetadata(controller.signal)
   const fetch = options.fetch ?? globalThis.fetch
-  const provider = createOpenAICompatible({
+  const provider = createRequestProvider({
     ...options,
     fetch: Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
       const res = await fetch(input, init)
       response.receive(res)
       return res
     }, fetch),
-  })
+  }, request)
   let result
   try {
     result = streamText({

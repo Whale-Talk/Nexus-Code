@@ -44,10 +44,12 @@ import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCliTeammateModeOverride, clearCliTeammateModeOverride } from '../../utils/swarm/backends/teammateModeSnapshot.js';
 import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
+import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { clearFastModeCooldown, FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeEnabled, getFastModeModel } from '../../utils/fastMode.js';
 import { getTerminalDisplayPreference, getTerminalDisplayStatus, isFullscreenEnvEnabled, type TerminalDisplayMode } from '../../utils/fullscreen.js';
-import { EFFORT_LEVELS, getInitialEffortSetting } from '../../utils/effort.js';
+import { EFFORT_LEVELS, getDisplayedEffortLevel, getInitialEffortSetting, getSupportedEffortLevels } from '../../utils/effort.js';
+import { getThinkingToggleUnavailableReason } from '../../utils/thinking.js';
 type Props = {
   onClose: (result?: string, options?: {
     display?: CommandResultDisplay;
@@ -157,6 +159,11 @@ export function Config({
   const maxVisible = Math.max(1, Math.min(narrow ? 7 : 14, paneCap - (compactLayout ? 7 : 11) - (saveError ? 2 : 0)));
   const verbose = useAppState(s_0 => s_0.verbose);
   const thinkingEnabled = useAppState(s_1 => s_1.thinkingEnabled);
+  const currentModel = useMainLoopModel();
+  const thinkingUnavailable = getThinkingToggleUnavailableReason(currentModel);
+  const effortLevels = getSupportedEffortLevels(currentModel);
+  const effortOptions = EFFORT_OPTIONS.filter(option => option.value === 'auto' || effortLevels.includes(option.value));
+  const effectiveEffort = effortPreference === 'auto' ? 'auto' : getDisplayedEffortLevel(currentModel, effortPreference);
   const isFastMode = useAppState(s_2 => isFastModeEnabled() ? s_2.fastMode : false);
   const promptSuggestionEnabled = useAppState(s_3 => s_3.promptSuggestionEnabled);
   // Show auto in the default-mode dropdown when the user has opted in OR the
@@ -333,7 +340,14 @@ export function Config({
         enabled: prefersReducedMotion
       });
     }
-  }, {
+  }, thinkingUnavailable ? {
+    id: 'thinkingEnabled',
+    label: '思考模式',
+    searchText: 'Thinking mode',
+    value: thinkingUnavailable,
+    type: 'managedEnum' as const,
+    onChange: () => {},
+  } : {
     id: 'thinkingEnabled',
     label: '思考模式',
     searchText: 'Thinking mode',
@@ -355,7 +369,7 @@ export function Config({
     id: 'effortLevel',
     label: '推理强度',
     searchText: 'Effort level reasoning',
-    value: EFFORT_LABELS[effortPreference],
+    value: effortLevels.length ? EFFORT_LABELS[effectiveEffort] : '当前渠道或模型不支持',
     type: 'managedEnum',
     onChange: () => {} // handled by the effort picker submenu
   },
@@ -1378,6 +1392,7 @@ export function Config({
           setTabsHidden(true);
           return;
         case 'effortLevel':
+          if (!effortLevels.length) return;
           setShowSubmenu('Effort');
           setTabsHidden(true);
           return;
@@ -1436,7 +1451,7 @@ export function Config({
       setting_0.onChange(setting_0.options[nextIndex]!);
       return;
     }
-  }, [autoUpdaterDisabledReason, filteredSettingsItems, selectedIndex, settingsData?.autoUpdatesChannel, setTabsHidden]);
+  }, [autoUpdaterDisabledReason, filteredSettingsItems, selectedIndex, settingsData?.autoUpdatesChannel, setTabsHidden, effortLevels.length]);
   const moveSelection = (delta: -1 | 1): void => {
     setShowThinkingWarning(false);
     const newIndex_1 = Math.max(0, Math.min(filteredSettingsItems.length - 1, selectedIndex + delta));
@@ -1562,12 +1577,12 @@ export function Config({
           <Text dimColor>Enter 选择 · Esc 返回</Text>
         </Box> : showSubmenu === 'Effort' ? <Box flexDirection="column" width="100%">
           <Text bold>推理强度</Text>
-          <Text dimColor>自动使用模型默认值。最高档依模型支持情况生效。</Text>
+          <Text dimColor>自动使用模型默认值。只列出当前模型支持的档位。</Text>
           <Select
             clickToSelect
-            options={EFFORT_OPTIONS}
+            options={effortOptions}
             visibleOptionCount={Math.max(1, Math.min(5, paneCap - 4))}
-            defaultFocusValue={effortPreference}
+            defaultFocusValue={effectiveEffort}
             onChange={preference => {
               setEffortPreference(preference);
               setSaveError('');

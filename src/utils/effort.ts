@@ -1,6 +1,8 @@
 import { isUltrathinkEnabled } from './thinking.js'
-import { getInitialSettings } from './settings/settings.js'
-import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
+import { getInitialSettings, getSettingsForSource } from './settings/settings.js'
+import { getModelCapabilityOverride, getModelReasoningProfile } from './model/modelSupportOverrides.js'
+import { clampReasoningEffort, type ReasoningEffortLevel } from '../services/api/provider/reasoning.js'
+import { getLegacyDeepSeekModelIds, getModelCatalog } from '../services/api/provider/catalog.js'
 import { isEnvTruthy } from './envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 
@@ -16,6 +18,10 @@ export const EFFORT_LEVELS = [
 export type EffortValue = EffortLevel | number
 
 export function modelSupportsEffort(model: string): boolean {
+  const profile = getModelReasoningProfile(model)
+  if (profile) {
+    return !!profile.effortLevels?.length && getModelCapabilityOverride(model, 'effort') !== false
+  }
   return isEnvTruthy(process.env.NEXUS_ALWAYS_ENABLE_EFFORT) || getModelCapabilityOverride(model, 'effort') === true
 }
 
@@ -23,7 +29,13 @@ export function modelSupportsMaxEffort(model: string): boolean {
   return getModelCapabilityOverride(model, 'maxEffort') === true
 }
 
-export function isEffortLevel(value: string): value is EffortLevel {
+export function getSupportedEffortLevels(model: string): readonly ReasoningEffortLevel[] {
+  if (!modelSupportsEffort(model)) return []
+  const levels = getModelReasoningProfile(model)?.effortLevels ?? EFFORT_LEVELS
+  return modelSupportsMaxEffort(model) ? levels : levels.filter(level => level !== 'max')
+}
+
+export function isEffortLevel(value: string): value is ReasoningEffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
 }
 
@@ -115,11 +127,9 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // Use the highest supported level when the endpoint does not accept max.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
-    return 'high'
-  }
-  return resolved
+  return typeof resolved === 'string'
+    ? clampReasoningEffort(resolved, getSupportedEffortLevels(model))
+    : resolved
 }
 
 /**
@@ -131,7 +141,7 @@ export function getDisplayedEffortLevel(
   model: string,
   appStateEffort: EffortValue | undefined,
 ): EffortLevel {
-  const resolved = resolveAppliedEffort(model, appStateEffort) ?? 'high'
+  const resolved = resolveAppliedEffort(model, appStateEffort) ?? getModelReasoningProfile(model)?.defaultEffort ?? 'high'
   return convertEffortValueToLevel(resolved)
 }
 
@@ -208,5 +218,16 @@ export function getEffortValueDescription(value: EffortValue): string {
 }
 
 export function getDefaultEffortForModel(model: string): EffortValue | undefined {
-  return isUltrathinkEnabled() && modelSupportsEffort(model) ? 'medium' : undefined
+  if (!modelSupportsEffort(model)) return undefined
+  const profile = getModelReasoningProfile(model)
+  // Old single-channel profiles stored their preferred default under deepseek.effort.
+  // A session or saved effort setting can still override it.
+  if (profile && !getModelCatalog() && getLegacyDeepSeekModelIds().length) {
+    const legacy = getSettingsForSource('userSettings')?.deepseek
+    if (legacy && typeof legacy === 'object' && 'effort' in legacy) {
+      const value = parseEffortValue(legacy.effort)
+      if (value !== undefined) return value
+    }
+  }
+  return profile?.defaultEffort ?? (isUltrathinkEnabled() ? 'medium' : undefined)
 }

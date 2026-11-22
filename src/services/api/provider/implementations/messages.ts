@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { APIConnectionError, APIError, APIUserAbortError, AuthenticationError } from '../errors.js'
+import { getOfficialReasoningDialect, getReasoningProfile, getWireReasoningEffort } from '../reasoning.js'
 import { captureStreamMetadata } from '../streamMetadata.js'
 import type {
   AssistantMessage, ContentBlock, MessageParam, ModelRequest, ProviderAdapter, StreamEvent, Usage,
 } from '../types.js'
 
-type ChannelConnection = { baseURL: string; apiKey: string }
+type ChannelConnection = { baseURL: string; apiKey: string; fetch?: typeof globalThis.fetch }
 type JsonObject = Record<string, unknown>
 
 export function normalizeMessagesBaseURL(baseURL: string): string {
@@ -41,15 +42,19 @@ function serializeBlock(block: InputBlock): JsonObject | undefined {
   }
 }
 
-function serializeMessages(request: ModelRequest, stream: boolean) {
+function serializeMessages(request: ModelRequest, stream: boolean, baseURL: string) {
   if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
     throw new Error('maxOutputTokens must be a positive integer')
   }
   const reasoning = request.reasoning
-  const thinking = reasoning?.mode === 'budget'
-    ? { type: 'enabled', budget_tokens: Math.min(reasoning.tokens, request.maxOutputTokens - 1) }
-    : reasoning?.mode === 'adaptive' ? { type: 'adaptive' }
-    : reasoning?.mode === 'off' ? { type: 'disabled' } : undefined
+  const profile = getReasoningProfile('messages', baseURL, request.model, request.reasoningDialect)
+  const effort = getWireReasoningEffort(profile, request)
+  const thinking = !reasoning || profile?.thinking === 'always' ? undefined
+    : reasoning.mode === 'off' ? { type: 'disabled' }
+    : profile?.thinking === 'toggle' ? { type: 'enabled' }
+    : reasoning.mode === 'budget'
+      ? { type: 'enabled', budget_tokens: Math.min(reasoning.tokens, request.maxOutputTokens - 1) }
+      : { type: 'adaptive' }
   const messages = request.messages.map(({ role, content }) => {
     if (typeof content === 'string') return { role, content }
     // Tool results come first in a user turn. Local-only transcript fields stay local.
@@ -73,10 +78,10 @@ function serializeMessages(request: ModelRequest, stream: boolean) {
       ? request.tools.map(({ name, description, input_schema }) => ({ name, description, input_schema }))
       : undefined,
     tool_choice: request.toolChoice,
-    temperature: thinking?.type === 'enabled' || thinking?.type === 'adaptive' ? undefined : request.temperature,
+    temperature: profile?.thinking === 'always' || (thinking && thinking.type !== 'disabled') ? undefined : request.temperature,
     stop_sequences: request.stopSequences,
     thinking,
-    output_config: request.effort || request.outputFormat ? { effort: request.effort, format: request.outputFormat } : undefined,
+    output_config: effort || request.outputFormat ? { effort, format: request.outputFormat } : undefined,
     metadata: request.userId === undefined ? undefined : { user_id: request.userId },
   }
 }
@@ -212,11 +217,14 @@ async function* streamEvents(response: Response, model: string, key: string, onM
   throw new APIConnectionError('Model service closed its stream before completion')
 }
 
-export function createMessagesAdapter({ baseURL, apiKey }: ChannelConnection): ProviderAdapter {
+export function createMessagesAdapter({ baseURL, apiKey, fetch: transport = globalThis.fetch }: ChannelConnection): ProviderAdapter {
   const url = normalizeMessagesBaseURL(baseURL) + '/messages'
+  const dialect = getOfficialReasoningDialect('messages', baseURL)
+  const authHeaders = dialect === 'kimi' || dialect === 'mimo'
+    ? { authorization: `Bearer ${apiKey}` } : messagesHeaders(apiKey)
   let parentMessageId: string | undefined
   async function send(body: ReturnType<typeof serializeMessages>, signal?: AbortSignal) {
-    const headers = new Headers({ ...messagesHeaders(apiKey), 'content-type': 'application/json',
+    const headers = new Headers({ ...authHeaders, 'content-type': 'application/json',
       accept: body.stream ? 'text/event-stream' : 'application/json' })
     const conversationId = process.env.NEXUS_CONVERSATION_ID || process.env.X_CONVERSATION_ID
     if (conversationId && new URL(url).hostname !== 'api.anthropic.com') {
@@ -226,7 +234,7 @@ export function createMessagesAdapter({ baseURL, apiKey }: ChannelConnection): P
     }
     let response: Response
     try {
-      response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' })
+      response = await transport(url, { method: 'POST', headers, body: JSON.stringify(body), signal, redirect: 'error' })
     } catch (cause) {
       if (signal?.aborted) throw new APIUserAbortError()
       throw new APIConnectionError('Could not connect to the model service', cause)
@@ -240,7 +248,7 @@ export function createMessagesAdapter({ baseURL, apiKey }: ChannelConnection): P
 
   return {
     async generateText(request, signal) {
-      const response = await send(serializeMessages(request, false), signal)
+      const response = await send(serializeMessages(request, false, baseURL), signal)
       try {
         const message = assistantMessage(await response.json(), request.model)
         parentMessageId = message.id
@@ -252,7 +260,7 @@ export function createMessagesAdapter({ baseURL, apiKey }: ChannelConnection): P
       }
     },
     async streamText(request, outerSignal) {
-      const body = serializeMessages(request, true)
+      const body = serializeMessages(request, true, baseURL)
       const controller = new AbortController()
       const signal = outerSignal ? AbortSignal.any([outerSignal, controller.signal]) : controller.signal
       const headers = captureStreamMetadata(signal)

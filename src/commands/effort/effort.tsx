@@ -1,10 +1,9 @@
-import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
-import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, isEffortLevel, toPersistableEffort } from '../../utils/effort.js';
+import { type EffortValue, getDisplayedEffortLevel, getEffortEnvOverride, getEffortValueDescription, getSupportedEffortLevels, isEffortLevel, toPersistableEffort } from '../../utils/effort.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
 const COMMON_HELP_ARGS = ['help', '-h', '--help'];
 type EffortCommandResult = {
@@ -60,17 +59,20 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   };
 }
 export function showCurrentEffort(appStateEffort: EffortValue | undefined, model: string): EffortCommandResult {
+  if (!getSupportedEffortLevels(model).length) {
+    return { message: '当前渠道或模型不支持调节推理强度。' };
+  }
   const envOverride = getEffortEnvOverride();
   const effectiveValue = envOverride === null ? undefined : envOverride ?? appStateEffort;
+  const level = getDisplayedEffortLevel(model, appStateEffort);
   if (effectiveValue === undefined) {
-    const level = getDisplayedEffortLevel(model, appStateEffort);
     return {
       message: `Effort level: auto (currently ${level})`
     };
   }
-  const description = getEffortValueDescription(effectiveValue);
+  const description = getEffortValueDescription(level);
   return {
-    message: `Current effort level: ${effectiveValue} (${description})`
+    message: `Current effort level: ${level} (${description})`
   };
 }
 function unsetEffortLevel(): EffortCommandResult {
@@ -104,7 +106,7 @@ function unsetEffortLevel(): EffortCommandResult {
     }
   };
 }
-export function executeEffort(args: string): EffortCommandResult {
+export function executeEffort(args: string, model: string): EffortCommandResult {
   const normalized = args.toLowerCase();
   if (normalized === 'auto' || normalized === 'unset') {
     return unsetEffortLevel();
@@ -113,6 +115,11 @@ export function executeEffort(args: string): EffortCommandResult {
     return {
       message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, auto`
     };
+  }
+  const levels = getSupportedEffortLevels(model);
+  if (!levels.length) return { message: '当前渠道或模型不支持调节推理强度。' };
+  if (!levels.includes(normalized)) {
+    return { message: `当前模型支持的推理强度为 ${levels.join('、')}，或用 /effort auto 恢复默认。` };
   }
   return setEffortValue(normalized);
 }
@@ -131,52 +138,27 @@ function ShowCurrentEffort(t0) {
 function _temp(s) {
   return s.effortValue;
 }
-function ApplyEffortAndClose(t0) {
-  const $ = _c(6);
-  const {
-    result,
-    onDone
-  } = t0;
+function ApplyEffortAndClose({ args, onDone }: { args: string; onDone: LocalJSXCommandOnDone }) {
+  const model = useMainLoopModel();
   const setAppState = useSetAppState();
-  const {
-    effortUpdate,
-    message
-  } = result;
-  let t1;
-  let t2;
-  if ($[0] !== effortUpdate || $[1] !== message || $[2] !== onDone || $[3] !== setAppState) {
-    t1 = () => {
-      if (effortUpdate) {
-        setAppState(prev => ({
-          ...prev,
-          effortValue: effortUpdate.value
-        }));
-      }
-      onDone(message);
-    };
-    t2 = [setAppState, effortUpdate, message, onDone];
-    $[0] = effortUpdate;
-    $[1] = message;
-    $[2] = onDone;
-    $[3] = setAppState;
-    $[4] = t1;
-    $[5] = t2;
-  } else {
-    t1 = $[4];
-    t2 = $[5];
-  }
-  React.useEffect(t1, t2);
+  const applied = React.useRef(false);
+  React.useEffect(() => {
+    if (applied.current) return;
+    applied.current = true;
+    const { effortUpdate, message } = executeEffort(args, model);
+    if (effortUpdate) setAppState(prev => ({ ...prev, effortValue: effortUpdate.value }));
+    onDone(message);
+  }, [args, model, onDone, setAppState]);
   return null;
 }
 export async function call(onDone: LocalJSXCommandOnDone, _context: unknown, args?: string): Promise<React.ReactNode> {
   args = args?.trim() || '';
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Usage: /effort [low|medium|high|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Nexus Quark only)\n- auto: Use the default effort level for your model');
+    onDone('用法 /effort [low|medium|high|max|auto]\n\n可选档位取决于当前渠道和模型。auto 使用模型默认强度。');
     return;
   }
   if (!args || args === 'current' || args === 'status') {
     return <ShowCurrentEffort onDone={onDone} />;
   }
-  const result = executeEffort(args);
-  return <ApplyEffortAndClose result={result} onDone={onDone} />;
+  return <ApplyEffortAndClose args={args} onDone={onDone} />;
 }
