@@ -2,6 +2,10 @@
 
 > 可在终端设置中心为三个模型角色分配渠道的 AI 编程助手。支持 DeepSeek、Messages 兼容服务和 OpenAI Chat Completions 兼容服务。
 
+![Windows 上的 Nexus 对话，展开后的运行步骤显示搜索和读取的文件](docs/screenshots/windows-running-steps.png)
+
+Windows 终端演示，使用示例项目与本地模拟渠道。
+
 ---
 
 ## ✨ 核心特色
@@ -133,6 +137,8 @@ wt -w new new-tab --reloadEnvironment -d "$PWD" node.exe .\bin\nexus.cjs
 | 给已有渠道补充模型 | 「模型」→「模型渠道」→ 选择渠道并添加模型，可读取列表或手工输入模型 ID |
 | 输入或更新渠道密钥 | 「模型」→「渠道密钥」，核对地址，选择仅用于本次运行或保存到本机 |
 | 修改思考等相关偏好 | 「模型」→「推理偏好」 |
+
+![Nexus 设置中心的角色绑定页，列出 Quark、Atom、Electron 各自使用的渠道与模型](docs/screenshots/windows-model-roles.png)
 
 角色绑定保存在用户配置目录的 `models.json`。同一窗口下次调用该角色就使用新的绑定；通过 `--model 渠道::模型` 指定具体模型的会话继续使用指定模型。`/model` 只在当前对话切换 Quark、Atom、Electron。打开、浏览或取消设置均不会迁移旧配置。Windows 默认配置目录为 `%USERPROFILE%\.nexus`，也可通过 `NEXUS_CONFIG_DIR` 为一次启动指定独立配置目录。
 
