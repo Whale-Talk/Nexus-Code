@@ -46,7 +46,7 @@ import type {
   UserMessage,
 } from '../types/message.js'
 import { toolToAPISchema } from './api.js'
-import { filterInjectedMemoryFiles, getMemoryFiles } from './nexusmd.js'
+import { filterInjectedMemoryFiles, getMemoryFiles } from './projectInstructions.js'
 import { getContextWindowForModel } from './context.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'

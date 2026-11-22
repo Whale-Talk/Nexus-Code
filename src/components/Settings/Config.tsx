@@ -20,13 +20,13 @@ import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
 import { modelDisplayString } from '../../utils/model/model.js';
-import { NexusMdExternalIncludesDialog } from '../NexusMdExternalIncludesDialog.js';
+import { ExternalInstructionIncludesDialog } from '../ExternalInstructionIncludesDialog.js';
 import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '../design-system/Dialog.js';
 import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
-import { getExternalNexusMdIncludes, getMemoryFiles, hasExternalNexusMdIncludes } from 'src/utils/nexusmd.js';
+import { getExternalInstructionIncludes, getMemoryFiles, hasExternalInstructionIncludes } from 'src/utils/projectInstructions.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline } from '../design-system/Byline.js';
@@ -240,7 +240,7 @@ export function Config({
   const isConnectedToIde = hasAccessToIDEExtensionDiffFeature(context.options.mcpClients);
   const isFileCheckpointingAvailable = !isEnvTruthy(process.env.NEXUS_DISABLE_FILE_CHECKPOINTING);
   const memoryFiles = React.use(getMemoryFiles(true));
-  const shouldShowExternalIncludesToggle = hasExternalNexusMdIncludes(memoryFiles);
+  const shouldShowExternalIncludesToggle = hasExternalInstructionIncludes(memoryFiles);
   const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
   function onChangeVerbose(value_0: boolean): void {
     // Update the global config to persist the setting
@@ -1038,8 +1038,8 @@ export function Config({
     }
   }] : []), ...(shouldShowExternalIncludesToggle ? [{
     id: 'showExternalIncludesDialog',
-    label: 'NEXUS.md 外部引用',
-    searchText: 'External NEXUS.md includes',
+    label: '指令文件的外部引用',
+    searchText: 'External instruction file includes',
     value: (() => {
       const projectConfig = getCurrentProjectConfig();
       if (projectConfig.hasNexusMdExternalIncludesApproved) {
@@ -1632,10 +1632,10 @@ export function Config({
             </Byline>
           </Text>
         </> : showSubmenu === 'ExternalIncludes' ? <>
-          <NexusMdExternalIncludesDialog onDone={() => {
+          <ExternalInstructionIncludesDialog onDone={() => {
         setShowSubmenu(null);
         setTabsHidden(false);
-      }} externalIncludes={getExternalNexusMdIncludes(memoryFiles)} />
+      }} externalIncludes={getExternalInstructionIncludes(memoryFiles)} />
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />

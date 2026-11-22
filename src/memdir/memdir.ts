@@ -267,7 +267,7 @@ export function buildMemoryLines(
 
 /**
  * Build the typed-memory prompt with MEMORY.md content included.
- * Used by agent memory (which has no getNexusMds() equivalent).
+ * Used by agent memory (which has no renderInstructionContext() equivalent).
  */
 export function buildMemoryPrompt(params: {
   displayName: string

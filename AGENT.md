@@ -1,4 +1,4 @@
-# NEXUS.md
+# AGENT.md
 
 This file provides guidance to Nexus Code when working with code in this repository.
 

@@ -68,7 +68,7 @@ import { SpinnerWithVerb, BriefIdleStatus, type SpinnerMode } from '../component
 import { getSystemPrompt } from '../constants/prompts.js';
 import { buildEffectiveSystemPrompt } from '../utils/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
-import { getMemoryFiles } from '../utils/nexusmd.js';
+import { getMemoryFiles } from '../utils/projectInstructions.js';
 import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js';
 import { getTotalCost, saveCurrentSessionCosts, resetCostState, getStoredSessionCosts } from '../cost-tracker.js';
 import { useCostSummary } from '../costHook.js';
@@ -3738,9 +3738,9 @@ export function REPL({
       const memoryFiles = await getMemoryFiles();
       if (memoryFiles.length > 0) {
         const fileList = memoryFiles.map(f => `  [${f.type}] ${f.path} (${f.content.length} chars)${f.parent ? ` (included by ${f.parent})` : ''}`).join('\n');
-        logForDebugging(`Loaded ${memoryFiles.length} NEXUS.md/rules files:\n${fileList}`);
+        logForDebugging(`Loaded ${memoryFiles.length} instruction and rule files:\n${fileList}`);
       } else {
-        logForDebugging('No NEXUS.md/rules files found');
+        logForDebugging('No instruction and rule files found');
       }
       for (const file of memoryFiles) {
         // When the injected content doesn't match disk (stripped HTML comments,

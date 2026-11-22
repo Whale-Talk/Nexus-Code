@@ -596,7 +596,7 @@ const internalOnlyTips: Tip[] =
         {
           id: 'important-nexusmd',
           content: async () =>
-            '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow NEXUS.md rules',
+            '[ANT-ONLY] Use "IMPORTANT:" prefix for must-follow project instructions',
           cooldownSessions: 30,
           isRelevant: async () => true,
         },

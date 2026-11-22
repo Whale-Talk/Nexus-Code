@@ -1027,15 +1027,16 @@ export const SettingsSchema = lazySchema(() =>
             'Typically set in managed settings by enterprise administrators ' +
             'to pre-configure SSH connections for team members.',
         ),
-      nexusMdExcludes: z
+      instructionFileExcludes: z
         .array(z.string())
         .optional()
         .describe(
-          'Glob patterns or absolute paths of NEXUS.md files to exclude from loading. ' +
+          'Glob patterns or absolute paths for instruction files and rules to exclude. ' +
             'Patterns are matched against absolute file paths using picomatch. ' +
             'Only applies to User, Project, and Local memory types (Managed/policy files cannot be excluded). ' +
-            'Examples: "/home/user/monorepo/NEXUS.md", "**/code/NEXUS.md", "**/some-dir/.nexus/rules/**"',
+            'Examples: "/home/user/monorepo/AGENT.md", "**/code/AGENT.md", "**/some-dir/.nexus/rules/**"',
         ),
+      nexusMdExcludes: z.array(z.string()).optional().describe('Legacy alias for instructionFileExcludes.'),
       pluginTrustMessage: z
         .string()
         .optional()

@@ -1417,7 +1417,7 @@ Include 3 friction categories with 2 examples each.`,
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
   "nexus_md_additions": [
-    {"addition": "A specific line or block to add to NEXUS.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in NEXUS.md. E.g., 'Add under ## Testing section'"}
+    {"addition": "A specific line or block to add to the project instructions based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in the project instruction file. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
     {"feature": "Feature name from CC FEATURES REFERENCE above", "one_liner": "What it does", "why_for_you": "Why this would help YOU based on your sessions", "example_code": "Actual command or config to copy"}
@@ -2069,16 +2069,16 @@ function generateHtmlReport(
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
     <div class="nexus-md-section">
-      <h3>Suggested NEXUS.md Additions</h3>
-      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into Nexus Code to add it to your NEXUS.md.</p>
+      <h3>Suggested Project Instruction Updates</h3>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into Nexus Code to update your project instructions.</p>
       <div class="nexus-md-actions">
-        <button class="copy-all-btn" onclick="copyAllCheckedNexusMd()">Copy All Checked</button>
+        <button class="copy-all-btn" onclick="copyAllCheckedInstructions()">Copy All Checked</button>
       </div>
       ${suggestions.nexus_md_additions
         .map(
           (add, i) => `
         <div class="nexus-md-item">
-          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to NEXUS.md')}\\n\\n${escapeHtml(add.addition)}">
+          <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to the project instruction file')}\\n\\n${escapeHtml(add.addition)}">
           <label for="cmd-${i}">
             <code class="cmd-code">${escapeHtml(add.addition)}</code>
             <button class="copy-btn" onclick="copyCmdItem(${i})">Copy</button>
@@ -2406,7 +2406,7 @@ function generateHtmlReport(
         });
       }
     }
-    function copyAllCheckedNexusMd() {
+    function copyAllCheckedInstructions() {
       const checkboxes = document.querySelectorAll('.cmd-checkbox:checked');
       const texts = [];
       checkboxes.forEach(cb => {

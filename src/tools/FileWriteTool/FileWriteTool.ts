@@ -1,4 +1,4 @@
-import { dirname, sep } from 'path'
+import { dirname } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { z } from 'zod/v4'
 import { getFeatureValue } from '../../services/analytics/featureFlags.js'
@@ -18,6 +18,7 @@ import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isInstructionFilePath } from '../../utils/instructionFiles.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
 import {
@@ -337,7 +338,7 @@ export const FileWriteTool = buildTool({
     })
 
     // Log when writing to NEXUS.md
-    if (fullFilePath.endsWith(`${sep}NEXUS.md`)) {
+    if (isInstructionFilePath(fullFilePath)) {
       logEvent('nexus_write_nexusmd', {})
     }
 

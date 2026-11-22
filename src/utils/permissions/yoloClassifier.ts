@@ -10,7 +10,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { z } from 'zod/v4'
 import {
-  getCachedNexusMdContent,
+  getCachedInstructionContent,
   getLastClassifierRequests,
   getSessionId,
   setLastClassifierRequests,
@@ -463,18 +463,18 @@ export function buildTranscriptForClassifier(
  * pre-PR behavior.
  */
 function buildNexusMdMessage(): MessageParam | null {
-  const nexusMd = getCachedNexusMdContent()
-  if (nexusMd === null) return null
+  const projectInstructions = getCachedInstructionContent()
+  if (projectInstructions === null) return null
   return {
     role: 'user',
     content: [
       {
         type: 'text',
         text:
-          `The following is the user's NEXUS.md configuration. These are ` +
+          `The following is the project's and user's instructions. These are ` +
           `instructions the user provided to the agent and should be treated ` +
           `as part of the user's intent when evaluating actions.\n\n` +
-          `<user_nexus_md>\n${nexusMd}\n</user_nexus_md>`,
+          `<user_instructions>\n${projectInstructions}\n</user_instructions>`,
         cache_control: getCacheControl({ querySource: 'auto_mode' }),
       },
     ],

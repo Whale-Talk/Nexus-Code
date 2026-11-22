@@ -17,7 +17,7 @@ import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { normalizeApiKeyForConfig } from './utils/authPortable.js';
-import { getExternalNexusMdIncludes, getMemoryFiles, shouldShowNexusMdExternalIncludesWarning } from './utils/nexusmd.js';
+import { getExternalInstructionIncludes, getMemoryFiles, shouldShowExternalInstructionWarning } from './utils/projectInstructions.js';
 import { checkHasTrustDialogAccepted, getCustomApiKeyStatus, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
 import { isEnvTruthy, isRunningOnHomespace } from './utils/envUtils.js';
@@ -160,12 +160,12 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     }
 
     // Check for nexus.md includes that need approval
-    if (await shouldShowNexusMdExternalIncludesWarning()) {
-      const externalIncludes = getExternalNexusMdIncludes(await getMemoryFiles(true));
+    if (await shouldShowExternalInstructionWarning()) {
+      const externalIncludes = getExternalInstructionIncludes(await getMemoryFiles(true));
       const {
-        NexusMdExternalIncludesDialog
-      } = await import('./components/NexusMdExternalIncludesDialog.js');
-      await showSetupDialog(root, done => <NexusMdExternalIncludesDialog onDone={done} isStandaloneDialog externalIncludes={externalIncludes} />);
+        ExternalInstructionIncludesDialog
+      } = await import('./components/ExternalInstructionIncludesDialog.js');
+      await showSetupDialog(root, done => <ExternalInstructionIncludesDialog onDone={done} isStandaloneDialog externalIncludes={externalIncludes} />);
     }
   }
 

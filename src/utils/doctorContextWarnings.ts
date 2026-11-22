@@ -6,7 +6,7 @@ import {
   getLargeMemoryFiles,
   getMemoryFiles,
   MAX_MEMORY_CHARACTER_COUNT,
-} from './nexusmd.js'
+} from './projectInstructions.js'
 import { getMainLoopModel } from './model/model.js'
 import { permissionRuleValueToString } from './permissions/permissionRuleParser.js'
 import { detectUnreachableRules } from './permissions/shadowedRuleDetection.js'
@@ -33,13 +33,13 @@ export type ContextWarning = {
 }
 
 export type ContextWarnings = {
-  nexusMdWarning: ContextWarning | null
+  instructionFileWarning: ContextWarning | null
   agentWarning: ContextWarning | null
   mcpWarning: ContextWarning | null
   unreachableRulesWarning: ContextWarning | null
 }
 
-async function checkNexusMdFiles(): Promise<ContextWarning | null> {
+async function checkInstructionFiles(): Promise<ContextWarning | null> {
   const largeFiles = getLargeMemoryFiles(await getMemoryFiles())
 
   // This already filters for files > 40k chars each
@@ -53,8 +53,8 @@ async function checkNexusMdFiles(): Promise<ContextWarning | null> {
 
   const message =
     largeFiles.length === 1
-      ? `Large NEXUS.md file detected (${largeFiles[0]!.content.length.toLocaleString()} chars > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()})`
-      : `${largeFiles.length} large NEXUS.md files detected (each > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()} chars)`
+      ? `Large instruction file detected (${largeFiles[0]!.content.length.toLocaleString()} chars > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()})`
+      : `${largeFiles.length} large instruction files detected (each > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()} chars)`
 
   return {
     type: 'nexusmd_files',
@@ -241,16 +241,16 @@ export async function checkContextWarnings(
   agentInfo: AgentDefinitionsResult | null,
   getToolPermissionContext: () => Promise<ToolPermissionContext>,
 ): Promise<ContextWarnings> {
-  const [nexusMdWarning, agentWarning, mcpWarning, unreachableRulesWarning] =
+  const [instructionFileWarning, agentWarning, mcpWarning, unreachableRulesWarning] =
     await Promise.all([
-      checkNexusMdFiles(),
+      checkInstructionFiles(),
       checkAgentDescriptions(agentInfo),
       checkMcpTools(tools, getToolPermissionContext, agentInfo),
       checkUnreachableRules(getToolPermissionContext),
     ])
 
   return {
-    nexusMdWarning,
+    instructionFileWarning,
     agentWarning,
     mcpWarning,
     unreachableRulesWarning,

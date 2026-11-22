@@ -384,7 +384,7 @@ export async function* runAgent({
 
   // Read-only agents (Explore, Plan) don't act on commit/PR/lint rules from
   // NEXUS.md — the main agent has full context and interprets their output.
-  // Dropping nexusMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
+  // Dropping projectInstructions here saves ~5-15 Gtok/week across 34M+ Explore spawns.
   // Explicit override.userContext from callers is preserved untouched.
   // Kill-switch defaults true; flip nexus_slim_subagent_nexusmd=false to revert.
   const shouldOmitNexusMd =

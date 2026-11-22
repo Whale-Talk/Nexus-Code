@@ -24,7 +24,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getHostedAccountOAuthTokens,
 } from '../../utils/auth.js'
-import { clearMemoryFileCaches } from '../../utils/nexusmd.js'
+import { clearMemoryFileCaches } from '../../utils/projectInstructions.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
 import { classifyAxiosError } from '../../utils/errors.js'

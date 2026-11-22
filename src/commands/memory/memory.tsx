@@ -1,14 +1,17 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { access, mkdir, writeFile } from 'fs/promises';
 import * as React from 'react';
+import { getOriginalCwd } from '../../bootstrap/state.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { Dialog } from '../../components/design-system/Dialog.js';
 import { MemoryFileSelector } from '../../components/memory/MemoryFileSelector.js';
 import { getRelativeMemoryPath } from '../../components/memory/MemoryUpdateNotification.js';
 import { Box, Text } from '../../ink.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
-import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/nexusmd.js';
+import { clearMemoryFileCaches, getMemoryFiles } from '../../utils/projectInstructions.js';
+import { getMemoryPath } from '../../utils/config.js';
 import { getNexusConfigHomeDir } from '../../utils/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
+import { getInstructionStarterContent, getInstructionWritePath } from '../../utils/instructionFiles.js';
 import { logError } from '../../utils/log.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
 function MemoryCommand({
@@ -20,24 +23,23 @@ function MemoryCommand({
 }): React.ReactNode {
   const handleSelectMemoryFile = async (memoryPath: string) => {
     try {
-      // Create nexus directory if it doesn't exist (idempotent with recursive)
-      if (memoryPath.includes(getNexusConfigHomeDir())) {
-        await mkdir(getNexusConfigHomeDir(), {
-          recursive: true
-        });
-      }
-
-      // Create file if it doesn't exist (wx flag fails if file exists,
-      // which we catch to preserve existing content)
-      try {
-        await writeFile(memoryPath, '', {
-          encoding: 'utf8',
-          flag: 'wx'
-        });
-      } catch (e: unknown) {
-        if (getErrnoCode(e) !== 'EEXIST') {
-          throw e;
+      const profile = getNexusConfigHomeDir();
+      const project = memoryPath === getMemoryPath('Project');
+      const personal = memoryPath === getInstructionWritePath(profile);
+      if (project || personal) {
+        if (personal) await mkdir(profile, { recursive: true });
+        const directory = project ? getOriginalCwd() : profile;
+        try {
+          await writeFile(memoryPath, getInstructionStarterContent(directory, project), {
+            encoding: 'utf8', flag: 'wx', mode: personal ? 0o600 : 0o666
+          });
+        } catch (error) {
+          if (getErrnoCode(error) !== 'EEXIST') throw error;
         }
+      } else {
+        // Compatibility entries already exist. A disappeared entry must not
+        // be recreated under a filename used by another tool.
+        await access(memoryPath);
       }
       await editFileInEditor(memoryPath);
 

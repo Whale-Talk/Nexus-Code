@@ -21,6 +21,7 @@ import { getNexusConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { ConfigParseError, getErrnoCode } from './errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from './file.js'
 import { getFsImplementation } from './fsOperations.js'
+import { getInstructionFilePath, getProjectInstructionWritePath } from './instructionFiles.js'
 import { findCanonicalGitRoot } from './git.js'
 import { safeParseJSON } from './json.js'
 import { stripBOM } from './jsonRead.js'
@@ -1739,13 +1740,13 @@ export function getMemoryPath(memoryType: MemoryType): string {
 
   switch (memoryType) {
     case 'User':
-      return join(getNexusConfigHomeDir(), 'NEXUS.md')
+      return getInstructionFilePath(getNexusConfigHomeDir())
     case 'Local':
-      return join(cwd, 'NEXUS.local.md')
+      return getInstructionFilePath(cwd, 'local')
     case 'Project':
-      return join(cwd, 'NEXUS.md')
+      return getProjectInstructionWritePath(cwd)
     case 'Managed':
-      return join(getManagedFilePath(), 'NEXUS.md')
+      return getInstructionFilePath(getManagedFilePath())
     case 'AutoMem':
       return getAutoMemEntrypoint()
   }
