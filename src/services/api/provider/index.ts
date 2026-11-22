@@ -1,6 +1,7 @@
 import { getModelCatalog, requireCatalogModel, type ProviderKind } from './catalog.js'
 import { createMessagesAdapter } from './implementations/messages.js'
 import { createOpenAICompatibleAdapter } from './implementations/openai-compatible.js'
+import { getWireContextModelId } from './modelContext.js'
 import type { ProviderAdapter } from './types.js'
 
 export type { ModelRequest, StreamEvent, StreamResponse, ProviderAdapter, ModelResponse } from './types.js'
@@ -46,13 +47,6 @@ export function keyForRequestOrigin(route: RequestRoute | undefined, origin: str
   return process.env[route.keyVariable]?.trim() || undefined
 }
 
-// Older profiles include the local context hint in their DeepSeek model setting.
-// Relays may register that entire string as their literal upstream model ID.
-function wireModelId(baseURL: string, model: string): string {
-  return new URL(baseURL).origin === 'https://api.deepseek.com' && /^deepseek-/i.test(model)
-    ? model.replace(/\[1m\]$/i, '') : model
-}
-
 export function resolveProviderRoute(model: string, legacyApiKeyOverride?: string) {
   const catalog = getModelCatalog()
   if (catalog) {
@@ -65,7 +59,7 @@ export function resolveProviderRoute(model: string, legacyApiKeyOverride?: strin
     return {
       source: { origin: new URL(channel.baseURL).origin, channel: selected.channel, keyVariable: channel.apiKeyEnv },
       adapter: adapterFor(selected.channel, { protocol: channel.protocol, baseURL: channel.baseURL, apiKey }),
-      model: wireModelId(channel.baseURL, selected.id),
+      model: getWireContextModelId(channel, selected.id),
       reasoningDialect: selected.reasoningDialect,
     }
   }
@@ -78,7 +72,7 @@ export function resolveProviderRoute(model: string, legacyApiKeyOverride?: strin
   if (!baseURL) throw new Error('NEXUS_BASE_URL 未设置，请使用 /nexus-config 配置服务地址')
   const keyVariable = singleChannelKeyVariable()
   const apiKey = legacyApiKeyOverride ?? process.env[keyVariable]
-  return { adapter: adapterFor('', { protocol, baseURL, apiKey }), model: wireModelId(baseURL, model), reasoningDialect: undefined,
+  return { adapter: adapterFor('', { protocol, baseURL, apiKey }), model: getWireContextModelId({ protocol, baseURL }, model), reasoningDialect: undefined,
     source: { origin: new URL(baseURL).origin, keyVariable: legacyApiKeyOverride === undefined ? keyVariable : undefined } }
 }
 

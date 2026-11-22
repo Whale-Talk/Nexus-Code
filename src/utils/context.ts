@@ -1,4 +1,5 @@
 import { getCatalogModel } from '../services/api/provider/catalog.js'
+import { getKnownContextWindow } from '../services/api/provider/modelContext.js'
 import { isEnvTruthy } from './envUtils.js'
 
 // Conservative working defaults for a channel without declared limits.
@@ -29,13 +30,13 @@ export function has1mContext(model: string): boolean {
 }
 
 export function modelSupports1M(model: string): boolean {
-  return !is1mContextDisabled() && ((getCatalogModel(model)?.contextWindow ?? 0) >= 1_000_000 || has1mContext(model))
+  return getContextWindowForModel(model) >= 1_000_000
 }
 
 export function getContextWindowForModel(model: string, _betas?: string[]): number {
-  const configured = getCatalogModel(model)?.contextWindow
+  const known = getKnownContextWindow(model)
   const override = Number(process.env.NEXUS_MAX_CONTEXT_TOKENS)
-  const limit = configured ?? (has1mContext(model) ? 1_000_000 : MODEL_CONTEXT_WINDOW_DEFAULT)
+  const limit = known ?? (has1mContext(model) ? 1_000_000 : MODEL_CONTEXT_WINDOW_DEFAULT)
   const enabledLimit = is1mContextDisabled() ? Math.min(limit, MODEL_CONTEXT_WINDOW_DEFAULT) : limit
   return Number.isSafeInteger(override) && override > 0 ? Math.min(enabledLimit, override) : enabledLimit
 }
@@ -79,8 +80,12 @@ export function getModelMaxOutputTokens(model: string): {
   default: number
   upperLimit: number
 } {
-  const upperLimit = getCatalogModel(model)?.maxOutputTokens ?? MAX_OUTPUT_TOKENS_UPPER_LIMIT
-  return { default: Math.min(upperLimit, MAX_OUTPUT_TOKENS_DEFAULT), upperLimit }
+  const window = getContextWindowForModel(model)
+  const configuredLimit = getCatalogModel(model)?.maxOutputTokens ?? MAX_OUTPUT_TOKENS_UPPER_LIMIT
+  const upperLimit = Math.min(configuredLimit, Math.max(1, window - 1))
+  // Keep room for the prompt when a local or relay model advertises a small context.
+  const defaultLimit = Math.min(upperLimit, MAX_OUTPUT_TOKENS_DEFAULT, Math.max(1, Math.floor(window / 4)))
+  return { default: defaultLimit, upperLimit }
 }
 
 /**

@@ -5,9 +5,17 @@ import { normalizeOpenAICompatibleBaseURL } from './implementations/openai-compa
 
 type ChannelConnection = Pick<ModelChannel, 'baseURL' | 'apiKeyEnv' | 'protocol'>
 export type ModelDirectoryScope = 'glm-api' | 'glm-coding-plan'
+export type ModelDirectoryEntry = { id: string; contextWindow?: number }
+
 const connectionSchema = channelSchema.pick({ baseURL: true, apiKeyEnv: true, protocol: true })
+const optionalContextWindow = z.int().positive().optional().catch(undefined)
 const pageSchema = z.object({
-  data: z.array(z.object({ id: channelSchema.shape.models.element.shape.id })),
+  data: z.array(z.object({
+    id: channelSchema.shape.models.element.shape.id,
+    context_window: optionalContextWindow,
+    context_length: optionalContextWindow,
+    limit: z.object({ context: optionalContextWindow }).optional().catch(undefined),
+  })),
   has_more: z.boolean().optional(),
   last_id: z.string().optional(),
 })
@@ -94,11 +102,11 @@ function responseError(status: number) {
 }
 
 /** Only called on an explicit request in the terminal. Discovery never writes a catalog. */
-export async function fetchChannelModelIds(channel: ChannelConnection, signal: AbortSignal, apiKeyOverride?: string, scope?: ModelDirectoryScope): Promise<string[]> {
+export async function fetchChannelModels(channel: ChannelConnection, signal: AbortSignal, apiKeyOverride?: string, scope?: ModelDirectoryScope): Promise<ModelDirectoryEntry[]> {
   const { headers, endpoint } = listRequest(channel, apiKeyOverride, scope)
   const timeout = AbortSignal.timeout(10_000)
   const deadline = AbortSignal.any([signal, timeout])
-  const ids = new Set<string>()
+  const models = new Map<string, ModelDirectoryEntry>()
   const cursors = new Set<string>()
   for (;;) {
     let response: Response
@@ -124,12 +132,22 @@ export async function fetchChannelModelIds(channel: ChannelConnection, signal: A
     }
     const parsed = pageSchema.safeParse(json)
     if (!parsed.success) throw new Error('渠道返回的模型列表格式无效，可以手动填写模型 ID')
-    for (const { id } of parsed.data.data) ids.add(id)
-    if (!parsed.data.has_more) return [...ids]
+    for (const { id, limit, context_length, context_window } of parsed.data.data) {
+      const contextWindow = limit?.context ?? context_length ?? context_window
+      const existing = models.get(id)
+      if (!existing || (existing.contextWindow === undefined && contextWindow !== undefined)) {
+        models.set(id, contextWindow === undefined ? { id } : { id, contextWindow })
+      }
+    }
+    if (!parsed.data.has_more) return [...models.values()]
     const cursor = parsed.data.last_id
     if (!cursor || cursors.has(cursor)) throw new Error('渠道返回的模型列表分页无效，可以手动填写模型 ID')
     cursors.add(cursor)
     // Only a cursor may come from the provider. Every page goes to the original endpoint.
     endpoint.searchParams.set('after_id', cursor)
   }
+}
+
+export async function fetchChannelModelIds(channel: ChannelConnection, signal: AbortSignal, apiKeyOverride?: string, scope?: ModelDirectoryScope): Promise<string[]> {
+  return (await fetchChannelModels(channel, signal, apiKeyOverride, scope)).map(model => model.id)
 }

@@ -1,6 +1,7 @@
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getCatalogDefault, getCatalogModel } from '../../services/api/provider/catalog.js'
-import { has1mContext, is1mContextDisabled } from '../context.js'
+import { getDisplayContextModelId, getKnownContextWindow } from '../../services/api/provider/modelContext.js'
+import { has1mContext, is1mContextDisabled, modelSupports1M } from '../context.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { capitalize } from '../stringUtils.js'
@@ -12,7 +13,7 @@ export type ModelName = string
 export type ModelSetting = ModelName | ModelSelection | null
 
 // Also used by the single-channel launcher when it creates a new profile.
-const defaultSingleChannelModel = 'deepseek-v4-pro[1m]'
+const defaultSingleChannelModel = 'deepseek-v4-pro'
 
 export function getModelForRole(role: ModelRole): ModelName {
   const configured = getCatalogDefault(role) ?? (
@@ -101,28 +102,17 @@ export function getSelectedModelRole(selection: string | undefined): ModelRole |
 
 function resolveRoleContext(role: ModelRole, extended: boolean): string {
   const bound = getModelForRole(role)
-  if (getCatalogDefault(role) || !extended || is1mContextDisabled() || has1mContext(bound)) return bound
+  if (getCatalogDefault(role) || !extended || is1mContextDisabled() ||
+      has1mContext(bound) || getKnownContextWindow(bound) !== undefined) return bound
   return bound + '[1m]'
 }
 
-function hasExtendedContext(model: string): boolean {
-  if (is1mContextDisabled()) return false
-  const entry = getCatalogModel(model)
-  if (entry?.contextWindow !== undefined) return entry.contextWindow >= 1_000_000
-  return has1mContext(entry?.id ?? model)
-}
-
 export function hasQuarkExtendedContext(): boolean {
-  return hasExtendedContext(getQuarkModel())
+  return modelSupports1M(getQuarkModel())
 }
 
 export function hasAtomExtendedContext(): boolean {
-  return hasExtendedContext(getAtomModel())
-}
-
-export function resolveSkillModelOverride(skillModel: string, currentModel: string): string {
-  if (!isModelRole(skillModel) || getCatalogDefault(skillModel) || !hasExtendedContext(currentModel)) return skillModel
-  return hasExtendedContext(getModelForRole(skillModel)) ? skillModel + '[1m]' : skillModel
+  return modelSupports1M(getAtomModel())
 }
 
 // Normalization for capability/statistics lookups only. Request IDs remain case-sensitive.
@@ -148,7 +138,8 @@ export function getMarketingNameForModel(model: ModelName): string | undefined {
 
 export function renderModelName(model: ModelName): string {
   const entry = getCatalogModel(model)
-  return entry ? `${entry.name ?? entry.id} (${entry.channel})` : model
+  const name = entry?.name ?? getDisplayContextModelId(model)
+  return entry ? `${name} (${entry.channel})` : name
 }
 
 export function renderModelSetting(setting: ModelName): string {

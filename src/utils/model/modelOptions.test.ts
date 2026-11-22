@@ -7,7 +7,7 @@ import { resetSettingsCache } from '../settings/settingsCache.js'
 import { getAgentModel } from './agent.js'
 import {
   getAtomModel, getElectronModel, getQuarkModel, getRuntimeMainLoopModel, isQuarkModel,
-  normalizeModelStringForAPI, parseUserSpecifiedModel, renderModelName, resolveSkillModelOverride,
+  normalizeModelStringForAPI, parseUserSpecifiedModel, renderModelName,
 } from './model.js'
 import { getModelOptions, getQuarkPlanOption } from './modelOptions.js'
 import { getModelCapabilityOverride } from './modelSupportOverrides.js'
@@ -119,7 +119,6 @@ test('plan mode and inherited agents follow the existing selection policy', () =
     expect(runtime(models.roles.electron)).toBe(models.roles.atom)
     expect(getAgentModel('atom', models.roles.quark, 'electron')).toBe(models.roles.electron)
     expect(parseUserSpecifiedModel('quark[1m]')).toBe(models.roles.quark)
-    expect(resolveSkillModelOverride('atom', models.roles.quark)).toBe('atom')
   })
 })
 

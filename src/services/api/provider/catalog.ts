@@ -58,6 +58,7 @@ export const channelSchema = z.looseObject({
     id: modelLabelSchema,
     name: modelLabelSchema.optional(),
     contextWindow: z.number().int().positive().optional(),
+    discoveredContextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
     capabilities: capabilitySchema.optional(),
     reasoningDialect: z.enum(reasoningDialects).optional(),
@@ -264,6 +265,10 @@ export function updateModelChannelConnection(id: string, expected: ChannelConnec
     if (next.protocol === 'messages' && !next.apiKeyEnv) throw new Error('此协议需要密钥环境变量')
     // Include the channel's previous address here. Replacing the origin cannot transfer its old key.
     validateCredentialOrigin(config, parsed.data)
+    if (channel.protocol !== parsed.data.protocol || channel.baseURL !== parsed.data.baseURL ||
+        channel.apiKeyEnv !== parsed.data.apiKeyEnv) {
+      for (const model of channel.models) delete model.discoveredContextWindow
+    }
     channel.protocol = parsed.data.protocol
     channel.baseURL = parsed.data.baseURL
     if (parsed.data.apiKeyEnv) channel.apiKeyEnv = parsed.data.apiKeyEnv
@@ -277,6 +282,27 @@ export function addChannelModels(channelId: string, modelIds: string[]): Catalog
     if (!channel) throw new Error(`找不到渠道 ${channelId}`)
     if (!modelIds.length) throw new Error('请输入模型 ID')
     channel.models.push(...modelIds.map(id => ({ id })))
+  })
+}
+
+export function saveDiscoveredChannelModel(
+  channelId: string,
+  expected: ChannelConnection,
+  entry: { id: string; contextWindow?: number },
+): CatalogConfig {
+  return updateCatalog(config => {
+    const channel = Object.hasOwn(config.channels, channelId) && config.channels[channelId]
+    if (!channel || channel.protocol !== expected.protocol || channel.baseURL !== expected.baseURL ||
+        channel.apiKeyEnv !== expected.apiKeyEnv) {
+      throw new Error('渠道连接已变更，请返回渠道列表重新打开')
+    }
+    const existing = channel.models.find(model => model.id === entry.id)
+    if (existing) {
+      if (entry.contextWindow === undefined) throw new Error('该渠道已包含此模型')
+      existing.discoveredContextWindow = entry.contextWindow
+    } else {
+      channel.models.push({ id: entry.id, discoveredContextWindow: entry.contextWindow })
+    }
   })
 }
 

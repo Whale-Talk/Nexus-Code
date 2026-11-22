@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type { ToolResultContentBlock, ToolUseContentBlock } from './services/api/provider/types.js'
+import { loadAccountContextWindow } from './services/api/provider/modelContext.js'
 
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
@@ -450,6 +451,13 @@ async function* queryLoop(
     )
 
     queryCheckpoint('query_autocompact_start')
+    const budgetMode = toolUseContext.getAppState().toolPermissionContext.mode
+    const contextModel = getRuntimeMainLoopModel({
+      permissionMode: budgetMode,
+      mainLoopModel: toolUseContext.options.mainLoopModel,
+      exceeds200kTokens: budgetMode === 'plan' && doesMostRecentAssistantMessageExceed200k(messagesForQuery),
+    })
+    await loadAccountContextWindow(contextModel, toolUseContext.abortController.signal)
     const { compactionResult, consecutiveFailures } = await deps.autocompact(
       messagesForQuery,
       toolUseContext,
@@ -463,6 +471,7 @@ async function* queryLoop(
       querySource,
       tracking,
       snipTokensFreed,
+      contextModel,
     )
     queryCheckpoint('query_autocompact_end')
 
@@ -574,6 +583,9 @@ async function* queryLoop(
       mainLoopModel: toolUseContext.options.mainLoopModel,
       exceeds200kTokens,
     })
+    if (currentModel !== contextModel) {
+      await loadAccountContextWindow(currentModel, toolUseContext.abortController.signal)
+    }
 
     queryCheckpoint('query_setup_end')
 
@@ -634,7 +646,7 @@ async function* queryLoop(
     ) {
       const { isAtBlockingLimit } = calculateTokenWarningState(
         tokenCountWithEstimation(messagesForQuery) - snipTokensFreed,
-        toolUseContext.options.mainLoopModel,
+        currentModel,
       )
       if (isAtBlockingLimit) {
         yield createAssistantAPIErrorMessage({
@@ -892,6 +904,7 @@ async function* queryLoop(
         } catch (innerError) {
           if (innerError instanceof FallbackTriggeredError && fallbackModel) {
             // Fallback was triggered - switch model and retry
+            await loadAccountContextWindow(fallbackModel, toolUseContext.abortController.signal)
             currentModel = fallbackModel
             attemptWithFallback = true
 

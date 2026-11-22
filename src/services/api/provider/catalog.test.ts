@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   addChannelModels, addModelChannel, getCatalogDefault, getEditableModelCatalog,
-  getModelCatalog, requireCatalogModel, saveRoleBinding, subscribeModelCatalog, updateModelChannelConnection,
+  getModelCatalog, requireCatalogModel, saveDiscoveredChannelModel,
+  saveRoleBinding, subscribeModelCatalog, updateModelChannelConnection,
 } from './catalog.js'
 import { resolveProviderRoute } from './index.js'
 
@@ -111,6 +112,23 @@ test('the official DeepSeek endpoint accepts legacy context hints while relays k
 test('missing channel credentials fail before routing to any provider', async () => {
   await withCatalog(config, () => {
     expect(() => resolveProviderRoute(config.roles.quark)).toThrow(/NEXUS_TEST_DEEPSEEK_KEY/)
+  })
+})
+
+test('model directory caps are saved separately and invalidated when the connection changes', async () => {
+  await withCatalog(config, () => {
+    const first = getEditableModelCatalog().channels.deepseek!
+    saveDiscoveredChannelModel('deepseek', first, { id: 'shared[1m]', contextWindow: 256_000 })
+    saveDiscoveredChannelModel('deepseek', first, { id: 'new', contextWindow: 128_000 })
+    expect(requireCatalogModel('deepseek::shared[1m]')).toMatchObject({
+      contextWindow: 1_000_000, discoveredContextWindow: 256_000,
+    })
+    expect(requireCatalogModel('deepseek::new').discoveredContextWindow).toBe(128_000)
+    updateModelChannelConnection('deepseek', first, { ...first, baseURL: first.baseURL + '/new' })
+    expect(requireCatalogModel('deepseek::shared[1m]').contextWindow).toBe(1_000_000)
+    expect(requireCatalogModel('deepseek::new').discoveredContextWindow).toBeUndefined()
+    expect(() => saveDiscoveredChannelModel('deepseek', first, { id: 'new', contextWindow: 128_000 }))
+      .toThrow(/渠道连接已变更/)
   })
 })
 
