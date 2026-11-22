@@ -6,6 +6,31 @@ const binary1m = 1_048_576
 const binary256k = 262_144
 const kimiAccountModels = new Set(['k3', 'k3.1-pro'])
 const legacyContextSuffix = /\[1m\]$/i
+const documentedLimits: Partial<Record<OfficialModelService, Record<string, {
+  contextWindow: number
+  maxOutputTokens?: number
+}>>> = {
+  minimax: {
+    'minimax-m3.1-flash': { contextWindow: 1_000_000, maxOutputTokens: 524_288 },
+    'minimax-m3': { contextWindow: 1_000_000, maxOutputTokens: 524_288 },
+  },
+  qwen: {
+    'qwen4-max': { contextWindow: 1_000_000 },
+    'qwen3.8-flash': { contextWindow: 1_000_000, maxOutputTokens: 131_072 },
+  },
+  doubao: {
+    'doubao-seed-2-1-pro-260915': { contextWindow: binary1m, maxOutputTokens: binary256k },
+    'doubao-seed-2-1-lite-260915': { contextWindow: binary1m, maxOutputTokens: binary256k },
+    'doubao-seed-2-1-turbo-260628': { contextWindow: binary256k, maxOutputTokens: binary256k },
+  },
+  stepfun: { 'step-3.7-flash': { contextWindow: binary256k } },
+}
+
+function documentedModelLimits(service: OfficialModelService, model: string) {
+  const id = model.toLowerCase().replace(legacyContextSuffix, '')
+  const models = documentedLimits[service]
+  return models && Object.hasOwn(models, id) ? models[id] : undefined
+}
 
 export function getDocumentedContextWindow(service: OfficialModelService, model: string): number | undefined {
   const id = model.toLowerCase().replace(legacyContextSuffix, '')
@@ -29,6 +54,8 @@ export function getDocumentedContextWindow(service: OfficialModelService, model:
     case 'mimo':
       if (/^mimo-v2\.6-(?:flash|pro(?:-ultraspeed)?)$/.test(id)) return binary1m
       break
+    default:
+      return documentedModelLimits(service, model)?.contextWindow
   }
 }
 
@@ -115,8 +142,10 @@ export function getKnownOutputLimit(model: string): number | undefined {
   const { connection, entry, id } = route
   if (entry?.maxOutputTokens !== undefined) return entry.maxOutputTokens
   const service = getOfficialModelService(connection.protocol, connection.baseURL)
-  return service === 'kimi-code' && kimiAccountModels.has(id.replace(legacyContextSuffix, ''))
-    ? getAccountModel(connection, id)?.maxOutputTokens : entry?.discoveredMaxOutputTokens
+  if (service === 'kimi-code' && kimiAccountModels.has(id.replace(legacyContextSuffix, ''))) {
+    return getAccountModel(connection, id)?.maxOutputTokens
+  }
+  return entry?.discoveredMaxOutputTokens ?? (service && documentedModelLimits(service, id)?.maxOutputTokens)
 }
 
 /** Some Kimi Code IDs share a name across accounts with different limits. */

@@ -2,6 +2,7 @@ import { z } from 'zod/v4'
 import { channelSchema, type ModelChannel } from './catalog.js'
 import { normalizeMessagesBaseURL } from './implementations/messages.js'
 import { normalizeOpenAICompatibleBaseURL } from './implementations/openai-compatible.js'
+import { getOfficialModelService } from './officialChannels.js'
 
 type ChannelConnection = Pick<ModelChannel, 'baseURL' | 'apiKeyEnv' | 'protocol'>
 export type ModelDirectoryScope = 'glm-api' | 'glm-coding-plan'
@@ -16,6 +17,11 @@ const pageSchema = z.object({
     context_length: optionalTokenLimit,
     max_output_tokens: optionalTokenLimit,
     limit: z.object({ context: optionalTokenLimit, output: optionalTokenLimit }).optional().catch(undefined),
+    token_limits: z.object({
+      context_window: optionalTokenLimit,
+      max_output_token_length: optionalTokenLimit,
+    }).optional().catch(undefined),
+    task_type: z.array(z.string()).optional().catch(undefined),
   })),
   has_more: z.boolean().optional(),
   last_id: z.string().optional(),
@@ -105,6 +111,7 @@ function responseError(status: number) {
 /** Reads only the configured channel directory. Discovery never writes a catalog. */
 export async function fetchChannelModels(channel: ChannelConnection, signal: AbortSignal, apiKeyOverride?: string, scope?: ModelDirectoryScope): Promise<ModelDirectoryEntry[]> {
   const { headers, endpoint } = listRequest(channel, apiKeyOverride, scope)
+  const isArk = getOfficialModelService(channel.protocol, channel.baseURL) === 'doubao'
   const timeout = AbortSignal.timeout(10_000)
   const deadline = AbortSignal.any([signal, timeout])
   const models = new Map<string, ModelDirectoryEntry>()
@@ -133,10 +140,12 @@ export async function fetchChannelModels(channel: ChannelConnection, signal: Abo
     }
     const parsed = pageSchema.safeParse(json)
     if (!parsed.success) throw new Error('渠道返回的模型列表格式无效，可以手动填写模型 ID')
-    for (const { id, limit, context_length, context_window, max_output_tokens } of parsed.data.data) {
+    for (const { id, limit, context_length, context_window, max_output_tokens, token_limits, task_type } of parsed.data.data) {
+      if (isArk && task_type?.length && !task_type.includes('TextGeneration')) continue
+      const arkLimits = isArk ? token_limits : undefined
       const model: ModelDirectoryEntry = models.get(id) ?? { id }
-      const contextWindow = limit?.context ?? context_length ?? context_window
-      const maxOutputTokens = limit?.output ?? max_output_tokens
+      const contextWindow = arkLimits?.context_window ?? limit?.context ?? context_length ?? context_window
+      const maxOutputTokens = arkLimits?.max_output_token_length ?? limit?.output ?? max_output_tokens
       if (model.contextWindow === undefined && contextWindow !== undefined) model.contextWindow = contextWindow
       if (model.maxOutputTokens === undefined && maxOutputTokens !== undefined) model.maxOutputTokens = maxOutputTokens
       models.set(id, model)

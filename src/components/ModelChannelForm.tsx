@@ -8,6 +8,7 @@ import {
 } from '../services/api/provider/catalog.js'
 import { applyChannelCredential, getCredentialTarget, type CredentialScope } from '../services/api/provider/channelCredentials.js'
 import { fetchChannelModels, requiresModelDirectoryScope, type ModelDirectoryEntry, type ModelDirectoryScope } from '../services/api/provider/listModels.js'
+import { getOfficialModelService } from '../services/api/provider/officialChannels.js'
 import { providerPresets, type ProviderPreset } from '../services/api/provider/presets.js'
 import { isModelAllowed } from '../utils/model/modelAllowlist.js'
 import { userSettingsEnvPath } from '../utils/settings/userSettingsEnv.js'
@@ -441,7 +442,9 @@ export function ModelChannelForm({ channelId, bindRole, onSave, onCancel }: {
           </>
           break
         case 'manual':
-          content = <Field title="手工输入模型 ID" hint="填写渠道要求的原始 ID。多个 ID 用逗号分隔。"
+          content = <Field title="手工输入模型 ID" hint={getOfficialModelService(connection.protocol, connection.baseURL) === 'doubao'
+            ? '填写已开通的模型 ID，或火山方舟中的推理接入点 ID（ep-…）。'
+            : '填写渠道要求的原始 ID。多个 ID 用逗号分隔。'}
             value={draft.models} onChange={models => setDraft(previous => ({ ...previous, models }))}
             onSubmit={acceptField} onBack={back} />
           break

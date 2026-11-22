@@ -51,6 +51,14 @@ test('official channels use their documented context limits without a model suff
       ['openai-compatible', 'https://api.kimi.com/coding/v1', 'kimi-for-coding', 1_048_576],
       ['openai-compatible', 'https://api.xiaomimimo.com/v1', 'mimo-v2.6-pro', 1_048_576],
       ['messages', 'https://token-plan-sgp.xiaomimimo.com/anthropic', 'mimo-v2.6-pro-ultraspeed', 1_048_576],
+      ['messages', 'https://api.minimax.cn/anthropic', 'MiniMax-M3.1-Flash', 1_000_000],
+      ['openai-compatible', 'https://api.minimax.cn/v1', 'MiniMax-M3', 1_000_000],
+      ['openai-compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen4-max', 1_000_000],
+      ['openai-compatible', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.8-flash', 1_000_000],
+      ['openai-compatible', 'https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-1-pro-260915', 1_048_576],
+      ['openai-compatible', 'https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-1-lite-260915', 1_048_576],
+      ['openai-compatible', 'https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-1-turbo-260628', 262_144],
+      ['openai-compatible', 'https://api.stepfun.com/v1', 'step-3.7-flash', 262_144],
     ]
     for (const [protocol, baseURL, model, expected] of cases) {
       process.env.NEXUS_PROVIDER = protocol

@@ -153,6 +153,8 @@ wt -w new new-tab --reloadEnvironment -d "$PWD" node.exe .\bin\nexus.cjs
 
 官方渠道预填协议、地址和建议的密钥变量。可以用已有环境变量，也可以输入密钥并选择仅本次使用或保存到本机。读取不到目录时可以手填原始模型 ID，支持预设列表的渠道也可以先选预设模型。支持免密的本地 Chat Completions 服务可将密钥变量留空。
 
+预设覆盖 DeepSeek、GLM、Kimi、小米 MiMo、MiniMax、通义千问（阿里云百炼）、豆包（火山方舟）、阶跃星辰和 Claude。豆包可选择已开通的模型，也可手填火山方舟的推理接入点 ID（`ep-…`）。
+
 例如，把 Electron 切到 DeepSeek Flash 时，在「模型」选中 Electron，再选择 DeepSeek 渠道和 `deepseek-flash`，保存后输入 `/model electron` 即可用于当前对话。从角色页新建时也可以「保存并绑定 Electron」。
 
 高级设置中，可为具体模型填写「上下文窗口」和「单次输出预算」。上下文是输入和输出的总容量，输出预算会用于实际请求，并受剩余上下文和已知输出上限约束。留空或选「恢复自动」再保存，可清除手动覆盖。手动配置文件可继续使用 `contextWindow` 与原有的 `maxOutputTokens`，新增的 `outputBudget` 用于显式设置单次输出预算。

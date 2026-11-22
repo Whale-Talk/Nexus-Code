@@ -168,6 +168,35 @@ test('model discovery ignores remote URLs, pins pagination and never follows red
   }
 })
 
+test('official Ark discovery reads token_limits and returns conversational models', async () => {
+  const seen: [string, string | null][] = []
+  const intercept = async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push([String(input), new Headers(init?.headers).get('authorization')])
+    return Response.json({ data: [
+      { id: 'doubao-seed-2-1-pro-260915', task_type: ['VisualQuestionAnswering', 'TextGeneration'],
+        token_limits: { context_window: 1_048_576, max_output_token_length: 262_144 },
+        context_window: 200_000 },
+      { id: 'image-only', task_type: ['ImageGeneration'], token_limits: { context_window: 500 } },
+      { id: 'unclassified', token_limits: { context_window: 0, max_output_token_length: 'unknown' } },
+    ] })
+  }
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(intercept, { preconnect: fetch.preconnect }))
+  try {
+    const connection = { protocol: 'openai-compatible', baseURL: 'https://ark.cn-beijing.volces.com/api/v3' } as const
+    expect(await fetchChannelModels(connection, signal, 'ark-fixture')).toEqual([
+      { id: 'doubao-seed-2-1-pro-260915', contextWindow: 1_048_576, maxOutputTokens: 262_144 },
+      { id: 'unclassified' },
+    ])
+    expect(seen).toEqual([['https://ark.cn-beijing.volces.com/api/v3/models', 'Bearer ark-fixture']])
+    expect(await fetchChannelModels({ ...connection, baseURL: 'https://relay.example/api/v3' }, signal)).toEqual([
+      { id: 'doubao-seed-2-1-pro-260915', contextWindow: 200_000 },
+      { id: 'image-only' }, { id: 'unclassified' },
+    ])
+  } finally {
+    mock.mockRestore()
+  }
+})
+
 test('model discovery reports safe actionable HTTP errors, malformed results and cancellation', async () => {
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: req => {
     const path = new URL(req.url).pathname

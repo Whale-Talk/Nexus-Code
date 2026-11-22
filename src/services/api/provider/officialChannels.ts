@@ -1,6 +1,7 @@
 import type { ProviderKind } from './catalog.js'
 
-export type OfficialModelService = 'deepseek' | 'glm' | 'kimi' | 'kimi-code' | 'mimo'
+export type OfficialModelService = 'deepseek' | 'glm' | 'kimi' | 'kimi-code' | 'mimo' |
+  'minimax' | 'qwen' | 'doubao' | 'stepfun'
 
 export function getOfficialModelService(protocol: ProviderKind, baseURL: string): OfficialModelService | undefined {
   let url: URL
@@ -33,6 +34,20 @@ export function getOfficialModelService(protocol: ProviderKind, baseURL: string)
     case 'https://token-plan-sgp.xiaomimimo.com':
     case 'https://token-plan-ams.xiaomimimo.com':
       if ((messages ? ['/anthropic', '/anthropic/v1'] : ['', '/v1']).includes(path)) return 'mimo'
+      break
+    case 'https://api.minimax.cn':
+    case 'https://api.minimax.io':
+      if ((messages ? ['/anthropic', '/anthropic/v1'] : ['/v1']).includes(path)) return 'minimax'
+      break
+    case 'https://dashscope.aliyuncs.com':
+      if ((messages ? ['/apps/anthropic', '/apps/anthropic/v1'] : ['/compatible-mode/v1']).includes(path)) return 'qwen'
+      break
+    case 'https://ark.cn-beijing.volces.com':
+      if (!messages && path === '/api/v3') return 'doubao'
+      break
+    case 'https://api.stepfun.com':
+    case 'https://api.stepfun.ai':
+      if (!messages && ['', '/v1'].includes(path)) return 'stepfun'
       break
   }
 }

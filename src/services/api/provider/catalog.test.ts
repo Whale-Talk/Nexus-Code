@@ -8,6 +8,7 @@ import {
   saveModelBudgetSettings, saveRoleBinding, subscribeModelCatalog, updateModelChannelConnection,
 } from './catalog.js'
 import { resolveProviderRoute } from './index.js'
+import { providerPresets } from './presets.js'
 
 const config = {
   roles: { quark: 'deepseek::shared[1m]', atom: 'work::shared[1m]', electron: 'work::fast' },
@@ -113,6 +114,57 @@ test('missing channel credentials fail before routing to any provider', async ()
   await withCatalog(config, () => {
     expect(() => resolveProviderRoute(config.roles.quark)).toThrow(/NEXUS_TEST_DEEPSEEK_KEY/)
   })
+})
+
+test('the four new presets send the actual model ID and the correct credential to each API', async () => {
+  const cases = [
+    ['minimax', 'https://api.minimax.cn/anthropic/v1/messages', 'MiniMax-M3.1-Flash', 'x-api-key'],
+    ['qwen', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', 'qwen4-max', 'authorization'],
+    ['doubao', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions', 'doubao-seed-2-1-pro-260915', 'authorization'],
+    ['stepfun', 'https://api.stepfun.com/v1/chat/completions', 'step-3.7-flash', 'authorization'],
+  ] as const
+  const saved = new Map<string, string | undefined>()
+  const seen: { url: string; model: string; authorization: string | null; apiKey: string | null }[] = []
+  const interceptor = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const body = JSON.parse(String(init?.body))
+    const headers = new Headers(init?.headers)
+    seen.push({ url, model: body.model, authorization: headers.get('authorization'), apiKey: headers.get('x-api-key') })
+    return url.endsWith('/messages')
+      ? Response.json({ id: 'message', type: 'message', role: 'assistant', model: body.model,
+        content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: 'end_turn' })
+      : Response.json({ id: 'chat', object: 'chat.completion', created: 1, model: body.model,
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] })
+  }
+  const mock = spyOn(globalThis, 'fetch').mockImplementation(Object.assign(interceptor, { preconnect: fetch.preconnect }))
+  try {
+    const channels = Object.fromEntries(cases.map(([id, , model]) => {
+      const preset = providerPresets.find(item => item.id === id)!
+      expect(preset.models).toContain(model)
+      saved.set(preset.apiKeyEnv, process.env[preset.apiKeyEnv])
+      process.env[preset.apiKeyEnv] = `${id}-fixture`
+      return [id, { ...preset, models: [{ id: model }] }]
+    }))
+    await withCatalog({ channels, roles: {
+      quark: 'minimax::MiniMax-M3.1-Flash', atom: 'qwen::qwen4-max', electron: 'stepfun::step-3.7-flash',
+    } }, async () => {
+      for (const [id, url, model, key] of cases) {
+        const route = resolveProviderRoute(`${id}::${model}`)
+        await route.adapter.generateText({ model: route.model, messages: [{ role: 'user', content: 'test' }], maxOutputTokens: 32 })
+        expect(seen.at(-1)).toEqual({ url, model,
+          authorization: key === 'authorization' ? `Bearer ${id}-fixture` : null,
+          apiKey: key === 'x-api-key' ? `${id}-fixture` : null,
+        })
+      }
+      expect(seen).toHaveLength(cases.length)
+    })
+  } finally {
+    mock.mockRestore()
+    for (const [key, previous] of saved) {
+      if (previous === undefined) delete process.env[key]
+      else process.env[key] = previous
+    }
+  }
 })
 
 test('model directory caps are saved separately and invalidated when the connection changes', async () => {

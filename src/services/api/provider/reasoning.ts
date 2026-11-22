@@ -17,7 +17,7 @@ const highLevels = ['high', 'max'] as const
 
 export function getOfficialReasoningDialect(protocol: ProviderKind, baseURL: string): ReasoningDialect | undefined {
   const service = getOfficialModelService(protocol, baseURL)
-  return service === 'kimi-code' ? undefined : service
+  return reasoningDialects.find(dialect => dialect === service)
 }
 
 export function getReasoningProfile(
