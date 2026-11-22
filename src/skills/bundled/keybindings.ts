@@ -112,7 +112,6 @@ function generateReservedShortcuts(): string {
 }
 
 const FILE_FORMAT_EXAMPLE: KeybindingsSchemaType = {
-  $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
   $docs: 'https://github.com/Whale-Talk/Nexus-Code',
   bindings: [
     {

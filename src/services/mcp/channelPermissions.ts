@@ -6,15 +6,15 @@
  * local UI / bridge / hooks / classifier. First resolver wins via claim().
  *
  * Inbound is a structured event: the server parses the user's "yes tbxkq"
- * reply and emits notifications/claude/channel/permission with
+ * reply and emits notifications/nexus/channel/permission with
  * {request_id, behavior}. CC never sees the reply as text — approval
  * requires the server to deliberately emit that specific event, not just
  * relay content. Servers opt in by declaring
- * capabilities.experimental['claude/channel/permission'].
+ * capabilities.experimental['nexus/channel/permission'].
  *
  * Kenneth's "would this let Nexus self-approve?": the approving party is
  * the human via the channel, not Nexus. But the trust boundary isn't the
- * terminal — it's the allowlist (tengu_harbor_ledger). A compromised
+ * terminal — it's the allowlist (nexus_harbor_ledger). A compromised
  * channel server CAN fabricate "yes <id>" without the human seeing the
  * prompt. Accepted risk: a compromised channel already has unlimited
  * conversation-injection turns (social-engineer over time, wait for
@@ -24,17 +24,17 @@
  */
 
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 
 /**
- * GrowthBook runtime gate — separate from the channels gate (tengu_harbor)
+ * GrowthBook runtime gate — separate from the channels gate (nexus_harbor)
  * so channels can ship without permission-relay riding along (Kenneth: "no
  * bake time if it goes out tomorrow"). Default false; flip without a release.
  * Checked once at useManageMCPConnections mount — mid-session flag changes
  * don't apply until restart.
  */
 export function isChannelPermissionRelayEnabled(): boolean {
-  return getFeatureValue_CACHED_MAY_BE_STALE('tengu_harbor_permissions', false)
+  return getFeatureValue('nexus_harbor_permissions', false)
 }
 
 export type ChannelPermissionResponse = {
@@ -50,7 +50,7 @@ export type ChannelPermissionCallbacks = {
     handler: (response: ChannelPermissionResponse) => void,
   ): () => void
   /** Resolve a pending request from a structured channel event
-   *  (notifications/claude/channel/permission). Returns true if the ID
+   *  (notifications/nexus/channel/permission). Returns true if the ID
    *  was pending — the server parsed the user's reply and emitted
    *  {request_id, behavior}; we just match against the map. */
   resolve(
@@ -68,7 +68,7 @@ export type ChannelPermissionCallbacks = {
  * autocorrect). No bare yes/no (conversational). No prefix/suffix chatter.
  *
  * CC generates the ID and sends the prompt. The SERVER parses the user's
- * reply and emits notifications/claude/channel/permission with {request_id,
+ * reply and emits notifications/nexus/channel/permission with {request_id,
  * behavior} — CC doesn't regex-match text anymore. Exported so plugins can
  * import the exact regex rather than hand-copying it.
  */
@@ -188,8 +188,8 @@ export function filterPermissionRelayClients<
     (c): c is T & { type: 'connected' } =>
       c.type === 'connected' &&
       isInAllowlist(c.name) &&
-      c.capabilities?.experimental?.['claude/channel'] !== undefined &&
-      c.capabilities?.experimental?.['claude/channel/permission'] !== undefined,
+      c.capabilities?.experimental?.['nexus/channel'] !== undefined &&
+      c.capabilities?.experimental?.['nexus/channel/permission'] !== undefined,
   )
 }
 
@@ -201,7 +201,7 @@ export function filterPermissionRelayClients<
  * a React hook, stable reference stored in AppState.
  *
  * resolve() is called from the dedicated notification handler
- * (notifications/claude/channel/permission) with the structured payload.
+ * (notifications/nexus/channel/permission) with the structured payload.
  * The server already parsed "yes tbxkq" → {request_id, behavior}; we just
  * match against the pending map. No regex on CC's side — text in the
  * general channel can't accidentally approve anything.

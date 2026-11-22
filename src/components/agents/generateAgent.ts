@@ -1,6 +1,6 @@
 import type { ContentBlock } from '../../services/api/provider/types.js'
 import { getUserContext } from 'src/context.js'
-import { queryModelWithoutStreaming } from 'src/services/api/claude.js'
+import { queryModelWithoutStreaming } from 'src/services/api/inference.js'
 import { getEmptyToolPermissionContext } from 'src/Tool.js'
 import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js'
 import { prependUserContext } from 'src/utils/api.js'
@@ -184,7 +184,7 @@ export async function generateAgent(
     throw new Error('Invalid agent configuration generated')
   }
 
-  logEvent('tengu_agent_definition_generated', {
+  logEvent('nexus_agent_definition_generated', {
     agent_identifier:
       parsed.identifier as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })

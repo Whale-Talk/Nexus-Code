@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Nexus launcher — manages config isolation and spawns the main Nexus Code process.
-//   Settings use NEXUS_* keys. The launcher bridges: NEXUS_* env vars for our code,
-//   ANTHROPIC_* for SDK internals (@ai-sdk/anthropic, claude-agent-sdk).
+//   Owns the Nexus profile and starts the source runtime.
 //
 //   Runs on Node.js (npm-installed bin always has node); the actual runtime is
 //   bun >= 1.3.5 — if bun is missing we print install guidance below instead of
@@ -104,35 +103,29 @@ if (bunBinaryPath === null) {
 
 const projectDir = resolve(dirname(__dirname))
 const originalCwd = process.cwd() // user's launch directory
-const configDir = join(homedir(), '.nexus')
+const configDir = process.env.NEXUS_CONFIG_DIR
+  ? resolve(process.env.NEXUS_CONFIG_DIR)
+  : join(homedir(), '.nexus')
 const settingsPath = join(configDir, 'settings.json')
+require('../scripts/upgrade-profile.cjs').upgradeProfile(configDir)
 
 // --- Default settings (NEXUS_* keys) ---
 const defaultSettings = {
-  $schema: 'https://json.schemastore.org/claude-code-settings.json',
   env: {
     DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1',
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-    CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
+    NEXUS_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    NEXUS_DISABLE_NONSTREAMING_FALLBACK: '1',
     MCP_TIMEOUT: '60000',
     API_TIMEOUT_MS: '3000000',
     NEXUS_BASE_URL: 'https://api.deepseek.com/anthropic',
     NEXUS_MODEL: 'deepseek-v4-pro[1m]',
-    // 注意: 不写 NEXUS_SUBAGENT_MODEL 默认值到 settings.json —
-    // launcher 缺省时跟随 NEXUS_MODEL，保证非 DeepSeek 厂商子代理可用。
+    // 子代理模型由角色选定，兼容用户显式设置的 NEXUS_SUBAGENT_MODEL。
   },
   model: 'deepseek-v4-pro[1m]',
   deepseek: { effort: 'max' },
-  // Nexus: accept bypass-permissions warning once so it never shows again.
-  skipDangerousModePermissionPrompt: true,
 }
 
-// Backward compat: also accept old ANTHROPIC_* keys
-function resolveEnvKey(settings, newKey, oldKey) {
-  let env = settings?.env || {}
-  return env[newKey] || env[oldKey]
-}
 
 function readJson(p, fallback) {
   try { return JSON.parse(readFileSync(p, 'utf8')) } catch { return fallback }
@@ -146,22 +139,27 @@ if (!existsSync(settingsPath)) {
 } else {
   try {
     const current = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const configuredModel = current.env?.NEXUS_MODEL ||
+      current.model || defaultSettings.model
     const merged = {
       ...current,
       env: {
         ...defaultSettings.env,
         ...(current.env || {}),
         NEXUS_BASE_URL:
-          current.env?.NEXUS_BASE_URL || current.env?.ANTHROPIC_BASE_URL || defaultSettings.env.NEXUS_BASE_URL,
+          current.env?.NEXUS_BASE_URL || defaultSettings.env.NEXUS_BASE_URL,
+        NEXUS_MODEL: configuredModel,
       },
-      model: current.model ?? defaultSettings.model,
+      model: current.model ?? configuredModel,
       // 写入 deepseek.effort 默认值，与回退逻辑一致，避免升级前后 effort 静默变化
       deepseek: {
         ...defaultSettings.deepseek,
         ...(current.deepseek || {}),
       },
     }
-    writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
+    if (JSON.stringify(current) !== JSON.stringify(merged)) {
+      writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 })
+    }
   } catch {
     // Keep user settings intact on parse error
   }
@@ -220,28 +218,28 @@ if (process.platform !== 'win32') {
 function resolveApiKey() {
   try {
     const s = JSON.parse(readFileSync(settingsPath, 'utf8'))
-    const key = s?.env?.NEXUS_API_KEY || s?.env?.ANTHROPIC_API_KEY
+    const key = s?.env?.NEXUS_API_KEY
     if (typeof key === 'string' && key.trim()) return key.trim()
   } catch {}
   return undefined
 }
 
 // --- Spawn env setup ---
-process.env.CLAUDE_CONFIG_DIR = configDir
-process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
+process.env.NEXUS_CONFIG_DIR = configDir
+process.env.NEXUS_PROVIDER_MANAGED_BY_HOST = '1'
 
 const settings = readJson(settingsPath, {})
 
 // Bridge: set NEXUS_* for our code
 process.env.NEXUS_BASE_URL =
-  resolveEnvKey(settings, 'NEXUS_BASE_URL', 'ANTHROPIC_BASE_URL') || defaultSettings.env.NEXUS_BASE_URL
+  settings?.env?.NEXUS_BASE_URL || defaultSettings.env.NEXUS_BASE_URL
 process.env.NEXUS_MODEL =
-  resolveEnvKey(settings, 'NEXUS_MODEL', 'ANTHROPIC_MODEL') || settings?.model || defaultSettings.model
+  settings?.env?.NEXUS_MODEL || settings?.model || defaultSettings.model
 // 通用透传: 用户配置的 NEXUS_PROVIDER + 三角色模型 ID（任意厂商均可）。
 // 兼容只配一个模型: 角色缺省时跟随 NEXUS_MODEL; 都不配才用 DeepSeek 默认。
-process.env.NEXUS_PROVIDER = settings?.env?.NEXUS_PROVIDER || 'anthropic'
+process.env.NEXUS_PROVIDER = settings?.env?.NEXUS_PROVIDER || 'messages'
 process.env.NEXUS_MODEL = process.env.NEXUS_MODEL || defaultSettings.model
-// 三角色: 只读 NEXUS_*_MODEL (不再回退 ANTHROPIC_DEFAULT_* — 旧键会绕过 NEXUS_MODEL 兜底)
+// 三角色: 只读 NEXUS_*_MODEL (不再回退 PROVIDER_DEFAULT_* — 旧键会绕过 NEXUS_MODEL 兜底)
 process.env.NEXUS_QUARK_MODEL =
   settings?.env?.NEXUS_QUARK_MODEL || process.env.NEXUS_MODEL
 process.env.NEXUS_ATOM_MODEL =
@@ -249,23 +247,15 @@ process.env.NEXUS_ATOM_MODEL =
 process.env.NEXUS_ELECTRON_MODEL =
   settings?.env?.NEXUS_ELECTRON_MODEL || process.env.NEXUS_MODEL
 
-// 子代理模型: NEXUS_SUBAGENT_MODEL (新) + CLAUDE_CODE_SUBAGENT_MODEL (旧键兼容)。
-// 缺省时跟随 NEXUS_MODEL（与三角色一致），保证非 DeepSeek 厂商（如 GLM）子代理可用。
-process.env.NEXUS_SUBAGENT_MODEL =
+// 显式旧配置仍可固定子代理模型。缺省时由各子代理的模型角色决定。
+const configuredSubagentModel =
   settings?.env?.NEXUS_SUBAGENT_MODEL ||
-  settings?.env?.CLAUDE_CODE_SUBAGENT_MODEL ||
-  process.env.NEXUS_MODEL
-process.env.CLAUDE_CODE_SUBAGENT_MODEL = process.env.NEXUS_SUBAGENT_MODEL
+  process.env.NEXUS_SUBAGENT_MODEL
+if (configuredSubagentModel) {
+  process.env.NEXUS_SUBAGENT_MODEL = configuredSubagentModel
+}
 
-// Auth: wipe inherited tokens (conflict warnings), set NEXUS_API_KEY.
-// @ai-sdk/anthropic takes apiKey explicitly (adapter passes NEXUS_API_KEY),
-// so no ANTHROPIC_* bridge is needed for our request path. Cloud backends
-// (Bedrock/Foundry/Vertex) in client.ts keep their own SDK env vars.
-process.env.ANTHROPIC_AUTH_TOKEN = ''
-process.env.CLAUDE_CODE_OAUTH_TOKEN = ''
-delete process.env.ANTHROPIC_AUTH_TOKEN
-delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-
+// Load the key for the explicitly configured single-channel connection.
 const configuredKey = resolveApiKey()
 if (configuredKey) {
   process.env.NEXUS_API_KEY = configuredKey
@@ -275,33 +265,28 @@ if (configuredKey) {
 const effortMap = { max: 'max', high: 'high', medium: 'medium', low: 'low', auto: 'medium' }
 // 回退与 defaultSettings.deepseek.effort 一致，避免同一机器升级前后 effort 静默变化
 const deepseekEffort = readJson(settingsPath, {})?.deepseek?.effort || defaultSettings.deepseek.effort
-process.env.CLAUDE_CODE_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
+process.env.NEXUS_EFFORT_LEVEL = effortMap[deepseekEffort] || 'medium'
 
 // General env defaults
 process.env.DISABLE_TELEMETRY ||= '1'
-process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
-process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
+process.env.NEXUS_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
+process.env.NEXUS_DISABLE_NONSTREAMING_FALLBACK ||= '1'
 
 // Conversation tracking header
-process.env.CLAUDE_CONVERSATION_ID ||= randomUUID()
+process.env.NEXUS_CONVERSATION_ID ||= randomUUID()
 
 // Nexus: always show the full welcome logo (custom ASCII art)
-process.env.CLAUDE_CODE_FORCE_FULL_LOGO = '1'
+process.env.NEXUS_FORCE_FULL_LOGO = '1'
 
 // --- Launch ---
 // spawn the resolved absolute path — never a bare name, so Windows
 // npm-shim (extensionless shell script) can't be picked up by mistake
 // and .exe/.cmd resolution doesn't depend on PATH ordering.
 const bun = bunBinaryPath
-const userArgs = process.argv.slice(2)
-const hasPermissionFlag = userArgs.some(a =>
-  a.startsWith('--permission-mode') || a === '--dangerously-skip-permissions'
-)
 const args = [
   'run',
   join(projectDir, 'src/dev-entry.ts'),
-  ...(hasPermissionFlag ? [] : ['--permission-mode', 'bypassPermissions']),
-  ...userArgs,
+  ...process.argv.slice(2),
 ]
 const child = spawn(bun, args, {
   cwd: originalCwd,

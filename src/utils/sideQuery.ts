@@ -2,45 +2,38 @@ import type {
   AssistantMessage,
   JSONOutputFormat,
   MessageParam,
+  ModelRequest,
   TextContentBlock,
-  ThinkingConfigParam,
   ToolChoice,
   ToolDefinition,
-  ToolUnion,
 } from '../services/api/provider/types.js'
 import {
   getLastApiCompletionTimestamp,
   setLastApiCompletionTimestamp,
 } from '../bootstrap/state.js'
-import { STRUCTURED_OUTPUTS_BETA_HEADER } from '../constants/betas.js'
 import type { QuerySource } from '../constants/querySource.js'
 import {
-  getAttributionHeader,
   getCLISyspromptPrefix,
 } from '../constants/system.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/metadata.js'
-import { getAPIMetadata } from '../services/api/claude.js'
-import { getAnthropicClient } from '../services/api/client.js'
-import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
-import { computeFingerprint } from './fingerprint.js'
+import { getRequestUserId } from '../services/api/inference.js'
+import { resolveProviderRoute } from '../services/api/provider/index.js'
+import { withRetry } from '../services/api/withRetry.js'
+import { returnValue } from './generators.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 
 export type SideQueryOptions = {
   /** Model to use for the query */
   model: string
   /**
-   * System prompt - string or array of text blocks (will be prefixed with CLI attribution).
-   *
-   * The attribution header is always placed in its own TextBlockParam block to ensure
-   * server-side parsing correctly extracts the cc_entrypoint value without including
-   * system prompt content.
+   * System prompt. Arrays retain per-block cache hints.
    */
   system?: string | TextContentBlock[]
   /** Messages to send (supports cache_control on content blocks) */
   messages: MessageParam[]
-  /** Optional tools (supports both standard ToolDefinition[] and beta variants for custom tool types) */
-  tools?: ToolUnion[]
+  /** Optional tools (client tools available to this query) */
+  tools?: ToolDefinition[]
   /** Optional tool choice (use { type: 'tool', name: 'x' } for forced output) */
   tool_choice?: ToolChoice
   /** Optional JSON output format for structured responses */
@@ -59,38 +52,14 @@ export type SideQueryOptions = {
   thinking?: number | false
   /** Stop sequences — generation stops when any of these strings is emitted */
   stop_sequences?: string[]
-  /** Attributes this call in tengu_api_success for COGS joining against reporting.sampling_calls. */
+  /** Attributes this call in nexus_api_success for COGS joining against reporting.sampling_calls. */
   querySource: QuerySource
-}
-
-/**
- * Extract text from first user message for fingerprint computation.
- */
-function extractFirstUserMessageText(messages: MessageParam[]): string {
-  const firstUserMessage = messages.find(m => m.role === 'user')
-  if (!firstUserMessage) return ''
-
-  const content = firstUserMessage.content
-  if (typeof content === 'string') return content
-
-  // Array of content blocks - find first text block
-  const textBlock = content.find(block => block.type === 'text')
-  return textBlock?.type === 'text' ? textBlock.text : ''
 }
 
 /**
  * Lightweight API wrapper for "side queries" outside the main conversation loop.
  *
- * Use this instead of direct client.beta.messages.create() calls to ensure
- * proper OAuth token validation with fingerprint attribution headers.
- *
- * This handles:
- * - Fingerprint computation for OAuth validation
- * - Attribution header injection
- * - CLI system prompt prefix
- * - Proper betas for the model
- * - API metadata
- * - Model string normalization (strips [1m] suffix for API)
+ * Uses the same channel as a normal request for the selected model.
  *
  * @example
  * // Permission explainer
@@ -121,32 +90,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<AssistantMessag
     stop_sequences,
   } = opts
 
-  const client = await getAnthropicClient({
-    maxRetries,
-    model,
-    source: 'side_query',
-  })
-  const betas = [...getModelBetas(model)]
-  // Add structured-outputs beta if using output_format and provider supports it
-  if (
-    output_format &&
-    modelSupportsStructuredOutputs(model) &&
-    !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)
-  ) {
-    betas.push(STRUCTURED_OUTPUTS_BETA_HEADER)
-  }
-
-  // Extract first user message text for fingerprint
-  const messageText = extractFirstUserMessageText(messages)
-
-  // Compute fingerprint for OAuth attribution
-  const fingerprint = computeFingerprint(messageText, MACRO.VERSION)
-  const attributionHeader = getAttributionHeader(fingerprint)
-
-  // Build system as array to keep attribution header in its own block
-  // (prevents server-side parsing from including system content in cc_entrypoint)
   const systemBlocks: TextContentBlock[] = [
-    attributionHeader ? { type: 'text', text: attributionHeader } : null,
     // Skip CLI system prompt prefix for internal classifiers that provide their own prompt
     ...(skipSystemPromptPrefix
       ? []
@@ -166,45 +110,36 @@ export async function sideQuery(opts: SideQueryOptions): Promise<AssistantMessag
         : []),
   ].filter((block): block is TextContentBlock => block !== null)
 
-  let thinkingConfig: ThinkingConfigParam | undefined
-  if (thinking === false) {
-    thinkingConfig = { type: 'disabled' }
-  } else if (thinking !== undefined) {
-    thinkingConfig = {
-      type: 'enabled',
-      budget_tokens: Math.min(thinking, max_tokens - 1),
-    }
-  }
+  const reasoning: ModelRequest['reasoning'] = thinking === false
+    ? { mode: 'off' }
+    : thinking === undefined ? undefined : { mode: 'budget', tokens: Math.min(thinking, max_tokens - 1) }
 
   const normalizedModel = normalizeModelStringForAPI(model)
   const start = Date.now()
-  // biome-ignore lint/plugin: this IS the wrapper that handles OAuth attribution
-  const response = await client.beta.messages.create(
+  const request: ModelRequest = {
+    model: normalizedModel, messages, system: systemBlocks,
+    maxOutputTokens: max_tokens, reasoning, temperature, tools,
+    toolChoice: tool_choice, outputFormat: output_format, stopSequences: stop_sequences,
+    userId: getRequestUserId(),
+  }
+  const route = resolveProviderRoute(normalizedModel)
+  const result = await returnValue(withRetry(
+    async () => route.adapter,
+    adapter => adapter.generateText({ ...request, model: route.model }, signal),
     {
-      model: normalizedModel,
-      max_tokens,
-      system: systemBlocks,
-      // provider MessageParam → SDK BetaMessageParam 仅差 document source 面, 收敛断言 (Phase 3/4 移除)
-      messages: messages as unknown as Parameters<
-        typeof client.beta.messages.create
-      >[0]['messages'],
-      ...(tools && { tools }),
-      ...(tool_choice && { tool_choice }),
-      ...(output_format && { output_config: { format: output_format } }),
-      ...(temperature !== undefined && { temperature }),
-      ...(stop_sequences && { stop_sequences }),
-      ...(thinkingConfig && { thinking: thinkingConfig }),
-      ...(betas.length > 0 && { betas }),
-      metadata: getAPIMetadata(),
+      model,
+      maxRetries,
+      signal,
+      thinkingConfig: reasoning?.mode === 'budget'
+        ? { type: 'enabled', budgetTokens: reasoning.tokens }
+        : { type: 'disabled' },
     },
-    { signal },
-  )
-
-  const requestId =
-    (response as { _request_id?: string | null })._request_id ?? undefined
+  ))
+  const response = result.data
+  const requestId = result.requestId
   const now = Date.now()
   const lastCompletion = getLastApiCompletionTimestamp()
-  logEvent('tengu_api_success', {
+  logEvent('nexus_api_success', {
     requestId:
       requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     querySource:
@@ -221,7 +156,5 @@ export async function sideQuery(opts: SideQueryOptions): Promise<AssistantMessag
   })
   setLastApiCompletionTimestamp(now)
 
-  // SDK BetaMessage → provider AssistantMessage: stop_reason 含 'refusal'/'pause_turn'
-  // 等 provider 面未建模变体, 收敛断言 (Phase 3/4 替换 client 后移除)
-  return response as unknown as AssistantMessage
+  return response
 }

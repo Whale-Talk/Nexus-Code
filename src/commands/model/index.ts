@@ -1,14 +1,11 @@
 import type { Command } from '../../commands.js'
 import { shouldInferenceConfigCommandBeImmediate } from '../../utils/immediateCommand.js'
-import { getMainLoopModel, renderModelName } from '../../utils/model/model.js'
 
 export default {
   type: 'local-jsx',
   name: 'model',
-  get description() {
-    return `Set the AI model for Nexus Code (currently ${renderModelName(getMainLoopModel())})`
-  },
-  argumentHint: '[model]',
+  description: '切换当前对话角色（Quark、Atom、Electron）',
+  argumentHint: '[quark | atom | electron]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

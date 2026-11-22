@@ -3,9 +3,19 @@ import { getIsInteractive } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
+import { getSettingsForSource } from './settings/settings.js'
+import type { SettingsJson } from './settings/types.js'
 
 let loggedTmuxCcDisable = false
 let checkedTmuxMouseHint = false
+let activeDisplay: TerminalDisplayStatus | undefined
+
+export type TerminalDisplayMode = NonNullable<SettingsJson['terminalDisplayMode']>
+type TerminalDisplayStatus = {
+  mode: Exclude<TerminalDisplayMode, 'auto'>
+  source: 'auto' | 'settings' | 'environment' | 'non-interactive' | 'dumb' | 'tmux'
+}
+const nonInteractiveDisplay: TerminalDisplayStatus = { mode: 'classic', source: 'non-interactive' }
 
 /**
  * Cached result from `tmux display-message -p '#{client_control_mode}'`.
@@ -104,63 +114,83 @@ export function _resetTmuxControlModeProbeForTesting(): void {
   loggedTmuxCcDisable = false
 }
 
-/**
- * Runtime env-var check only. Ants default to on (CLAUDE_CODE_NO_FLICKER=0
- * to opt out); external users default to off (CLAUDE_CODE_NO_FLICKER=1 to
- * opt in).
- */
-export function isFullscreenEnvEnabled(): boolean {
-  // Explicit user opt-out always wins.
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_NO_FLICKER)) return false
-  // Explicit opt-in overrides auto-detection (escape hatch).
-  if (isEnvTruthy(process.env.CLAUDE_CODE_NO_FLICKER)) return true
-  // Auto-disable under tmux -CC: alt-screen + mouse tracking corrupts
-  // terminal state on double-click and mouse wheel is dead.
+export function getTerminalDisplayPreference(): TerminalDisplayMode {
+  return getSettingsForSource('userSettings')?.terminalDisplayMode ?? 'auto'
+}
+
+export function getTerminalDisplayStatus(): TerminalDisplayStatus {
+  if (!getIsInteractive() || !process.stdin.isTTY || !process.stdout.isTTY) {
+    return nonInteractiveDisplay
+  }
+  // The alternate buffer and mouse tracking are tied to the mounted REPL.
+  // Keep the choice fixed while its settings panel edits the next launch.
+  return activeDisplay ??= resolveTerminalDisplay()
+}
+
+function resolveTerminalDisplay(): TerminalDisplayStatus {
+  if (isEnvDefinedFalsy(process.env.NEXUS_NO_FLICKER)) {
+    return { mode: 'classic', source: 'environment' }
+  }
+  if (isEnvTruthy(process.env.NEXUS_NO_FLICKER)) {
+    return { mode: 'fullscreen', source: 'environment' }
+  }
+  const preference = getTerminalDisplayPreference()
+  if (preference === 'classic') return { mode: 'classic', source: 'settings' }
+  if (process.env.TERM === 'dumb') return { mode: 'classic', source: 'dumb' }
+  // Only the existing environment override can opt out of tmux -CC protection.
   if (isTmuxControlMode()) {
     if (!loggedTmuxCcDisable) {
       loggedTmuxCcDisable = true
       logForDebugging(
-        'fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set CLAUDE_CODE_NO_FLICKER=1 to override',
+        'fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set NEXUS_NO_FLICKER=1 to override',
       )
     }
-    return false
+    return { mode: 'classic', source: 'tmux' }
   }
-  return process.env.USER_TYPE === 'ant'
+  if (preference === 'fullscreen') return { mode: 'fullscreen', source: 'settings' }
+  // Native Windows Terminal supports the alternate buffer and SGR mouse tracking.
+  const windowsTerminal = process.platform === 'win32' && Boolean(process.env.WT_SESSION) &&
+    !process.env.TERM_PROGRAM && !process.env.TMUX && !process.env.STY
+  return {
+    mode: windowsTerminal || process.env.NEXUS_BUILD_FLAVOR === 'development' ? 'fullscreen' : 'classic',
+    source: 'auto',
+  }
+}
+
+export function isFullscreenEnvEnabled(): boolean {
+  return getTerminalDisplayStatus().mode === 'fullscreen'
 }
 
 /**
  * Whether fullscreen mode should enable SGR mouse tracking (DEC 1000/1002/1006).
- * Set CLAUDE_CODE_DISABLE_MOUSE=1 to keep alt-screen + virtualized scroll
+ * Set NEXUS_DISABLE_MOUSE=1 to keep alt-screen + virtualized scroll
  * (keyboard PgUp/PgDn/Ctrl+Home/End still work) but skip mouse capture,
  * so tmux/kitty/terminal-native copy-on-select keeps working.
  *
- * Compare with CLAUDE_CODE_NO_FLICKER=0 which is all-or-nothing — it also
+ * Compare with NEXUS_NO_FLICKER=0 which is all-or-nothing — it also
  * disables alt-screen and virtualized scrollback.
  */
 export function isMouseTrackingEnabled(): boolean {
-  return !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_MOUSE)
+  return !isEnvTruthy(process.env.NEXUS_DISABLE_MOUSE)
 }
 
 /**
  * Whether mouse click handling is disabled (clicks/drags ignored, wheel still
- * works). Set CLAUDE_CODE_DISABLE_MOUSE_CLICKS=1 to prevent accidental clicks
+ * works). Set NEXUS_DISABLE_MOUSE_CLICKS=1 to prevent accidental clicks
  * from triggering cursor positioning, text selection, or message expansion.
  *
- * Fullscreen-specific — only reachable when CLAUDE_CODE_NO_FLICKER is active.
+ * Fullscreen-specific — only reachable when NEXUS_NO_FLICKER is active.
  */
 export function isMouseClicksDisabled(): boolean {
-  return isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS)
+  return isEnvTruthy(process.env.NEXUS_DISABLE_MOUSE_CLICKS)
 }
 
 /**
  * True when the fullscreen alt-screen layout is actually rendering —
- * requires an interactive REPL session AND the env var not explicitly
- * set falsy. Headless paths (--print, SDK, in-process teammates) never
- * enter fullscreen, so features that depend on alt-screen re-rendering
- * should gate on this.
+ * Headless paths (--print, SDK, in-process teammates) never enter fullscreen.
  */
 export function isFullscreenActive(): boolean {
-  return getIsInteractive() && isFullscreenEnvEnabled()
+  return isFullscreenEnvEnabled()
 }
 
 /**
@@ -197,6 +227,7 @@ export async function maybeGetTmuxMouseHint(): Promise<string | null> {
 
 /** Test-only: reset module-level once-per-session flags. */
 export function _resetForTesting(): void {
-  loggedTmuxCcDisable = false
+  _resetTmuxControlModeProbeForTesting()
   checkedTmuxMouseHint = false
+  activeDisplay = undefined
 }

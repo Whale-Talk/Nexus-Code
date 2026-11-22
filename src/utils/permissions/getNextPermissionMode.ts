@@ -38,7 +38,7 @@ export function getNextPermissionMode(
   switch (toolPermissionContext.mode) {
     case 'default':
       // Ants skip acceptEdits and plan — auto mode replaces them
-      if (process.env.USER_TYPE === 'ant') {
+      if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
         if (toolPermissionContext.isBypassPermissionsModeAvailable) {
           return 'bypassPermissions'
         }

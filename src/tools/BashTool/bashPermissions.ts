@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '../../services/api/provider/errors.js'
 import type { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -120,11 +120,11 @@ function logClassifierResultForAnts(
   descriptions: string[],
   result: ClassifierResult,
 ): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return
   }
 
-  logEvent('tengu_internal_bash_classifier_result', {
+  logEvent('nexus_internal_bash_classifier_result', {
     behavior:
       behavior as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     descriptions: jsonStringify(
@@ -171,7 +171,7 @@ export function getSimpleCommandPrefix(command: string): string | null {
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
     const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
+      process.env.NEXUS_BUILD_FLAVOR === 'development' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
     if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
       return null
     }
@@ -247,7 +247,7 @@ export function getFirstWordPrefix(command: string): string | null {
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
     const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
+      process.env.NEXUS_BUILD_FLAVOR === 'development' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
     if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
       return null
     }
@@ -326,7 +326,7 @@ function extractPrefixBeforeHeredoc(command: string): string | null {
   while (i < tokens.length && ENV_VAR_ASSIGN_RE.test(tokens[i]!)) {
     const varName = tokens[i]!.split('=')[0]!
     const isAntOnlySafe =
-      process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
+      process.env.NEXUS_BUILD_FLAVOR === 'development' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
     if (!SAFE_ENV_VARS.has(varName) && !isAntOnlySafe) {
       return null
     }
@@ -431,7 +431,7 @@ const SAFE_ENV_VARS = new Set([
 
 /**
  * ANT-ONLY environment variables that are safe to strip from commands.
- * These are only enabled when USER_TYPE === 'ant'.
+ * These are only enabled when NEXUS_BUILD_FLAVOR === 'development'.
  *
  * SECURITY: These env vars are stripped before permission-rule matching, which
  * means `DOCKER_HOST=tcp://evil.com docker ps` matches a `Bash(docker ps:*)`
@@ -442,7 +442,7 @@ const SAFE_ENV_VARS = new Set([
  * similarly controls which cluster kubectl talks to. These are convenience
  * strippings for internal power users who accept the risk.
  *
- * Based on analysis of 30 days of tengu_internal_bash_tool_use_permission_request events.
+ * Based on analysis of 30 days of nexus_internal_bash_tool_use_permission_request events.
  */
 const ANT_ONLY_SAFE_ENV_VARS = new Set([
   // Kubernetes and container config (config file pointers, not execution)
@@ -454,7 +454,7 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   'CLOUDSDK_CORE_PROJECT', // GCP project ID
   'CLUSTER', // generic cluster name
 
-  // Anthropic internal cluster selection (just names/identifiers)
+  // Provider internal cluster selection (just names/identifiers)
   'COO_CLUSTER', // coo cluster name
   'COO_CLUSTER_NAME', // coo cluster name (alternate)
   'COO_NAMESPACE', // coo namespace
@@ -483,8 +483,8 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   'STATSIG_FORD_DB_CHECKS', // statsig DB check flag
 
   // Build configuration
-  'ANT_ENVIRONMENT', // Anthropic environment name
-  'ANT_SERVICE', // Anthropic service name
+  'ANT_ENVIRONMENT', // Provider environment name
+  'ANT_SERVICE', // Provider service name
   'MONOREPO_ROOT_DIR', // monorepo root path
 
   // Version selectors
@@ -588,7 +588,7 @@ export function stripSafeWrappers(command: string): string {
     if (envVarMatch) {
       const varName = envVarMatch[1]!
       const isAntOnlySafe =
-        process.env.USER_TYPE === 'ant' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
+        process.env.NEXUS_BUILD_FLAVOR === 'development' && ANT_ONLY_SAFE_ENV_VARS.has(varName)
       if (SAFE_ENV_VARS.has(varName) || isAntOnlySafe) {
         stripped = stripped.replace(ENV_VAR_PATTERN, '')
       }
@@ -711,9 +711,9 @@ export const BINARY_HIJACK_VARS = /^(LD_|DYLD_|PATH$)/
  * Strip ALL leading env var prefixes from a command, regardless of whether the
  * var name is in the safe-list.
  *
- * Used for deny/ask rule matching: when a user denies `claude` or `rm`, the
+ * Used for deny/ask rule matching: when a user denies `nexus` or `rm`, the
  * command should stay blocked even if prefixed with arbitrary env vars like
- * `FOO=bar claude`. The safe-list restriction in stripSafeWrappers is correct
+ * `FOO=bar nexus`. The safe-list restriction in stripSafeWrappers is correct
  * for allow rules (prevents `DOCKER_HOST=evil docker ps` from auto-matching
  * `Bash(docker ps:*)`), but deny rules must be harder to circumvent.
  *
@@ -817,10 +817,10 @@ function filterRulesByContentsMatchingInput(
   //
   // We iteratively apply both stripping operations to all candidates until no
   // new candidates are produced (fixed-point). This handles interleaved patterns
-  // like `nohup FOO=bar timeout 5 claude` where:
-  //   1. stripSafeWrappers strips `nohup` → `FOO=bar timeout 5 claude`
-  //   2. stripAllLeadingEnvVars strips `FOO=bar` → `timeout 5 claude`
-  //   3. stripSafeWrappers strips `timeout 5` → `claude` (deny match)
+  // like `nohup FOO=bar timeout 5 nexus` where:
+  //   1. stripSafeWrappers strips `nohup` → `FOO=bar timeout 5 nexus`
+  //   2. stripAllLeadingEnvVars strips `FOO=bar` → `timeout 5 nexus`
+  //   3. stripSafeWrappers strips `timeout 5` → `nexus` (deny match)
   //
   // Without iteration, single-pass compositions miss multi-layer interleaving.
   if (stripAllEnvVars) {
@@ -1216,7 +1216,7 @@ export async function checkCommandAndSuggestRules(
   // validators (backslash-escaped operators, etc.) would only add FPs.
   if (
     !astParseSucceeded &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK)
+    !isEnvTruthy(process.env.NEXUS_DISABLE_COMMAND_INJECTION_CHECK)
   ) {
     const safetyResult = await bashCommandIsSafeAsync(input.command)
 
@@ -1676,12 +1676,12 @@ export async function bashToolHasPermission(
   // When tree-sitter WASM is unavailable OR the injection check is disabled
   // via env var, we fall back to the old path (legacy gate at ~1370 runs).
   const injectionCheckDisabled = isEnvTruthy(
-    process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK,
+    process.env.NEXUS_DISABLE_COMMAND_INJECTION_CHECK,
   )
   // GrowthBook killswitch for shadow mode — when off, skip the native parse
   // entirely. Computed once; feature() must stay inline in the ternary below.
   const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_birch_trellis', true)
+    ? getFeatureValue('nexus_birch_trellis', true)
     : false
   // Parse once here; the resulting AST feeds both parseForSecurityFromAst
   // and bashToolCheckCommandOperatorPermissions.
@@ -1703,7 +1703,7 @@ export async function bashToolHasPermission(
   // TREE_SITTER_BASH (not SHADOW) so legacy internals remain pure regex.
   // One event per bash call captures both divergence AND unavailability
   // reasons; module-load failures are separately covered by the
-  // session-scoped tengu_tree_sitter_load event.
+  // session-scoped nexus_tree_sitter_load event.
   if (feature('TREE_SITTER_BASH_SHADOW')) {
     const available = astResult.kind !== 'parse-unavailable'
     let tooComplex = false
@@ -1724,7 +1724,7 @@ export async function bashToolHasPermission(
         (tsSubs.length !== legacySubs.length ||
           tsSubs.some((s, i) => s !== legacySubs[i]))
     }
-    logEvent('tengu_tree_sitter_shadow', {
+    logEvent('nexus_tree_sitter_shadow', {
       available,
       astTooComplex: tooComplex,
       astSemanticFail: semanticFail,
@@ -1749,7 +1749,7 @@ export async function bashToolHasPermission(
       type: 'other' as const,
       reason: astResult.reason,
     }
-    logEvent('tengu_bash_ast_too_complex', {
+    logEvent('nexus_bash_ast_too_complex', {
       nodeTypeId: nodeTypeId(astResult.nodeType),
     })
     return {
@@ -2039,7 +2039,7 @@ export async function bashToolHasPermission(
       // SECURITY: Compute compoundCommandHasCd from the full command, NOT
       // hardcode false. The pipe-handling path previously passed `false` here,
       // disabling the cd+redirect check at pathValidation.ts:821. Appending
-      // `| echo done` to `cd .claude && echo x > settings.json` routed through
+      // `| echo done` to `cd .nexus && echo x > settings.json` routed through
       // this path with compoundCommandHasCd=false, letting the redirect write
       // to .nexus/settings.json without the cd+redirect block firing.
       const pathResult = checkPathConstraints(
@@ -2084,7 +2084,7 @@ export async function bashToolHasPermission(
   // same question: "can splitCommand be trusted on this input?"
   if (
     astSubcommands === null &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK)
+    !isEnvTruthy(process.env.NEXUS_DISABLE_COMMAND_INJECTION_CHECK)
   ) {
     const originalCommandSafetyResult = await bashCommandIsSafeAsync(
       input.command,
@@ -2196,7 +2196,7 @@ export async function bashToolHasPermission(
   }
 
   // Track if compound command contains cd for security validation
-  // This prevents bypassing path checks via: cd .claude/ && mv test.txt settings.json
+  // This prevents bypassing path checks via: cd .nexus/ && mv test.txt settings.json
   const compoundCommandHasCd = cdCommands.length > 0
 
   // SECURITY: Block compound commands that have both cd AND git
@@ -2343,7 +2343,7 @@ export async function bashToolHasPermission(
   let hasPossibleCommandInjection = false
   if (
     astSubcommands === null &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK)
+    !isEnvTruthy(process.env.NEXUS_DISABLE_COMMAND_INJECTION_CHECK)
   ) {
     // CC-643: Batch divergence telemetry into a single logEvent. The per-sub
     // logEvent was the hot-path syscall driver (each call → /proc/self/stat
@@ -2359,7 +2359,7 @@ export async function bashToolHasPermission(
       r => r.behavior !== 'passthrough',
     )
     if (divergenceCount > 0) {
-      logEvent('tengu_tree_sitter_security_divergence', {
+      logEvent('nexus_tree_sitter_security_divergence', {
         quoteContextDivergence: true,
         count: divergenceCount,
       })

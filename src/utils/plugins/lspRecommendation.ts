@@ -20,7 +20,7 @@ import {
   loadKnownMarketplacesConfig,
 } from './marketplaceManager.js'
 import {
-  ALLOWED_OFFICIAL_MARKETPLACE_NAMES,
+  ALLOWED_FEATURED_MARKETPLACE_NAMES,
   type PluginMarketplaceEntry,
 } from './schemas.js'
 
@@ -41,10 +41,10 @@ export type LspPluginRecommendation = {
 const MAX_IGNORED_COUNT = 5
 
 /**
- * Check if a marketplace is official (from Anthropic)
+ * Check if a marketplace is official (from Provider)
  */
 function isOfficialMarketplace(name: string): boolean {
-  return ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(name.toLowerCase())
+  return ALLOWED_FEATURED_MARKETPLACE_NAMES.has(name.toLowerCase())
 }
 
 /**

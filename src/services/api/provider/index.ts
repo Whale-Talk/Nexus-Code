@@ -1,9 +1,9 @@
-// Provider 注册表 — 工厂 + 多后端分发。
-//
-// 结构对齐 opencode packages/llm/src/providers/index.ts (注册表 + 按类型分发)
-// 注意: Bedrock/Foundry/Vertex 保留 @anthropic-ai/sdk 路径, 不入此注册表。
+import { getModelCatalog, requireCatalogModel, type ProviderKind } from './catalog.js'
+import { createMessagesAdapter } from './implementations/messages.js'
+import { createOpenAICompatibleAdapter } from './implementations/openai-compatible.js'
+import type { ProviderAdapter } from './types.js'
 
-export type { ModelRequest, StreamEvent, StreamResponse, ProviderAdapter, WithResponse } from './types.js'
+export type { ModelRequest, StreamEvent, StreamResponse, ProviderAdapter, ModelResponse } from './types.js'
 export {
   APIError,
   APIConnectionError,
@@ -13,25 +13,87 @@ export {
   NotFoundError,
 } from './errors.js'
 
-/** Provider 分发键 — 当前仅直连 + relay 路径使用此抽象层 */
-export type ProviderKind = 'anthropic' | 'openai-compatible'
+export type { ProviderKind } from './catalog.js'
 
-/** 已注册 provider 的懒加载工厂 */
-const registry = new Map<ProviderKind, () => Promise<{ adapter: import('./types.js').ProviderAdapter }>>()
+type Connection = { protocol: ProviderKind; baseURL: string; apiKey?: string }
+const adapters = new Map<string, Connection & { adapter: ProviderAdapter }>()
 
-export function registerProvider(kind: ProviderKind, factory: () => Promise<{ adapter: import('./types.js').ProviderAdapter }>): void {
-  registry.set(kind, factory)
+// Per-response routing metadata survives the in-memory message spreads. JSON transcripts omit symbols.
+export type RequestRoute = Readonly<{ origin: string; channel?: string; keyVariable?: string }>
+const routeTag = Symbol('request route')
+export function tagResponseRoute(message: object, route: RequestRoute): void {
+  Object.assign(message, { [routeTag]: route })
+}
+export function responseRoute(message: object | undefined): RequestRoute | undefined {
+  return (message as { [routeTag]?: RequestRoute } | undefined)?.[routeTag]
 }
 
-/** 获取已注册的 provider 适配器 (懒加载 + 缓存) */
-const cache = new Map<ProviderKind, import('./types.js').ProviderAdapter>()
+function singleChannelKeyVariable(): string {
+  return process.env.NEXUS_PROVIDER === 'openai-compatible' && process.env.NEXUS_AUTH_TOKEN
+    ? 'NEXUS_AUTH_TOKEN' : 'NEXUS_API_KEY'
+}
 
-export async function getProvider(kind: ProviderKind): Promise<import('./types.js').ProviderAdapter> {
-  const cached = cache.get(kind)
-  if (cached) return cached
-  const factory = registry.get(kind)
-  if (!factory) throw new Error(`Provider "${kind}" not registered`)
-  const { adapter } = await factory()
-  cache.set(kind, adapter)
+/** An auxiliary API may reuse a credential only at the origin that actually served this turn.
+ * Re-check its current binding after tool approval, in case the user edited the channel meanwhile. */
+export function keyForRequestOrigin(route: RequestRoute | undefined, origin: string): string | undefined {
+  if (!route?.keyVariable || route.origin !== origin) return undefined
+  const catalog = getModelCatalog()
+  const channel = route.channel ? catalog?.config.channels[route.channel] : undefined
+  if (route.channel ? !channel : Boolean(catalog)) return undefined
+  const baseURL = channel?.baseURL ?? process.env.NEXUS_BASE_URL
+  const variable = channel ? channel.apiKeyEnv : singleChannelKeyVariable()
+  if (!baseURL || new URL(baseURL).origin !== origin || variable !== route.keyVariable) return undefined
+  return process.env[route.keyVariable]?.trim() || undefined
+}
+
+// Older profiles include the local context hint in their DeepSeek model setting.
+// Relays may register that entire string as their literal upstream model ID.
+function wireModelId(baseURL: string, model: string): string {
+  return new URL(baseURL).origin === 'https://api.deepseek.com' && /^deepseek-/i.test(model)
+    ? model.replace(/\[1m\]$/i, '') : model
+}
+
+export function resolveProviderRoute(model: string, legacyApiKeyOverride?: string) {
+  const catalog = getModelCatalog()
+  if (catalog) {
+    const selected = requireCatalogModel(model)
+    const channel = catalog.config.channels[selected.channel]!
+    const apiKey = channel.apiKeyEnv ? process.env[channel.apiKeyEnv]?.trim() : undefined
+    if (channel.apiKeyEnv && !apiKey) {
+      throw new Error(`渠道 ${selected.channel} 缺少环境变量 ${channel.apiKeyEnv}`)
+    }
+    return {
+      source: { origin: new URL(channel.baseURL).origin, channel: selected.channel, keyVariable: channel.apiKeyEnv },
+      adapter: adapterFor(selected.channel, { protocol: channel.protocol, baseURL: channel.baseURL, apiKey }),
+      model: wireModelId(channel.baseURL, selected.id),
+    }
+  }
+
+  const protocol = process.env.NEXUS_PROVIDER ?? 'messages'
+  if (protocol !== 'messages' && protocol !== 'openai-compatible') {
+    throw new Error('NEXUS_PROVIDER 只支持 messages 或 openai-compatible')
+  }
+  const baseURL = process.env.NEXUS_BASE_URL?.trim()
+  if (!baseURL) throw new Error('NEXUS_BASE_URL 未设置，请使用 /nexus-config 配置服务地址')
+  const keyVariable = singleChannelKeyVariable()
+  const apiKey = legacyApiKeyOverride ?? process.env[keyVariable]
+  return { adapter: adapterFor('', { protocol, baseURL, apiKey }), model: wireModelId(baseURL, model),
+    source: { origin: new URL(baseURL).origin, keyVariable: legacyApiKeyOverride === undefined ? keyVariable : undefined } }
+}
+
+function adapterFor(channel: string, connection: Connection): ProviderAdapter {
+  const cached = adapters.get(channel)
+  if (cached && cached.protocol === connection.protocol &&
+    cached.baseURL === connection.baseURL && cached.apiKey === connection.apiKey) {
+    return cached.adapter
+  }
+  const { protocol, baseURL, apiKey } = connection
+  if (protocol === 'messages' && !apiKey) {
+    throw new Error(channel ? `请为渠道 ${channel} 配置 apiKeyEnv` : 'NEXUS_API_KEY 未设置')
+  }
+  const adapter = protocol === 'messages'
+    ? createMessagesAdapter({ baseURL, apiKey: apiKey! })
+    : createOpenAICompatibleAdapter({ baseURL, apiKey, name: channel || 'openai-compatible' })
+  adapters.set(channel, { ...connection, adapter })
   return adapter
 }

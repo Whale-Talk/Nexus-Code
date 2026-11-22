@@ -1,6 +1,6 @@
 /**
  * Plugin and marketplace subcommand handlers — extracted from main.tsx for lazy loading.
- * These are dynamically imported only when `claude plugin *` or `claude plugin marketplace *` runs.
+ * These are dynamically imported only when `nexus plugin *` or `nexus plugin marketplace *` runs.
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 import figures from 'figures'
@@ -110,14 +110,14 @@ export async function pluginValidateHandler(
     console.log(`Validating ${result.fileType} manifest: ${result.filePath}\n`)
     printValidationResult(result)
 
-    // If this is a plugin manifest located inside a .claude-plugin directory,
+    // If this is a plugin manifest located inside a .nexus-plugin directory,
     // also validate the plugin's content files (skills, agents, commands,
     // hooks). Works whether the user passed a directory or the plugin.json
     // path directly.
     let contentResults: ValidationResult[] = []
     if (result.fileType === 'plugin') {
       const manifestDir = dirname(result.filePath)
-      if (basename(manifestDir) === '.claude-plugin') {
+      if (basename(manifestDir) === '.nexus-plugin') {
         contentResults = await validatePluginContents(dirname(manifestDir))
         for (const r of contentResults) {
           // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -160,7 +160,7 @@ export async function pluginListHandler(options: {
   cowork?: boolean
 }): Promise<void> {
   if (options.cowork) setUseCoworkPlugins(true)
-  logEvent('tengu_plugin_list_command', {})
+  logEvent('nexus_plugin_list_command', {})
 
   const installedData = loadInstalledPluginsV2()
   const { getPluginEditableScopes } = await import(
@@ -352,7 +352,7 @@ export async function pluginListHandler(options: {
     // through to the session section so the failure is visible.
     if (inlineLoadErrors.length === 0) {
       cliOk(
-        'No plugins installed. Use `claude plugin install` to install a plugin.',
+        'No plugins installed. Use `nexus plugin install` to install a plugin.',
       )
     }
   }
@@ -508,7 +508,7 @@ export async function marketplaceAddHandler(
       sourceType =
         marketplaceSource.repo as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     }
-    logEvent('tengu_marketplace_added', {
+    logEvent('nexus_marketplace_added', {
       source_type:
         sourceType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -601,7 +601,7 @@ export async function marketplaceRemoveHandler(
     await removeMarketplaceSource(name)
     clearAllCaches()
 
-    logEvent('tengu_marketplace_removed', {
+    logEvent('nexus_marketplace_removed', {
       marketplace_name:
         name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
@@ -630,7 +630,7 @@ export async function marketplaceUpdateHandler(
 
       clearAllCaches()
 
-      logEvent('tengu_marketplace_updated', {
+      logEvent('nexus_marketplace_updated', {
         marketplace_name:
           name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
@@ -650,7 +650,7 @@ export async function marketplaceUpdateHandler(
       await refreshAllMarketplaces()
       clearAllCaches()
 
-      logEvent('tengu_marketplace_updated_all', {
+      logEvent('nexus_marketplace_updated_all', {
         count:
           marketplaceNames.length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
@@ -688,7 +688,7 @@ export async function pluginInstallHandler(
   // additional_metadata for all users — dropped in favor of the privileged
   // column route. marketplace may be undefined (fires before resolution).
   const { name, marketplace } = parsePluginIdentifier(plugin)
-  logEvent('tengu_plugin_install_command', {
+  logEvent('nexus_plugin_install_command', {
     _PROTO_plugin_name: name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
     ...(marketplace && {
       _PROTO_marketplace_name:
@@ -720,7 +720,7 @@ export async function pluginUninstallHandler(
     )
   }
   const { name, marketplace } = parsePluginIdentifier(plugin)
-  logEvent('tengu_plugin_uninstall_command', {
+  logEvent('nexus_plugin_uninstall_command', {
     _PROTO_plugin_name: name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
     ...(marketplace && {
       _PROTO_marketplace_name:
@@ -765,7 +765,7 @@ export async function pluginEnableHandler(
   }
 
   const { name, marketplace } = parsePluginIdentifier(plugin)
-  logEvent('tengu_plugin_enable_command', {
+  logEvent('nexus_plugin_enable_command', {
     _PROTO_plugin_name: name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
     ...(marketplace && {
       _PROTO_marketplace_name:
@@ -800,7 +800,7 @@ export async function pluginDisableHandler(
 
     // No _PROTO_plugin_name here — --all disables all plugins.
     // Distinguishable from the specific-plugin branch by plugin_name IS NULL.
-    logEvent('tengu_plugin_disable_command', {})
+    logEvent('nexus_plugin_disable_command', {})
 
     await disableAllPlugins()
     return
@@ -829,7 +829,7 @@ export async function pluginDisableHandler(
   }
 
   const { name, marketplace } = parsePluginIdentifier(plugin!)
-  logEvent('tengu_plugin_disable_command', {
+  logEvent('nexus_plugin_disable_command', {
     _PROTO_plugin_name: name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
     ...(marketplace && {
       _PROTO_marketplace_name:
@@ -849,7 +849,7 @@ export async function pluginUpdateHandler(
 ): Promise<void> {
   if (options.cowork) setUseCoworkPlugins(true)
   const { name, marketplace } = parsePluginIdentifier(plugin)
-  logEvent('tengu_plugin_update_command', {
+  logEvent('nexus_plugin_update_command', {
     _PROTO_plugin_name: name as AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
     ...(marketplace && {
       _PROTO_marketplace_name:

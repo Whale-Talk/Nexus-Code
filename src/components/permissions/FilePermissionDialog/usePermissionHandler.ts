@@ -5,9 +5,9 @@ import {
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js'
 import type { ToolPermissionContext } from '../../../Tool.js'
 import {
-  CLAUDE_FOLDER_PERMISSION_PATTERN,
+  NEXUS_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
-  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_NEXUS_FOLDER_PERMISSION_PATTERN,
 } from '../../../tools/FileEditTool/constants.js'
 import { env } from '../../../utils/env.js'
 import { generateSuggestions } from '../../../utils/permissions/filesystem.js'
@@ -57,7 +57,7 @@ export type PermissionHandlerOptions = {
   hasFeedback?: boolean
   feedback?: string
   enteredFeedbackMode?: boolean
-  scope?: 'claude-folder' | 'global-claude-folder'
+  scope?: 'nexus-folder' | 'global-nexus-folder'
 }
 
 function handleAcceptOnce(
@@ -70,7 +70,7 @@ function handleAcceptOnce(
   logPermissionEvent('accept', completionType, languageName, messageId)
 
   // Log accept submission with feedback context
-  logEvent('tengu_accept_submitted', {
+  logEvent('nexus_accept_submitted', {
     toolName: sanitizeToolNameForAnalytics(
       toolUseConfirm.tool.name,
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -101,15 +101,15 @@ function handleAcceptSession(
 
   logPermissionEvent('accept', completionType, languageName, messageId)
 
-  // For claude-folder scope, grant session-level access to all .claude/ files
+  // For nexus-folder scope, grant session-level access to all .nexus/ files
   if (
-    options?.scope === 'claude-folder' ||
-    options?.scope === 'global-claude-folder'
+    options?.scope === 'nexus-folder' ||
+    options?.scope === 'global-nexus-folder'
   ) {
     const pattern =
-      options.scope === 'global-claude-folder'
-        ? GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN
-        : CLAUDE_FOLDER_PERMISSION_PATTERN
+      options.scope === 'global-nexus-folder'
+        ? GLOBAL_NEXUS_FOLDER_PERMISSION_PATTERN
+        : NEXUS_FOLDER_PERMISSION_PATTERN
     const suggestions: PermissionUpdate[] = [
       {
         type: 'addRules',
@@ -160,7 +160,7 @@ function handleReject(
   )
 
   // Log reject submission with feedback context
-  logEvent('tengu_reject_submitted', {
+  logEvent('nexus_reject_submitted', {
     toolName: sanitizeToolNameForAnalytics(
       toolUseConfirm.tool.name,
     ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

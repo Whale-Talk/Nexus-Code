@@ -67,6 +67,8 @@ jobs:
         uses: ./.github/actions/setup-bun-install
       - name: Typecheck (baseline gate)
         run: bun run typecheck
+      - name: Check native model roles and runtime names
+        run: bun .github/scripts/check-native-names.ts
 
   # L3 — 单元测试
   test:

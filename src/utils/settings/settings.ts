@@ -259,13 +259,13 @@ export function getSettingsRootPathForSource(source: SettingSource): string {
  *
  * Priority:
  * 1. Session state (set by CLI flag --cowork)
- * 2. Environment variable CLAUDE_CODE_USE_COWORK_PLUGINS
+ * 2. Environment variable NEXUS_USE_COWORK_PLUGINS
  * 3. Default: 'settings.json'
  */
 function getUserSettingsFilePath(): string {
   if (
     getUseCoworkPlugins() ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_COWORK_PLUGINS)
+    isEnvTruthy(process.env.NEXUS_USE_COWORK_PLUGINS)
   ) {
     return 'cowork_settings.json'
   }
@@ -301,9 +301,9 @@ export function getRelativeSettingsFilePathForSource(
 ): string {
   switch (source) {
     case 'projectSettings':
-      return join('.claude', 'settings.json')
+      return join('.nexus', 'settings.json')
     case 'localSettings':
-      return join('.claude', 'settings.local.json')
+      return join('.nexus', 'settings.local.json')
   }
 }
 
@@ -967,7 +967,7 @@ export function getAutoModeConfig():
       if (result.success) {
         if (result.data.allow) allow.push(...result.data.allow)
         if (result.data.soft_deny) soft_deny.push(...result.data.soft_deny)
-        if (process.env.USER_TYPE === 'ant') {
+        if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
           if (result.data.deny) soft_deny.push(...result.data.deny)
         }
         if (result.data.environment)

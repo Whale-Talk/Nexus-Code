@@ -1,9 +1,9 @@
 /**
  * Files are loaded in the following order:
  *
- * 1. Managed memory (eg. /etc/claude-code/NEXUS.md) - Global instructions for all users
+ * 1. Managed memory (eg. /etc/nexus-code/NEXUS.md) - Global instructions for all users
  * 2. User memory (~/.nexus/NEXUS.md) - Private global instructions for all projects
- * 3. Project memory (NEXUS.md, .claude/NEXUS.md, and .nexus/rules/*.md in project roots) - Instructions checked into the codebase
+ * 3. Project memory (NEXUS.md, .nexus/NEXUS.md, and .nexus/rules/*.md in project roots) - Instructions checked into the codebase
  * 4. Local memory (NEXUS.local.md in project roots) - Private project-specific instructions
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
@@ -13,7 +13,7 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - NEXUS.md, .claude/NEXUS.md, and all .md files in .nexus/rules/ are checked in each directory for Project memory
+ * - NEXUS.md, .nexus/NEXUS.md, and all .md files in .nexus/rules/ are checked in each directory for Project memory
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -47,7 +47,7 @@ import {
 } from '../bootstrap/state.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
   getCurrentProjectConfig,
   getManagedNexusRulesDir,
@@ -408,7 +408,7 @@ function handleMemoryFileReadError(error: unknown, filePath: string): void {
   // Log permission errors (EACCES) as they're actionable
   if (code === 'EACCES') {
     // Don't log the full file path to avoid PII/security issues
-    logEvent('tengu_claude_md_permission_error', {
+    logEvent('nexus_nexus_md_permission_error', {
       is_access_error: 1,
       has_home_dir: filePath.includes(getNexusConfigHomeDir()) ? 1 : 0,
     })
@@ -788,7 +788,7 @@ export async function processMdRules({
     return result
   } catch (error) {
     if (error instanceof Error && error.message.includes('EACCES')) {
-      logEvent('tengu_claude_rules_md_permission_error', {
+      logEvent('nexus_nexus_rules_md_permission_error', {
         is_access_error: 1,
         has_home_dir: rulesDir.includes(getNexusConfigHomeDir()) ? 1 : 0,
       })
@@ -811,20 +811,20 @@ export const getMemoryFiles = memoize(
       false
 
     // Process Managed file first (always loaded - policy settings)
-    // Primary: NEXUS.md (via getMemoryPath), legacy fallback: CLAUDE.md
+    // Primary: NEXUS.md (via getMemoryPath), legacy fallback: NEXUS.md
     result.push(
       ...(await processMemoryFile(
         getMemoryPath('Managed'), 'Managed', processedPaths, includeExternal,
       )),
       ...(await processMemoryFile(
-        join(dirname(getMemoryPath('Managed')), 'CLAUDE.md'), 'Managed', processedPaths, includeExternal,
+        join(dirname(getMemoryPath('Managed')), 'NEXUS.md'), 'Managed', processedPaths, includeExternal,
       )),
     )
     // Process Managed .nexus/rules/*.md files
-    const managedClaudeRulesDir = getManagedNexusRulesDir()
+    const managedNexusRulesDir = getManagedNexusRulesDir()
     result.push(
       ...(await processMdRules({
-        rulesDir: managedClaudeRulesDir,
+        rulesDir: managedNexusRulesDir,
         type: 'Managed',
         processedPaths,
         includeExternal,
@@ -833,25 +833,25 @@ export const getMemoryFiles = memoize(
     )
 
     // Process User file (only if userSettings is enabled)
-    // Primary: ~/.nexus/NEXUS.md, fallbacks: ~/.nexus/CLAUDE.md → ~/.claude/CLAUDE.md (OMC legacy)
+    // Primary: ~/.nexus/NEXUS.md, fallbacks: ~/.nexus/NEXUS.md → ~/.nexus/NEXUS.md (OMC legacy)
     if (isSettingSourceEnabled('userSettings')) {
       result.push(
         ...(await processMemoryFile(
           getMemoryPath('User'), 'User', processedPaths, true,
         )),
         ...(await processMemoryFile(
-          join(dirname(getMemoryPath('User')), 'CLAUDE.md'), 'User', processedPaths, true,
+          join(dirname(getMemoryPath('User')), 'NEXUS.md'), 'User', processedPaths, true,
         )),
-        // Legacy OMC: old ~/.claude/CLAUDE.md before the .nexus migration
+        // Legacy OMC: old ~/.nexus/NEXUS.md before the .nexus migration
         ...(await processMemoryFile(
-          join(dirname(getNexusConfigHomeDir()), '.claude', 'CLAUDE.md'), 'User', processedPaths, true,
+          join(dirname(getNexusConfigHomeDir()), '.nexus', 'NEXUS.md'), 'User', processedPaths, true,
         )),
       )
       // Process User ~/.nexus/rules/*.md files
-      const userClaudeRulesDir = getUserNexusRulesDir()
+      const userNexusRulesDir = getUserNexusRulesDir()
       result.push(
         ...(await processMdRules({
-          rulesDir: userClaudeRulesDir,
+          rulesDir: userNexusRulesDir,
           type: 'User',
           processedPaths,
           includeExternal: true,
@@ -871,7 +871,7 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .nexus/worktrees/<name>/ from `claude -w`), the upward walk passes
+    // .nexus/worktrees/<name>/ from `nexus -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
     // checked-in files like NEXUS.md and .nexus/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from
@@ -899,28 +899,28 @@ export const getMemoryFiles = memoize(
 
       // Try reading NEXUS.md (Project) - only if projectSettings is enabled
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        // Primary: NEXUS.md, legacy fallback: CLAUDE.md
+        // Primary: NEXUS.md, legacy fallback: NEXUS.md
         result.push(
           ...(await processMemoryFile(
             join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
           ...(await processMemoryFile(
-            join(dir, 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
+            join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading .claude/NEXUS.md + .claude/CLAUDE.md (legacy)
+        // Try reading .nexus/NEXUS.md + .nexus/NEXUS.md (legacy)
         result.push(
           ...(await processMemoryFile(
-            join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+            join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
           ...(await processMemoryFile(
-            join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
+            join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading rules/*.md files (Project) — primary .nexus, legacy .claude
-        for (const dirName of ['.nexus', '.claude']) {
+        // Try reading rules/*.md files (Project) — primary .nexus, legacy .nexus
+        for (const dirName of ['.nexus']) {
           const rulesDir = join(dir, dirName, 'rules')
           result.push(
             ...(await processMdRules({
@@ -936,47 +936,47 @@ export const getMemoryFiles = memoize(
 
       // Try reading NEXUS.local.md (Local) - only if localSettings is enabled
       if (isSettingSourceEnabled('localSettings')) {
-        // Primary: NEXUS.local.md, legacy fallback: CLAUDE.local.md
+        // Primary: NEXUS.local.md, legacy fallback: NEXUS.local.md
         result.push(
           ...(await processMemoryFile(
             join(dir, 'NEXUS.local.md'), 'Local', processedPaths, includeExternal,
           )),
           ...(await processMemoryFile(
-            join(dir, 'CLAUDE.local.md'), 'Local', processedPaths, includeExternal,
+            join(dir, 'NEXUS.local.md'), 'Local', processedPaths, includeExternal,
           )),
         )
       }
     }
 
     // Process NEXUS.md from additional directories (--add-dir) if env var is enabled
-    // This is controlled by CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
+    // This is controlled by NEXUS_ADDITIONAL_DIRECTORIES_NEXUS_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
-    if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
+    if (isEnvTruthy(process.env.NEXUS_ADDITIONAL_DIRECTORIES_NEXUS_MD)) {
       const additionalDirs = getAdditionalDirectoriesForNexusMd()
       for (const dir of additionalDirs) {
-        // Primary: NEXUS.md, legacy fallback: CLAUDE.md
+        // Primary: NEXUS.md, legacy fallback: NEXUS.md
         result.push(
           ...(await processMemoryFile(
             join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
           ...(await processMemoryFile(
-            join(dir, 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
+            join(dir, 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading .claude/NEXUS.md + .claude/CLAUDE.md (legacy)
+        // Try reading .nexus/NEXUS.md + .nexus/NEXUS.md (legacy)
         result.push(
           ...(await processMemoryFile(
-            join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
+            join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
           ...(await processMemoryFile(
-            join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, includeExternal,
+            join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, includeExternal,
           )),
         )
 
-        // Try reading rules/*.md files from the additional directory (primary .nexus, legacy .claude)
-        for (const dirName of ['.nexus', '.claude']) {
+        // Try reading rules/*.md files from the additional directory (primary .nexus, legacy .nexus)
+        for (const dirName of ['.nexus']) {
           const rulesDir = join(dir, dirName, 'rules')
           result.push(
             ...(await processMdRules({
@@ -1039,7 +1039,7 @@ export const getMemoryFiles = memoize(
 
     if (!hasLoggedInitialLoad) {
       hasLoggedInitialLoad = true
-      logEvent('tengu_claudemd__initial_load', {
+      logEvent('nexus_nexusmd__initial_load', {
         file_count: result.length,
         total_content_length: totalContentLength,
         user_count: typeCounts['User'] ?? 0,
@@ -1149,7 +1149,7 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 }
 
 /**
- * When tengu_moth_copse is on, the findRelevantMemories prefetch surfaces
+ * When nexus_moth_copse is on, the findRelevantMemories prefetch surfaces
  * memory files via attachments, so the MEMORY.md index is no longer injected
  * into the system prompt. Callsites that care about "what's actually in
  * context" (context builder, /context viz) should filter through this.
@@ -1157,8 +1157,8 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 export function filterInjectedMemoryFiles(
   files: MemoryFileInfo[],
 ): MemoryFileInfo[] {
-  const skipMemoryIndex = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_moth_copse',
+  const skipMemoryIndex = getFeatureValue(
+    'nexus_moth_copse',
     false,
   )
   if (!skipMemoryIndex) return files
@@ -1170,8 +1170,8 @@ export const getNexusMds = (
   filter?: (type: MemoryType) => boolean,
 ): string => {
   const memories: string[] = []
-  const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_paper_halyard',
+  const skipProjectLevel = getFeatureValue(
+    'nexus_paper_halyard',
     false,
   )
 
@@ -1224,11 +1224,11 @@ export async function getManagedAndUserConditionalRules(
   const result: MemoryFileInfo[] = []
 
   // Process Managed conditional .nexus/rules/*.md files
-  const managedClaudeRulesDir = getManagedNexusRulesDir()
+  const managedNexusRulesDir = getManagedNexusRulesDir()
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
-      managedClaudeRulesDir,
+      managedNexusRulesDir,
       'Managed',
       processedPaths,
       false,
@@ -1237,11 +1237,11 @@ export async function getManagedAndUserConditionalRules(
 
   if (isSettingSourceEnabled('userSettings')) {
     // Process User conditional .nexus/rules/*.md files
-    const userClaudeRulesDir = getUserNexusRulesDir()
+    const userNexusRulesDir = getUserNexusRulesDir()
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
-        userClaudeRulesDir,
+        userNexusRulesDir,
         'User',
         processedPaths,
         true,
@@ -1268,28 +1268,28 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (NEXUS.md + CLAUDE.md legacy, .claude/NEXUS.md + .claude/CLAUDE.md)
+  // Process project memory files (NEXUS.md + NEXUS.md legacy, .nexus/NEXUS.md + .nexus/NEXUS.md)
   if (isSettingSourceEnabled('projectSettings')) {
     result.push(
       ...(await processMemoryFile(join(dir, 'NEXUS.md'), 'Project', processedPaths, false)),
-      ...(await processMemoryFile(join(dir, 'CLAUDE.md'), 'Project', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, 'NEXUS.md'), 'Project', processedPaths, false)),
     )
     result.push(
-      ...(await processMemoryFile(join(dir, '.claude', 'NEXUS.md'), 'Project', processedPaths, false)),
-      ...(await processMemoryFile(join(dir, '.claude', 'CLAUDE.md'), 'Project', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, '.nexus', 'NEXUS.md'), 'Project', processedPaths, false)),
     )
   }
 
-  // Process local memory file (NEXUS.local.md + CLAUDE.local.md legacy)
+  // Process local memory file (NEXUS.local.md + NEXUS.local.md legacy)
   if (isSettingSourceEnabled('localSettings')) {
     result.push(
       ...(await processMemoryFile(join(dir, 'NEXUS.local.md'), 'Local', processedPaths, false)),
-      ...(await processMemoryFile(join(dir, 'CLAUDE.local.md'), 'Local', processedPaths, false)),
+      ...(await processMemoryFile(join(dir, 'NEXUS.local.md'), 'Local', processedPaths, false)),
     )
   }
 
   const rulesDir = join(dir, '.nexus', 'rules')
-  const legacyRulesDir = join(dir, '.claude', 'rules')
+  const legacyRulesDir = join(dir, '.nexus', 'rules')
 
   // Process project unconditional rules/*.md files (primary .nexus), which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
@@ -1337,7 +1337,7 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  // Primary .nexus/rules; legacy .claude/rules merged via both passes
+  // Primary .nexus/rules; legacy .nexus/rules merged via both passes
   const rulesDir = join(dir, '.nexus', 'rules')
   return processConditionedMdRules(
     targetPath,
@@ -1379,11 +1379,11 @@ export async function processConditionedMdRules(
       return false
     }
 
-    // For Project rules: glob patterns are relative to the directory containing .claude
+    // For Project rules: glob patterns are relative to the directory containing .nexus
     // For Managed/User rules: glob patterns are relative to the original CWD
     const baseDir =
       type === 'Project'
-        ? dirname(dirname(rulesDir)) // Parent of .claude
+        ? dirname(dirname(rulesDir)) // Parent of .nexus
         : getOriginalCwd() // Project root for managed/user rules
 
     const relativePath = isAbsolute(targetPath)
@@ -1442,17 +1442,17 @@ export async function shouldShowNexusMdExternalIncludesWarning(): Promise<boolea
 export function isMemoryFilePath(filePath: string): boolean {
   const name = basename(filePath)
 
-  // NEXUS.md or NEXUS.local.md (or legacy CLAUDE.md / CLAUDE.local.md) anywhere
+  // NEXUS.md or NEXUS.local.md (or legacy NEXUS.md / NEXUS.local.md) anywhere
   if (name === 'NEXUS.md' || name === 'NEXUS.local.md' ||
-      name === 'CLAUDE.md' || name === 'CLAUDE.local.md') {
+      name === 'NEXUS.md' || name === 'NEXUS.local.md') {
     return true
   }
 
-  // .md files in rules/ directories (primary .nexus, legacy .claude)
+  // .md files in rules/ directories (primary .nexus, legacy .nexus)
   if (
     name.endsWith('.md') &&
     (filePath.includes(`${sep}.nexus${sep}rules${sep}`) ||
-      filePath.includes(`${sep}.claude${sep}rules${sep}`))
+      filePath.includes(`${sep}.nexus${sep}rules${sep}`))
   ) {
     return true
   }

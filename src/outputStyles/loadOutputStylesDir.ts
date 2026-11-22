@@ -11,14 +11,14 @@ import {
 import { clearPluginOutputStyleCache } from '../utils/plugins/loadPluginOutputStyles.js'
 
 /**
- * Loads markdown files from .claude/output-styles directories throughout the project
+ * Loads markdown files from .nexus/output-styles directories throughout the project
  * and from ~/.nexus/output-styles directory and converts them to output styles.
  *
  * Each filename becomes a style name, and the file content becomes the style prompt.
  * The frontmatter provides name and description.
  *
  * Structure:
- * - Project .claude/output-styles/*.md -> project styles
+ * - Project .nexus/output-styles/*.md -> project styles
  * - User ~/.nexus/output-styles/*.md -> user styles (overridden by project styles)
  *
  * @param cwd Current working directory for project directory traversal

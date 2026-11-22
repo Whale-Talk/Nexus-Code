@@ -1,18 +1,14 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import { MODEL_ALIASES } from './aliases.js'
+import { MODEL_SELECTIONS } from './roles.js'
 import { isModelAllowed } from './modelAllowlist.js'
-import { getAPIProvider } from './providers.js'
 import { sideQuery } from '../sideQuery.js'
+import { getCatalogModel, getLegacyDeepSeekModelIds, getModelCatalog } from '../../services/api/provider/catalog.js'
 import {
   NotFoundError,
   APIError,
   APIConnectionError,
   AuthenticationError,
 } from '../../services/api/provider/errors.js'
-import { getModelStrings } from './modelStrings.js'
 
-// Cache valid models to avoid repeated API calls
-const validModelCache = new Map<string, boolean>()
 
 /**
  * Validates a model by attempting an actual API call.
@@ -37,7 +33,12 @@ export async function validateModel(
 
   // Check if it's a known alias (these are always valid)
   const lowerModel = normalizedModel.toLowerCase()
-  if ((MODEL_ALIASES as readonly string[]).includes(lowerModel)) {
+  if ((MODEL_SELECTIONS as readonly string[]).includes(lowerModel)) {
+    return { valid: true }
+  }
+
+  // A configured choice can be selected without making a separate inference request.
+  if (getModelCatalog() ? getCatalogModel(normalizedModel) : getLegacyDeepSeekModelIds().includes(normalizedModel)) {
     return { valid: true }
   }
 
@@ -45,12 +46,6 @@ export async function validateModel(
   if (normalizedModel === process.env.NEXUS_CUSTOM_MODEL_OPTION) {
     return { valid: true }
   }
-
-  // Check cache first
-  if (validModelCache.has(normalizedModel)) {
-    return { valid: true }
-  }
-
 
   // Try to make an actual API call with minimal parameters
   try {
@@ -74,7 +69,6 @@ export async function validateModel(
     })
 
     // If we got here, the model is valid
-    validModelCache.set(normalizedModel, true)
     return { valid: true }
   } catch (error) {
     return handleValidationError(error, normalizedModel)
@@ -87,11 +81,9 @@ function handleValidationError(
 ): { valid: boolean; error: string } {
   // NotFoundError (404) means the model doesn't exist
   if (error instanceof NotFoundError) {
-    const fallback = get3PFallbackSuggestion(modelName)
-    const suggestion = fallback ? `. Try '${fallback}' instead` : ''
     return {
       valid: false,
-      error: `Model '${modelName}' not found${suggestion}`,
+      error: `Model '${modelName}' not found`,
     }
   }
 
@@ -100,7 +92,7 @@ function handleValidationError(
     if (error instanceof AuthenticationError) {
       return {
         valid: false,
-        error: 'Authentication failed. Please check your API credentials.',
+        error: `${error.message}，请核对该渠道的密钥及模型访问权限。`,
       }
     }
 
@@ -135,25 +127,4 @@ function handleValidationError(
     valid: false,
     error: `Unable to validate model: ${errorMessage}`,
   }
-}
-
-// @[MODEL LAUNCH]: Add a fallback suggestion chain for the new model → previous version
-/**
- * Suggest a fallback model for 3P users when the selected model is unavailable.
- */
-function get3PFallbackSuggestion(model: string): string | undefined {
-  if (getAPIProvider() === 'firstParty') {
-    return undefined
-  }
-  const lowerModel = model.toLowerCase()
-  if (lowerModel.includes('opus-4-6') || lowerModel.includes('opus_4_6')) {
-    return getModelStrings().opus41
-  }
-  if (lowerModel.includes('sonnet-4-6') || lowerModel.includes('sonnet_4_6')) {
-    return getModelStrings().sonnet45
-  }
-  if (lowerModel.includes('sonnet-4-5') || lowerModel.includes('sonnet_4_5')) {
-    return getModelStrings().sonnet40
-  }
-  return undefined
 }

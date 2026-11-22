@@ -91,7 +91,7 @@ const AgentJsonSchema = lazySchema(() =>
     initialPrompt: z.string().optional(),
     memory: z.enum(['user', 'project', 'local']).optional(),
     background: z.boolean().optional(),
-    isolation: (process.env.USER_TYPE === 'ant'
+    isolation: (process.env.NEXUS_BUILD_FLAVOR === 'development'
       ? z.enum(['worktree', 'remote'])
       : z.enum(['worktree'])
     ).optional(),
@@ -128,7 +128,7 @@ export type BaseAgentDefinition = {
   /** Omit NEXUS.md hierarchy from the agent's userContext. Read-only agents
    * (Explore, Plan) don't need commit/PR/lint guidelines — the main agent has
    * full NEXUS.md and interprets their output. Saves ~5-15 Gtok/week across
-   * 34M+ Explore spawns. Kill-switch: tengu_slim_subagent_claudemd. */
+   * 34M+ Explore spawns. Kill-switch: nexus_slim_subagent_nexusmd. */
   omitNexusMd?: boolean
 }
 
@@ -296,7 +296,7 @@ async function initializeAgentMemorySnapshots(
 export const getAgentDefinitionsWithOverrides = memoize(
   async (cwd: string): Promise<AgentDefinitionsResult> => {
     // Simple mode: skip custom agents, only return built-ins
-    if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+    if (isEnvTruthy(process.env.NEXUS_SIMPLE)) {
       const builtInAgents = getBuiltInAgents()
       return {
         activeAgents: builtInAgents,
@@ -329,7 +329,7 @@ export const getAgentDefinitionsWithOverrides = memoize(
             logForDebugging(
               `Failed to parse agent from ${filePath}: ${errorMsg}`,
             )
-            logEvent('tengu_agent_parse_error', {
+            logEvent('nexus_agent_parse_error', {
               error:
                 errorMsg as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               location:
@@ -607,7 +607,7 @@ export function parseAgentFromMarkdown(
     // Parse isolation mode. 'remote' is ant-only; external builds reject it at parse time.
     type IsolationMode = 'worktree' | 'remote'
     const VALID_ISOLATION_MODES: readonly IsolationMode[] =
-      process.env.USER_TYPE === 'ant' ? ['worktree', 'remote'] : ['worktree']
+      process.env.NEXUS_BUILD_FLAVOR === 'development' ? ['worktree', 'remote'] : ['worktree']
     const isolationRaw = frontmatter['isolation'] as string | undefined
     let isolation: IsolationMode | undefined
     if (isolationRaw !== undefined) {

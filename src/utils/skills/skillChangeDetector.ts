@@ -220,9 +220,9 @@ async function getWatchablePaths(): Promise<string[]> {
     }
   }
 
-  // Additional directories (--add-dir) skills — primary .nexus, legacy .claude
+  // Additional directories (--add-dir) skills — primary .nexus, legacy .nexus
   for (const dir of getAdditionalDirectoriesForNexusMd()) {
-    for (const dirName of ['.nexus', '.claude']) {
+    for (const dirName of ['.nexus']) {
       const additionalSkillsPath = platformPath.join(dir, dirName, 'skills')
       try {
         await fs.stat(additionalSkillsPath)
@@ -238,7 +238,7 @@ async function getWatchablePaths(): Promise<string[]> {
 
 function handleChange(path: string): void {
   logForDebugging(`Detected skill change: ${path}`)
-  logEvent('tengu_skill_file_changed', {
+  logEvent('nexus_skill_file_changed', {
     source:
       'chokidar' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })

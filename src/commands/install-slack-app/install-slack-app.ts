@@ -3,10 +3,10 @@ import { logEvent } from '../../services/analytics/index.js'
 import { openBrowser } from '../../utils/browser.js'
 import { saveGlobalConfig } from '../../utils/config.js'
 
-const SLACK_APP_URL = 'claude'
+const SLACK_APP_URL = 'nexus'
 
 export async function call(): Promise<LocalCommandResult> {
-  logEvent('tengu_install_slack_app_clicked', {})
+  logEvent('nexus_install_slack_app_clicked', {})
 
   // Track that user has clicked to install
   saveGlobalConfig(current => ({

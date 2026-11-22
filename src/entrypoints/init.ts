@@ -17,7 +17,6 @@ import {
   isEligibleForRemoteManagedSettings,
   waitForRemoteManagedSettingsToLoad,
 } from '../services/remoteManagedSettings/index.js'
-import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { enableConfigs, recordFirstStartTime } from '../utils/config.js'
@@ -49,7 +48,6 @@ import { isBetaTracingEnabled } from '../utils/telemetry/betaSessionTracing.js'
 import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/windowsPaths.js'
 
-// initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
 
 // Track if telemetry has been initialized to prevent double initialization
 let telemetryInitialized = false
@@ -86,24 +84,6 @@ export const init = memoize(async (): Promise<void> => {
     // Make sure things get flushed on exit
     setupGracefulShutdown()
     profileCheckpoint('init_after_graceful_shutdown')
-
-    // Initialize 1P event logging (no security concerns, but deferred to avoid
-    // loading OpenTelemetry sdk-logs at startup). growthbook.js is already in
-    // the module cache by this point (firstPartyEventLogger imports it), so the
-    // second dynamic import adds no load cost.
-    void Promise.all([
-      import('../services/analytics/firstPartyEventLogger.js'),
-      import('../services/analytics/growthbook.js'),
-    ]).then(([fp, gb]) => {
-      fp.initialize1PEventLogging()
-      // Rebuild the logger provider if tengu_1p_event_batch_config changes
-      // mid-session. Change detection (isEqual) is inside the handler so
-      // unchanged refreshes are no-ops.
-      gb.onGrowthBookRefresh(() => {
-        void fp.reinitialize1PEventLoggingIfConfigChanged()
-      })
-    })
-    profileCheckpoint('init_after_1p_event_logging')
 
     // Populate OAuth account info if it is not already cached in config. This is needed since the
     // OAuth account info may not be populated when logging in through the VSCode extension.
@@ -149,38 +129,6 @@ export const init = memoize(async (): Promise<void> => {
     })
     logForDebugging('[init] configureGlobalAgents complete')
     profileCheckpoint('init_network_configured')
-
-    // Preconnect to the Anthropic API — overlap TCP+TLS handshake
-    // (~100-200ms) with the ~100ms of action-handler work before the API
-    // request. After CA certs + proxy agents are configured so the warmed
-    // connection uses the right transport. Fire-and-forget; skipped for
-    // proxy/mTLS/unix/cloud-provider where the SDK's dispatcher wouldn't
-    // reuse the global pool.
-    preconnectAnthropicApi()
-
-    // CCR upstreamproxy: start the local CONNECT relay so agent subprocesses
-    // can reach org-configured upstreams with credential injection. Gated on
-    // CLAUDE_CODE_REMOTE + GrowthBook; fail-open on any error. Lazy import so
-    // non-CCR startups don't pay the module load. The getUpstreamProxyEnv
-    // function is registered with subprocessEnv.ts so subprocess spawning can
-    // inject proxy vars without a static import of the upstreamproxy module.
-    if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
-      try {
-        const { initUpstreamProxy, getUpstreamProxyEnv } = await import(
-          '../upstreamproxy/upstreamproxy.js'
-        )
-        const { registerUpstreamProxyEnvFn } = await import(
-          '../utils/subprocessEnv.js'
-        )
-        registerUpstreamProxyEnvFn(getUpstreamProxyEnv)
-        await initUpstreamProxy()
-      } catch (err) {
-        logForDebugging(
-          `[init] upstreamproxy init failed: ${err instanceof Error ? err.message : String(err)}; continuing without proxy`,
-          { level: 'warn' },
-        )
-      }
-    }
 
     // Set up git-bash if relevant
     setShellIfWindows()

@@ -23,7 +23,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
-import { findToolByName, type ToolUseContext } from './Tool.js'
+import { findToolByName, type ToolPermissionContext, type ToolUseContext } from './Tool.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
 import type {
   AssistantMessage,
@@ -85,7 +85,7 @@ import {
   tokenCountWithEstimation,
 } from './utils/tokens.js'
 import { ESCALATED_MAX_TOKENS } from './utils/context.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics/growthbook.js'
+import { getFeatureValue } from './services/analytics/featureFlags.js'
 import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
@@ -185,13 +185,14 @@ export type QueryParams = {
   toolUseContext: ToolUseContext
   fallbackModel?: string
   querySource: QuerySource
+  onModelDispatch?: (model: string, permission: ToolPermissionContext['mode'], exceeds200kTokens: boolean) => void
   maxOutputTokensOverride?: number
   maxTurns?: number
   skipCacheWrite?: boolean
   // API task_budget (output_config.task_budget, beta task-budgets-2026-03-13).
   // Distinct from the tokenBudget +500k auto-continue feature. `total` is the
   // budget for the whole agentic turn; `remaining` is computed per iteration
-  // from cumulative API usage. See configureTaskBudgetParams in claude.ts.
+  // from cumulative API usage. See configureTaskBudgetParams in nexus.ts.
   taskBudget?: { total: number }
   deps?: QueryDeps
 }
@@ -473,7 +474,7 @@ async function* queryLoop(
         compactionUsage,
       } = compactionResult
 
-      logEvent('tengu_auto_compact_succeeded', {
+      logEvent('nexus_auto_compact_succeeded', {
         originalMessageCount: messages.length,
         compactedMessageCount:
           compactionResult.summaryMessages.length +
@@ -567,12 +568,11 @@ async function* queryLoop(
 
     const appState = toolUseContext.getAppState()
     const permissionMode = appState.toolPermissionContext.mode
+    const exceeds200kTokens = permissionMode === 'plan' && doesMostRecentAssistantMessageExceed200k(messagesForQuery)
     let currentModel = getRuntimeMainLoopModel({
       permissionMode,
       mainLoopModel: toolUseContext.options.mainLoopModel,
-      exceeds200kTokens:
-        permissionMode === 'plan' &&
-        doesMostRecentAssistantMessageExceed200k(messagesForQuery),
+      exceeds200kTokens,
     })
 
     queryCheckpoint('query_setup_end')
@@ -654,6 +654,7 @@ async function* queryLoop(
         try {
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
+          params.onModelDispatch?.(currentModel, permissionMode, exceeds200kTokens)
           for await (const message of deps.callModel({
             messages: prependUserContext(messagesForQuery, userContext),
             systemPrompt: fullSystemPrompt,
@@ -714,7 +715,7 @@ async function* queryLoop(
               for (const msg of assistantMessages) {
                 yield { type: 'tombstone' as const, message: msg }
               }
-              logEvent('tengu_orphaned_messages_tombstoned', {
+              logEvent('nexus_orphaned_messages_tombstoned', {
                 orphanedMessageCount: assistantMessages.length,
                 queryChainId: queryChainIdForAnalytics,
                 queryDepth: queryTracking.depth,
@@ -922,12 +923,12 @@ async function* queryLoop(
             // Thinking signatures are model-bound: replaying a protected-thinking
             // block (e.g. capybara) to an unprotected fallback (e.g. quark) 400s.
             // Strip before retry so the fallback model gets clean history.
-            if (process.env.USER_TYPE === 'ant') {
+            if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
               messagesForQuery = stripSignatureBlocks(messagesForQuery)
             }
 
             // Log the fallback event
-            logEvent('tengu_model_fallback_triggered', {
+            logEvent('nexus_model_fallback_triggered', {
               original_model:
                 innerError.originalModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
@@ -954,7 +955,7 @@ async function* queryLoop(
       logError(error)
       const errorMessage =
         error instanceof Error ? error.message : String(error)
-      logEvent('tengu_query_error', {
+      logEvent('nexus_query_error', {
         assistantMessages: assistantMessages.length,
         toolUses: assistantMessages.flatMap(_ =>
           _.message.content.filter(content => content.type === 'tool_use'),
@@ -1190,16 +1191,16 @@ async function* queryLoop(
         // override check), then falls through to multi-turn recovery if
         // 64k also hits the cap.
         // 3P default: false (not validated on Bedrock/Vertex)
-        const capEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_otk_slot_v1',
+        const capEnabled = getFeatureValue(
+          'nexus_otk_slot_v1',
           false,
         )
         if (
           capEnabled &&
           maxOutputTokensOverride === undefined &&
-          !process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+          !process.env.NEXUS_MAX_OUTPUT_TOKENS
         ) {
-          logEvent('tengu_max_tokens_escalate', {
+          logEvent('nexus_max_tokens_escalate', {
             escalatedTo: ESCALATED_MAX_TOKENS,
           })
           const next: State = {
@@ -1344,7 +1345,7 @@ async function* queryLoop(
               `Token budget early stop: diminishing returns at ${decision.completionEvent.pct}%`,
             )
           }
-          logEvent('tengu_token_budget_completed', {
+          logEvent('nexus_token_budget_completed', {
             ...decision.completionEvent,
             queryChainId: queryChainIdForAnalytics,
             queryDepth: queryTracking.depth,
@@ -1361,13 +1362,13 @@ async function* queryLoop(
     queryCheckpoint('query_tool_execution_start')
 
     if (streamingToolExecutor) {
-      logEvent('tengu_streaming_tool_execution_used', {
+      logEvent('nexus_streaming_tool_execution_used', {
         tool_count: toolUseBlocks.length,
         queryChainId: queryChainIdForAnalytics,
         queryDepth: queryTracking.depth,
       })
     } else {
-      logEvent('tengu_streaming_tool_execution_not_used', {
+      logEvent('nexus_streaming_tool_execution_not_used', {
         tool_count: toolUseBlocks.length,
         queryChainId: queryChainIdForAnalytics,
         queryDepth: queryTracking.depth,
@@ -1413,7 +1414,7 @@ async function* queryLoop(
       config.gates.emitToolUseSummaries &&
       toolUseBlocks.length > 0 &&
       !toolUseContext.abortController.signal.aborted &&
-      !toolUseContext.agentId // subagents don't surface in mobile UI — skip the Haiku call
+      !toolUseContext.agentId // subagents don't surface in mobile UI — skip the Electron call
     ) {
       // Extract the last assistant text block for context
       const lastAssistantMessage = assistantMessages.at(-1)
@@ -1519,7 +1520,7 @@ async function* queryLoop(
 
     if (tracking?.compacted) {
       tracking.turnCounter++
-      logEvent('tengu_post_autocompact_turn', {
+      logEvent('nexus_post_autocompact_turn', {
         turnId:
           tracking.turnId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         turnCounter: tracking.turnCounter,
@@ -1533,7 +1534,7 @@ async function* queryLoop(
     // will error if we interleave tool_result messages with regular user messages.
 
     // Instrumentation: Track message count before attachments
-    logEvent('tengu_query_before_attachments', {
+    logEvent('nexus_query_before_attachments', {
       messagesForQueryCount: messagesForQuery.length,
       assistantMessagesCount: assistantMessages.length,
       toolResultsCount: toolResults.length,
@@ -1645,7 +1646,7 @@ async function* queryLoop(
         tr.type === 'attachment' && tr.attachment.type === 'edited_text_file',
     )
 
-    logEvent('tengu_query_after_attachments', {
+    logEvent('nexus_query_after_attachments', {
       totalToolResultsCount: toolResults.length,
       fileChangeAttachmentCount,
       queryChainId: queryChainIdForAnalytics,
@@ -1674,7 +1675,7 @@ async function* queryLoop(
     // Each time we have tool results and are about to recurse, that's a turn
     const nextTurnCount = turnCount + 1
 
-    // Periodic task summary for `claude ps` — fires mid-turn so a
+    // Periodic task summary for `nexus ps` — fires mid-turn so a
     // long-running agent still refreshes what it's working on. Gated
     // only on !agentId so every top-level conversation (REPL, SDK, HFI,
     // remote) generates summaries; subagents/forks don't.

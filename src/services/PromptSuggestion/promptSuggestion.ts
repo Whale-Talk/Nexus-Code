@@ -18,12 +18,13 @@ import {
 } from '../../utils/messages.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { isTeammate } from '../../utils/teammate.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { currentLimits } from '../claudeAiLimits.js'
+import { getModelRateLimit } from '../providerLimits.js'
+import { getMainLoopModel } from '../../utils/model/model.js'
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
 let currentAbortController: AbortController | null = null
@@ -36,9 +37,9 @@ export function getPromptVariant(): PromptVariant {
 
 export function shouldEnablePromptSuggestion(): boolean {
   // Env var overrides everything (for testing)
-  const envOverride = process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
+  const envOverride = process.env.NEXUS_ENABLE_PROMPT_SUGGESTION
   if (isEnvDefinedFalsy(envOverride)) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('nexus_prompt_suggestion_init', {
       enabled: false,
       source:
         'env' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -46,7 +47,7 @@ export function shouldEnablePromptSuggestion(): boolean {
     return false
   }
   if (isEnvTruthy(envOverride)) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('nexus_prompt_suggestion_init', {
       enabled: true,
       source:
         'env' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -55,8 +56,8 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   // Keep default in sync with Config.tsx (settings toggle visibility)
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false)) {
-    logEvent('tengu_prompt_suggestion_init', {
+  if (!getFeatureValue('nexus_chomp_inflection', false)) {
+    logEvent('nexus_prompt_suggestion_init', {
       enabled: false,
       source:
         'growthbook' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -66,7 +67,7 @@ export function shouldEnablePromptSuggestion(): boolean {
 
   // Disable in non-interactive mode (print mode, piped input, SDK)
   if (getIsNonInteractiveSession()) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('nexus_prompt_suggestion_init', {
       enabled: false,
       source:
         'non_interactive' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -76,7 +77,7 @@ export function shouldEnablePromptSuggestion(): boolean {
 
   // Disable for swarm teammates (only leader should show suggestions)
   if (isAgentSwarmsEnabled() && isTeammate()) {
-    logEvent('tengu_prompt_suggestion_init', {
+    logEvent('nexus_prompt_suggestion_init', {
       enabled: false,
       source:
         'swarm_teammate' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -85,7 +86,7 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   const enabled = getInitialSettings()?.promptSuggestionEnabled !== false
-  logEvent('tengu_prompt_suggestion_init', {
+  logEvent('nexus_prompt_suggestion_init', {
     enabled,
     source:
       'setting' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -111,8 +112,7 @@ export function getSuggestionSuppressReason(appState: AppState): string | null {
   if (appState.elicitation.queue.length > 0) return 'elicitation_active'
   if (appState.toolPermissionContext.mode === 'plan') return 'plan_mode'
   if (
-    process.env.USER_TYPE === 'external' &&
-    currentLimits.status !== 'allowed'
+    getModelRateLimit(getMainLoopModel())
   )
     return 'rate_limit'
   return null
@@ -437,7 +437,7 @@ export function shouldFilterSuggestion(
         ),
     ],
     [
-      'claude_voice',
+      'nexus_voice',
       () =>
         /^(let me|i'll|i've|i'm|i can|i would|i think|i notice|here's|here is|here are|that's|this is|this will|you can|you should|you could|sure,|of course|certainly)/i.test(
           suggestion,
@@ -471,7 +471,7 @@ export function logSuggestionOutcome(
   const wasAccepted = userInput === suggestion
   const timeMs = Math.max(0, Date.now() - emittedAt)
 
-  logEvent('tengu_prompt_suggestion', {
+  logEvent('nexus_prompt_suggestion', {
     source: 'sdk' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     outcome: (wasAccepted
       ? 'accepted'
@@ -487,7 +487,7 @@ export function logSuggestionOutcome(
     }),
     ...(!wasAccepted && { timeToIgnoreMs: timeMs }),
     similarity,
-    ...(process.env.USER_TYPE === 'ant' && {
+    ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
       suggestion:
         suggestion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       userInput:
@@ -503,7 +503,7 @@ export function logSuggestionSuppressed(
   source?: 'cli' | 'sdk',
 ): void {
   const resolvedPromptId = promptId ?? getPromptVariant()
-  logEvent('tengu_prompt_suggestion', {
+  logEvent('nexus_prompt_suggestion', {
     ...(source && {
       source:
         source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -514,7 +514,7 @@ export function logSuggestionSuppressed(
       reason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     prompt_id:
       resolvedPromptId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...(process.env.USER_TYPE === 'ant' &&
+    ...(process.env.NEXUS_BUILD_FLAVOR === 'development' &&
       suggestion && {
         suggestion:
           suggestion as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,

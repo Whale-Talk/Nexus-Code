@@ -3,7 +3,7 @@ import { constants as fsConstants } from 'fs'
 import { access, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { getDynamicConfig_BLOCKS_ON_INIT } from 'src/services/analytics/growthbook.js'
+import { readFeatureValue } from 'src/services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -12,7 +12,7 @@ import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
 import { getNexusConfigHomeDir } from './envUtils.js'
-import { ClaudeError, getErrnoCode, isENOENT } from './errors.js'
+import { NexusError, getErrnoCode, isENOENT } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
@@ -20,17 +20,16 @@ import { logError } from './log.js'
 import { gte, lt } from './semver.js'
 import { getInitialSettings } from './settings/settings.js'
 import {
-  filterClaudeAliases,
+  filterNexusAliases,
   getShellConfigPaths,
   readFileLines,
   writeFileLines,
 } from './shellConfig.js'
 import { jsonParse } from './slowOperations.js'
 
-const GCS_BUCKET_URL =
-  ''
+const GCS_BUCKET_URL = process.env.NEXUS_BINARY_RELEASE_URL?.trim()
 
-class AutoUpdaterError extends ClaudeError {}
+class AutoUpdaterError extends NexusError {}
 
 export type InstallStatus =
   | 'success'
@@ -61,7 +60,7 @@ export type MaxVersionConfig = {
  *
  * Versioning approach:
  * 1. For version requirements/compatibility (assertMinVersion), we use semver comparison that ignores build metadata
- * 2. For updates ('claude update'), we use exact string comparison to detect any change, including SHA
+ * 2. For updates ('nexus update'), we use exact string comparison to detect any change, including SHA
  *    - This ensures users always get the latest build, even when only the SHA changes
  *    - The UI clearly shows both versions including build metadata
  *
@@ -73,9 +72,9 @@ export async function assertMinVersion(): Promise<void> {
   }
 
   try {
-    const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
+    const versionConfig = await readFeatureValue<{
       minVersion: string
-    }>('tengu_version_config', { minVersion: '0.0.0' })
+    }>('nexus_version_config', { minVersion: '0.0.0' })
 
     if (
       versionConfig.minVersion &&
@@ -87,7 +86,7 @@ It looks like your version of Nexus Code (${MACRO.VERSION}) needs an update.
 A newer version (${versionConfig.minVersion} or higher) is required to continue.
 
 To update, please run:
-    claude update
+    nexus update
 
 This will ensure you have access to the latest features and improvements.
 `)
@@ -107,7 +106,7 @@ This will ensure you have access to the latest features and improvements.
  */
 export async function getMaxVersion(): Promise<string | undefined> {
   const config = await getMaxVersionConfig()
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     return config.ant || undefined
   }
   return config.external || undefined
@@ -119,7 +118,7 @@ export async function getMaxVersion(): Promise<string | undefined> {
  */
 export async function getMaxVersionMessage(): Promise<string | undefined> {
   const config = await getMaxVersionConfig()
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     return config.ant_message || undefined
   }
   return config.external_message || undefined
@@ -127,8 +126,8 @@ export async function getMaxVersionMessage(): Promise<string | undefined> {
 
 async function getMaxVersionConfig(): Promise<MaxVersionConfig> {
   try {
-    return await getDynamicConfig_BLOCKS_ON_INIT<MaxVersionConfig>(
-      'tengu_max_version_config',
+    return await readFeatureValue<MaxVersionConfig>(
+      'nexus_max_version_config',
       {},
     )
   } catch (error) {
@@ -385,6 +384,7 @@ export async function getLatestVersionFromGcs(
   channel: ReleaseChannel,
 ): Promise<string | null> {
   try {
+    if (!GCS_BUCKET_URL) return null
     const response = await axios.get(`${GCS_BUCKET_URL}/${channel}`, {
       timeout: 5000,
       responseType: 'text',
@@ -419,7 +419,7 @@ export async function getGcsDistTags(): Promise<NpmDistTags> {
  * 3. This prevents rollback from listing versions that don't have native binaries
  */
 export async function getVersionHistory(limit: number): Promise<string[]> {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return []
   }
 
@@ -461,7 +461,7 @@ export async function installGlobalPackage(
       new AutoUpdaterError('Another process is currently installing an update'),
     )
     // Log the lock contention
-    logEvent('tengu_auto_updater_lock_contention', {
+    logEvent('nexus_auto_updater_lock_contention', {
       pid: process.pid,
       currentVersion:
         MACRO.VERSION as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -470,11 +470,11 @@ export async function installGlobalPackage(
   }
 
   try {
-    await removeClaudeAliasesFromShellConfigs()
+    await removeNexusAliasesFromShellConfigs()
     // Check if we're using npm from Windows path in WSL
     if (!env.isRunningWithBun() && env.isNpmFromWindowsPath()) {
       logError(new Error('Windows NPM detected in WSL environment'))
-      logEvent('tengu_auto_updater_windows_npm_in_wsl', {
+      logEvent('nexus_auto_updater_windows_npm_in_wsl', {
         currentVersion:
           MACRO.VERSION as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
@@ -488,7 +488,7 @@ This configuration is not supported for updates.
 To fix this issue:
   1. Install Node.js within your Linux distribution: e.g. sudo apt install nodejs npm
   2. Make sure Linux NPM is in your PATH before the Windows version
-  3. Try updating again with 'claude update'
+  3. Try updating again with 'nexus update'
 `)
       return 'install_failed'
     }
@@ -513,7 +513,7 @@ To fix this issue:
     )
     if (installResult.code !== 0) {
       const error = new AutoUpdaterError(
-        `Failed to install new version of claude: ${installResult.stdout} ${installResult.stderr}`,
+        `Failed to install new version of nexus: ${installResult.stdout} ${installResult.stderr}`,
       )
       logError(error)
       return 'install_failed'
@@ -533,10 +533,10 @@ To fix this issue:
 }
 
 /**
- * Remove claude aliases from shell configuration files
+ * Remove nexus aliases from shell configuration files
  * This helps clean up old installation methods when switching to native or npm global
  */
-async function removeClaudeAliasesFromShellConfigs(): Promise<void> {
+async function removeNexusAliasesFromShellConfigs(): Promise<void> {
   const configMap = getShellConfigPaths()
 
   // Process each shell config file
@@ -545,11 +545,11 @@ async function removeClaudeAliasesFromShellConfigs(): Promise<void> {
       const lines = await readFileLines(configFile)
       if (!lines) continue
 
-      const { filtered, hadAlias } = filterClaudeAliases(lines)
+      const { filtered, hadAlias } = filterNexusAliases(lines)
 
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
-        logForDebugging(`Removed claude alias from ${configFile}`)
+        logForDebugging(`Removed nexus alias from ${configFile}`)
       }
     } catch (error) {
       // Don't fail the whole operation if one file can't be processed

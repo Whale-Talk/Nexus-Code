@@ -8,7 +8,6 @@ import {
   PERMISSION_MODES,
 } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
-import { CLAUDE_CODE_SETTINGS_SCHEMA_URL } from './constants.js'
 import { PermissionRuleSchema } from './permissionValidation.js'
 
 // Re-export hook schemas and types from centralized location for backward compatibility
@@ -256,7 +255,7 @@ export const SettingsSchema = lazySchema(() =>
   z
     .object({
       $schema: z
-        .literal(CLAUDE_CODE_SETTINGS_SCHEMA_URL)
+        .string()
         .optional()
         .describe('JSON Schema reference for Nexus Code settings'),
       apiKeyHelper: z
@@ -277,11 +276,11 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'Command to refresh GCP authentication (e.g., gcloud auth application-default login)',
         ),
-      // Gated so the SDK generator (which runs without CLAUDE_CODE_ENABLE_XAA)
-      // doesn't surface this in GlobalClaudeSettings. Read via getXaaIdpSettings().
+      // Gated so the SDK generator (which runs without NEXUS_ENABLE_XAA)
+      // doesn't surface this in GlobalNexusSettings. Read via getXaaIdpSettings().
       // .passthrough() on the outer object keeps an existing settings.json key
       // alive across env-var-off sessions — it's just not schema-validated then.
-      ...(isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_XAA)
+      ...(isEnvTruthy(process.env.NEXUS_ENABLE_XAA)
         ? {
             xaaIdp: z
               .object({
@@ -361,7 +360,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Deprecated: Use attribution instead. ' +
-            "Whether to include Nexus's co-authored by attribution in commits and PRs (defaults to true)",
+            "Whether to include the default Nexus attribution in commits and PRs (defaults to true)",
         ),
       includeGitInstructions: z
         .boolean()
@@ -381,20 +380,9 @@ export const SettingsSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Allowlist of models that users can select. ' +
-            'Accepts family aliases ("opus" allows any opus version), ' +
-            'version prefixes ("opus-4-5" allows only that version), ' +
-            'and full model IDs. ' +
-            'If undefined, all models are available. If empty array, only the default model is available. ' +
-            'Typically set in managed settings by enterprise administrators.',
-        ),
-      modelOverrides: z
-        .record(z.string(), z.string())
-        .optional()
-        .describe(
-          'Override mapping from Anthropic model ID (e.g. "claude-opus-4-6") to provider-specific ' +
-            'model ID (e.g. a Bedrock inference profile ARN). Typically set in managed settings by ' +
-            'enterprise administrators.',
+          'Allowlist of roles, model IDs or channel::model references. Roles allow their current binding. ' +
+            'Use a channel-qualified entry to restrict a model to one connection. ' +
+            'If omitted all models are available; an empty array allows only the default model.',
         ),
       // Whether to automatically approve all MCP servers in the project
       enableAllProjectMcpServers: z
@@ -541,7 +529,7 @@ export const SettingsSchema = lazySchema(() =>
         .describe(
           'When set in managed settings, blocks non-plugin customization sources for the listed surfaces. ' +
             'Array form locks specific surfaces (e.g. ["skills", "hooks"]); `true` locks all four; `false` is an explicit no-op. ' +
-            'Blocked: ~/.nexus/{surface}/, .claude/{surface}/ (project), settings.json hooks, .mcp.json. ' +
+            'Blocked: ~/.nexus/{surface}/, .nexus/{surface}/ (project), settings.json hooks, .mcp.json. ' +
             'NOT blocked: managed (policySettings) sources, plugin-provided customizations. ' +
             'Composes with strictKnownMarketplaces for end-to-end admin control — plugins gated by ' +
             'marketplace allowlist, everything else blocked here.',
@@ -563,7 +551,7 @@ export const SettingsSchema = lazySchema(() =>
         )
         .optional()
         .describe(
-          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@anthropic-tools": true }. Also supports extended format with version constraints.',
+          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@provider-tools": true }. Also supports extended format with version constraints.',
         ),
       // Extra marketplaces for this repository (usually for project settings)
       extraKnownMarketplaces: z
@@ -620,18 +608,6 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for Nexus Pro/Max, 'console' for Console billing
-      forceLoginMethod: z
-        .enum(['claudeai', 'console'])
-        .optional()
-        .describe(
-          'Force a specific login method: "claudeai" for Nexus Pro/Max, "console" for Console billing',
-        ),
-      // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
-      forceLoginOrgUUID: z
-        .string()
-        .optional()
-        .describe('Organization UUID to use for OAuth login'),
       otelHeadersHelper: z
         .string()
         .optional()
@@ -687,6 +663,11 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Whether to disable syntax highlighting in diffs'),
+      terminalDisplayMode: z
+        .enum(['auto', 'fullscreen', 'classic'])
+        .optional()
+        .catch(undefined)
+        .describe('Personal terminal display mode for the next interactive launch'),
       terminalTitleFromRename: z
         .boolean()
         .optional()
@@ -702,7 +683,7 @@ export const SettingsSchema = lazySchema(() =>
         ),
       effortLevel: z
         .enum(
-          process.env.USER_TYPE === 'ant'
+          process.env.NEXUS_BUILD_FLAVOR === 'development'
             ? ['low', 'medium', 'high', 'max']
             : ['low', 'medium', 'high'],
         )
@@ -811,7 +792,7 @@ export const SettingsSchema = lazySchema(() =>
               .enum(['disable'])
               .optional()
               .describe(
-                'Prevent claude-cli:// protocol handler registration with the OS',
+                'Prevent nexus-cli:// protocol handler registration with the OS',
               ),
           }
         : {}),
@@ -828,7 +809,7 @@ export const SettingsSchema = lazySchema(() =>
           'Custom directory for plan files, relative to project root. ' +
             'If not set, defaults to ~/.nexus/plans/',
         ),
-      ...(process.env.USER_TYPE === 'ant'
+      ...(process.env.NEXUS_BUILD_FLAVOR === 'development'
         ? {
             classifierPermissionsEnabled: z
               .boolean()
@@ -881,12 +862,12 @@ export const SettingsSchema = lazySchema(() =>
               .string()
               .optional()
               .describe(
-                'Display name for the assistant, shown in the claude.ai session list',
+                'Display name for the assistant, shown in the session list',
               ),
           }
         : {}),
       // Teams/Enterprise opt-IN for channel notifications. Default OFF.
-      // MCP servers that declare the claude/channel capability can push
+      // MCP servers that declare the nexus/channel capability can push
       // inbound messages into the conversation; for managed orgs this only
       // works when explicitly enabled. Which servers can connect at all is
       // still governed by allowedMcpServers/deniedMcpServers. Not
@@ -898,11 +879,11 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Teams/Enterprise opt-in for channel notifications (MCP servers with the ' +
-            'claude/channel capability pushing inbound messages). Default off. ' +
+            'nexus/channel capability pushing inbound messages). Default off. ' +
             'Set true to allow; users then select servers via --channels.',
         ),
       // Org-level channel plugin allowlist. When set, REPLACES the
-      // Anthropic ledger — admin owns the trust decision. Undefined means
+      // Provider ledger — admin owns the trust decision. Undefined means
       // fall back to the ledger. Plugin-only entry shape (same as the
       // ledger); server-kind entries still need the dev flag.
       allowedChannelPlugins: z
@@ -915,7 +896,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Teams/Enterprise allowlist of channel plugins. When set, ' +
-            'replaces the default Anthropic allowlist — admins decide which ' +
+            'replaces the default Provider allowlist — admins decide which ' +
             'plugins may push inbound messages. Undefined falls back to the default. ' +
             'Requires channelsEnabled: true.',
         ),
@@ -989,7 +970,7 @@ export const SettingsSchema = lazySchema(() =>
                   .array(z.string())
                   .optional()
                   .describe('Rules for the auto mode classifier deny section'),
-                ...(process.env.USER_TYPE === 'ant'
+                ...(process.env.NEXUS_BUILD_FLAVOR === 'development'
                   ? {
                       // Back-compat alias for ant users; external users use soft_deny
                       deny: z.array(z.string()).optional(),
@@ -1040,7 +1021,7 @@ export const SettingsSchema = lazySchema(() =>
                 'Default working directory on the remote host. ' +
                   'Supports tilde expansion (e.g. ~/projects). ' +
                   'If not specified, defaults to the remote user home directory. ' +
-                  'Can be overridden by the [dir] positional argument in `claude ssh <config> [dir]`.',
+                  'Can be overridden by the [dir] positional argument in `nexus ssh <config> [dir]`.',
               ),
           }),
         )

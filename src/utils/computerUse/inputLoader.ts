@@ -1,7 +1,7 @@
 import type {
   ComputerUseInput,
   ComputerUseInputAPI,
-} from '@ant/computer-use-input'
+} from '@nexus-local/computer-use-input'
 
 let cached: ComputerUseInputAPI | undefined
 
@@ -34,12 +34,12 @@ export function requireComputerUseInput(): ComputerUseInputAPI {
   if (cached) return cached
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const input = unwrapDefaultExport(
-    require('@ant/computer-use-input') as ComputerUseInput | {
+    require('@nexus-local/computer-use-input') as ComputerUseInput | {
       default: ComputerUseInput
     },
   )
   if (!input.isSupported) {
-    throw new Error('@ant/computer-use-input is not supported on this platform')
+    throw new Error('@nexus-local/computer-use-input is not supported on this platform')
   }
   return (cached = input)
 }

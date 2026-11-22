@@ -55,7 +55,7 @@ import {
 import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { createUserMessage, normalizeMessages } from '../../utils/messages.js'
-import type { ModelAlias } from '../../utils/model/aliases.js'
+import type { ModelSelection } from '../../utils/model/roles.js'
 import { resolveSkillModelOverride } from '../../utils/model/model.js'
 import { recordSkillUsage } from '../../utils/suggestions/skillUsageTracking.js'
 import { createAgentId } from '../../utils/uuid.js'
@@ -149,7 +149,7 @@ async function executeForkedSkill(
     : undefined
   const queryDepth = context.queryTracking?.depth ?? 0
   const parentAgentId = getAgentContext()?.agentId
-  logEvent('tengu_skill_tool_invocation', {
+  logEvent('nexus_skill_tool_invocation', {
     command_name:
       forkedSanitizedName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     // _PROTO_skill_name routes to the privileged skill_name BQ column
@@ -161,14 +161,14 @@ async function executeForkedSkill(
       'fork' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     invocation_trigger: (queryDepth > 0
       ? 'nested-skill'
-      : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      : 'nexus-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     query_depth: queryDepth,
     ...(parentAgentId && {
       parent_agent_id:
         parentAgentId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     }),
     ...wasDiscoveredField,
-    ...(process.env.USER_TYPE === 'ant' && {
+    ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
       skill_name:
         commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       skill_source:
@@ -230,7 +230,7 @@ async function executeForkedSkill(
       canUseTool,
       isAsync: false,
       querySource: 'agent:custom',
-      model: command.model as ModelAlias | undefined,
+      model: command.model as ModelSelection | undefined,
       availableTools: context.options.tools,
       override: { agentId },
     })) {
@@ -365,7 +365,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // Remove leading slash if present (for compatibility)
     const hasLeadingSlash = trimmed.startsWith('/')
     if (hasLeadingSlash) {
-      logEvent('tengu_skill_tool_slash_prefix', {})
+      logEvent('nexus_skill_tool_slash_prefix', {})
     }
     const normalizedCommandName = hasLeadingSlash
       ? trimmed.substring(1)
@@ -376,7 +376,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // skills are not in the local command registry.
     if (
       feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
+      process.env.NEXUS_BUILD_FLAVOR === 'development'
     ) {
       const slug = remoteSkillModules!.stripCanonicalPrefix(
         normalizedCommandName,
@@ -491,7 +491,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // The skill content itself is canonical/curated, not user-authored.
     if (
       feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
+      process.env.NEXUS_BUILD_FLAVOR === 'development'
     ) {
       const slug = remoteSkillModules!.stripCanonicalPrefix(commandName)
       if (slug !== null) {
@@ -604,7 +604,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
     // (no !command substitution, no $ARGUMENTS interpolation) is needed.
     if (
       feature('EXPERIMENTAL_SKILL_SEARCH') &&
-      process.env.USER_TYPE === 'ant'
+      process.env.NEXUS_BUILD_FLAVOR === 'development'
     ) {
       const slug = remoteSkillModules!.stripCanonicalPrefix(commandName)
       if (slug !== null) {
@@ -672,7 +672,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
         : undefined
     const queryDepth = context.queryTracking?.depth ?? 0
     const parentAgentId = getAgentContext()?.agentId
-    logEvent('tengu_skill_tool_invocation', {
+    logEvent('nexus_skill_tool_invocation', {
       command_name:
         sanitizedCommandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       // _PROTO_skill_name routes to the privileged skill_name BQ column
@@ -684,14 +684,14 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
         'inline' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       invocation_trigger: (queryDepth > 0
         ? 'nested-skill'
-        : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        : 'nexus-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       query_depth: queryDepth,
       ...(parentAgentId && {
         parent_agent_id:
           parentAgentId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       }),
       ...wasDiscoveredField,
-      ...(process.env.USER_TYPE === 'ant' && {
+      ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
         skill_name:
           commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         ...(command?.type === 'prompt' && {
@@ -1026,7 +1026,7 @@ async function executeRemoteSkill(
   // remote from local invocations without joining on skill name prefixes.
   const queryDepth = context.queryTracking?.depth ?? 0
   const parentAgentId = getAgentContext()?.agentId
-  logEvent('tengu_skill_tool_invocation', {
+  logEvent('nexus_skill_tool_invocation', {
     command_name:
       'remote_skill' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     // _PROTO_skill_name routes to the privileged skill_name BQ column
@@ -1038,7 +1038,7 @@ async function executeRemoteSkill(
       'remote' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     invocation_trigger: (queryDepth > 0
       ? 'nested-skill'
-      : 'claude-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      : 'nexus-proactive') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     query_depth: queryDepth,
     ...(parentAgentId && {
       parent_agent_id:
@@ -1048,7 +1048,7 @@ async function executeRemoteSkill(
     is_remote: true,
     remote_cache_hit: cacheHit,
     remote_load_latency_ms: latencyMs,
-    ...(process.env.USER_TYPE === 'ant' && {
+    ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
       skill_name:
         commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       remote_slug:
@@ -1067,23 +1067,23 @@ async function executeRemoteSkill(
   // content unchanged if no frontmatter is present.
   const { content: bodyContent } = parseFrontmatter(content, skillPath)
 
-  // Inject base directory header + ${CLAUDE_SKILL_DIR}/${CLAUDE_SESSION_ID}
+  // Inject base directory header + ${NEXUS_SKILL_DIR}/${NEXUS_SESSION_ID}
   // substitution (matches loadSkillsDir.ts) so the model can resolve relative
   // refs like ./schemas/foo.json against the cache dir.
   const skillDir = dirname(skillPath)
   const normalizedDir =
     process.platform === 'win32' ? skillDir.replace(/\\/g, '/') : skillDir
   let finalContent = `Base directory for this skill: ${normalizedDir}\n\n${bodyContent}`
-  finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, normalizedDir)
+  finalContent = finalContent.replace(/\$\{NEXUS_SKILL_DIR\}/g, normalizedDir)
   finalContent = finalContent.replace(
-    /\$\{CLAUDE_SESSION_ID\}/g,
+    /\$\{NEXUS_SESSION_ID\}/g,
     getSessionId(),
   )
 
   // Register with compaction-preservation state. Use the cached file path so
   // post-compact restoration knows where the content came from. Must use
   // finalContent (not raw content) so the base directory header and
-  // ${CLAUDE_SKILL_DIR} substitutions survive compaction — matches how local
+  // ${NEXUS_SKILL_DIR} substitutions survive compaction — matches how local
   // skills store their already-transformed content via processSlashCommand.
   addInvokedSkill(
     commandName,

@@ -11,7 +11,7 @@ Use Bun for local development.
 - `bun run start`: alias for the development entrypoint.
 - `bun run version`: verify the CLI boots and prints its version.
 
-If you change TypeScript modules, run the relevant command above and verify the affected flow manually. This repository does not currently expose a first-class `lint` or `test` script in `package.json`.
+If you change TypeScript modules, run the relevant command above and verify the affected flow manually. Run `bun test` and `bun run typecheck` for changes to routing and runtime code.
 
 ## Coding Style & Naming Conventions
 The codebase is TypeScript-first with ESM imports and `react-jsx`. Match the surrounding file style exactly: many files omit semicolons, use single quotes, and prefer descriptive camelCase for variables and functions, PascalCase for React components and manager classes, and kebab-case for command folders such as `src/commands/install-slack-app/`. Keep imports stable when comments warn against reordering. Prefer small, focused modules over broad utility dumps.
@@ -27,6 +27,12 @@ When adding tests, place them close to the feature they cover and name them afte
 
 ## Commit & Pull Request Guidelines
 Git history currently starts with a single `first commit`, so no strong conventional pattern is established. Use short, imperative commit subjects, for example `Fix MCP config normalization`. Pull requests should explain the user-visible impact, note restoration-specific tradeoffs, list validation steps, and include screenshots only for TUI/UI changes.
+
+## Model roles and provider boundaries
+
+Quark, Atom and Electron are native roles. Preserve the existing agent selection, plan mode and parent-model inheritance behavior. Use the configured channel and exact physical model ID to resolve execution, capabilities and pricing. Use Nexus vocabulary for internal APIs and environment variables. Put vendor-specific HTTP fields in the protocol adapter and retain original attribution and required package identifiers.
+
+Users may explicitly select an Anthropic endpoint or a Claude model. Model credentials belong to the chosen channel. Search and background services must use their own configured destinations and credentials. A search failure must never start a model request.
 
 ## Restoration Notes
 This is a reconstructed source tree, not pristine upstream. Prefer minimal, auditable changes, and document any workaround added because a module was restored with fallbacks or shim behavior.

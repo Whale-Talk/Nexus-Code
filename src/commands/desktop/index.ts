@@ -15,7 +15,7 @@ const desktop = {
   name: 'desktop',
   aliases: ['app'],
   description: 'Continue the current session in Nexus Desktop',
-  availability: ['claude-ai'],
+  availability: ['nexus-ai'],
   isEnabled: isSupportedPlatform,
   get isHidden() {
     return !isSupportedPlatform()

@@ -1,7 +1,7 @@
 import type { Command } from '../commands.js'
 import { getAttributionTexts } from '../utils/attribution.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
-import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
+import { getAttributionPrivacyInstructions, isAttributionHidden } from '../utils/attributionPrivacy.js'
 
 const ALLOWED_TOOLS = [
   'Bash(git add:*)',
@@ -13,8 +13,8 @@ function getPromptContent(): string {
   const { commit: commitAttribution } = getAttributionTexts()
 
   let prefix = ''
-  if (process.env.USER_TYPE === 'ant' && isUndercover()) {
-    prefix = getUndercoverInstructions() + '\n'
+  if (isAttributionHidden()) {
+    prefix = getAttributionPrivacyInstructions() + '\n'
   }
 
   return `${prefix}## Context

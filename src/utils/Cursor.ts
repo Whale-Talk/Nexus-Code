@@ -206,6 +206,7 @@ export class Cursor {
     invert: (text: string) => string,
     ghostText?: { text: string; dim: (text: string) => string },
     maxVisibleLines?: number,
+    showMaskedSuffix = true,
   ) {
     const { line, column } = this.getPosition()
     const allLines = this.measuredText.getWrappedText()
@@ -223,7 +224,7 @@ export class Cursor {
         let displayText = text
         if (mask) {
           const graphemes = Array.from(getGraphemeSegmenter().segment(text))
-          if (currentLine === allLines.length - 1) {
+          if (showMaskedSuffix && currentLine === allLines.length - 1) {
             // Last line: mask all but the trailing 6 chars so the user can
             // confirm they pasted the right thing without exposing the full token
             const visibleCount = Math.min(6, graphemes.length)
@@ -232,9 +233,6 @@ export class Cursor {
               graphemes.length > visibleCount ? graphemes[maskCount]!.index : 0
             displayText = mask.repeat(maskCount) + text.slice(splitOffset)
           } else {
-            // Earlier wrapped lines: fully mask. Previously only the last line
-            // was masked, leaking the start of the token on narrow terminals
-            // where the pasted OAuth code wraps across multiple lines.
             displayText = mask.repeat(graphemes.length)
           }
         }

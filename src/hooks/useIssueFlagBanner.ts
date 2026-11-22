@@ -93,20 +93,20 @@ export function useIssueFlagBanner(
   messages: Message[],
   submitCount: number,
 ): boolean {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return false
   }
 
-  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.USER_TYPE is a compile-time constant
+  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.NEXUS_BUILD_FLAVOR is a compile-time constant
   const lastTriggeredAtRef = useRef(0)
-  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.USER_TYPE is a compile-time constant
+  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.NEXUS_BUILD_FLAVOR is a compile-time constant
   const activeForSubmitRef = useRef(-1)
 
   // Memoize the O(messages) scans. This hook runs on every REPL render
   // (including every keystroke), but messages is stable during typing.
   // isSessionContainerCompatible walks all messages + regex-tests each
   // bash command — by far the heaviest work here.
-  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.USER_TYPE is a compile-time constant
+  // biome-ignore lint/correctness/useHookAtTopLevel: process.env.NEXUS_BUILD_FLAVOR is a compile-time constant
   const shouldTrigger = useMemo(
     () => isSessionContainerCompatible(messages) && hasFrictionSignal(messages),
     [messages],

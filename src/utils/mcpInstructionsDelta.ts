@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import { logEvent } from '../services/analytics/index.js'
 import type {
   ConnectedMCPServer,
@@ -18,7 +18,7 @@ export type McpInstructionsDelta = {
 /**
  * Client-authored instruction block to announce when a server connects,
  * in addition to (or instead of) the server's own `InitializeResult.instructions`.
- * Lets first-party servers (e.g., claude-in-chrome) carry client-side
+ * Lets first-party servers (e.g., nexus-in-chrome) carry client-side
  * context the server itself doesn't know about.
  */
 export type ClientSideInstruction = {
@@ -31,15 +31,15 @@ export type ClientSideInstruction = {
  * False → prompts.ts keeps its DANGEROUS_uncachedSystemPromptSection
  * (rebuilt every turn; cache-busts on late connect).
  *
- * Env override for local testing: CLAUDE_CODE_MCP_INSTR_DELTA=true/false
+ * Env override for local testing: NEXUS_MCP_INSTR_DELTA=true/false
  * wins over both ant bypass and the GrowthBook gate.
  */
 export function isMcpInstructionsDeltaEnabled(): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return true
-  if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return false
+  if (isEnvTruthy(process.env.NEXUS_MCP_INSTR_DELTA)) return true
+  if (isEnvDefinedFalsy(process.env.NEXUS_MCP_INSTR_DELTA)) return false
   return (
-    process.env.USER_TYPE === 'ant' ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_basalt_3kr', false)
+    process.env.NEXUS_BUILD_FLAVOR === 'development' ||
+    getFeatureValue('nexus_basalt_3kr', false)
   )
 }
 
@@ -109,9 +109,9 @@ export function getMcpInstructionsDelta(
 
   if (added.length === 0 && removed.length === 0) return null
 
-  // Same diagnostic fields as tengu_deferred_tools_pool_change — same
+  // Same diagnostic fields as nexus_deferred_tools_pool_change — same
   // scan-fails-in-prod bug, same attachment persistence path.
-  logEvent('tengu_mcp_instructions_pool_change', {
+  logEvent('nexus_mcp_instructions_pool_change', {
     addedCount: added.length,
     removedCount: removed.length,
     priorAnnouncedCount: announced.size,

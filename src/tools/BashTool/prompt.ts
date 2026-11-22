@@ -4,7 +4,7 @@ import { getAttributionTexts } from '../../utils/attribution.js'
 import { hasEmbeddedSearchTools } from '../../utils/embeddedTools.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { shouldIncludeGitInstructions } from '../../utils/gitSettings.js'
-import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
+import { getNexusTempDir } from '../../utils/permissions/filesystem.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
@@ -12,9 +12,9 @@ import {
   getMaxBashTimeoutMs,
 } from '../../utils/timeouts.js'
 import {
-  getUndercoverInstructions,
-  isUndercover,
-} from '../../utils/undercover.js'
+  getAttributionPrivacyInstructions,
+  isAttributionHidden,
+} from '../../utils/attributionPrivacy.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
@@ -33,28 +33,24 @@ export function getMaxTimeoutMs(): number {
 }
 
 function getBackgroundUsageNote(): string | null {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS)) {
+  if (isEnvTruthy(process.env.NEXUS_DISABLE_BACKGROUND_TASKS)) {
     return null
   }
   return "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter."
 }
 
 function getCommitAndPRInstructions(): string {
-  // Defense-in-depth: undercover instructions must survive even if the user
-  // has disabled git instructions entirely. Attribution stripping and model-ID
-  // hiding are mechanical and work regardless, but the explicit "don't blow
-  // your cover" instructions are the last line of defense against the model
-  // volunteering an internal codename in a commit message.
-  const undercoverSection =
-    process.env.USER_TYPE === 'ant' && isUndercover()
-      ? getUndercoverInstructions() + '\n'
+  // Apply the user’s attribution preference even when the optional Git instructions are hidden.
+  const privacySection =
+    isAttributionHidden()
+      ? getAttributionPrivacyInstructions() + '\n'
       : ''
 
-  if (!shouldIncludeGitInstructions()) return undercoverSection
+  if (!shouldIncludeGitInstructions()) return privacySection
 
-  // For ant users, use the short version pointing to skills
-  if (process.env.USER_TYPE === 'ant') {
-    const skillsSection = !isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+  // Development builds use the bundled Git skills.
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
+    const skillsSection = !isEnvTruthy(process.env.NEXUS_SIMPLE)
       ? `For git commits and pull requests, use the \`/commit\` and \`/commit-push-pr\` skills:
 - \`/commit\` - Create a git commit with staged changes
 - \`/commit-push-pr\` - Commit, push, and create a pull request
@@ -65,7 +61,7 @@ Before creating a pull request, run \`/simplify\` to review your changes, then t
 
 `
       : ''
-    return `${undercoverSection}# Git operations
+    return `${privacySection}# Git operations
 
 ${skillsSection}IMPORTANT: NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it.
 
@@ -78,7 +74,7 @@ Use the gh command via the Bash tool for other GitHub-related tasks including wo
   // For external users, include full inline instructions
   const { commit: commitAttribution, pr: prAttribution } = getAttributionTexts()
 
-  return `# Committing changes with git
+  return `${privacySection}# Committing changes with git
 
 Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
 
@@ -182,12 +178,12 @@ function getSimpleSandboxSection(): string {
   const allowUnsandboxedCommands =
     SandboxManager.areUnsandboxedCommandsAllowed()
 
-  // Replace the per-UID temp dir literal (e.g. /private/tmp/claude-1001/) with
+  // Replace the per-UID temp dir literal (e.g. /private/tmp/nexus-1001/) with
   // "$TMPDIR" so the prompt is identical across users — avoids busting the
   // cross-user global prompt cache. The sandbox already sets $TMPDIR at runtime.
-  const claudeTempDir = getClaudeTempDir()
+  const nexusTempDir = getNexusTempDir()
   const normalizeAllowOnly = (paths: string[]): string[] =>
-    [...new Set(paths)].map(p => (p === claudeTempDir ? '$TMPDIR' : p))
+    [...new Set(paths)].map(p => (p === nexusTempDir ? '$TMPDIR' : p))
 
   const filesystemConfig = {
     read: {
@@ -242,7 +238,7 @@ function getSimpleSandboxSection(): string {
           ],
           'When you see evidence of sandbox-caused failure:',
           [
-            "Immediately retry with `dangerouslyDisableSandbox: true` (don't ask, just do it)",
+            'Request a retry with `dangerouslyDisableSandbox: true` only when required. The retry needs separate user authorization.',
             'Briefly explain what sandbox restriction likely caused the failure. Be sure to mention that the user can use the `/sandbox` command to manage restrictions.',
             'This will prompt the user for permission',
           ],

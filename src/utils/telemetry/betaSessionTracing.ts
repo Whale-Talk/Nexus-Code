@@ -6,7 +6,7 @@
  *
  * For external users, tracing is enabled in SDK/headless mode, or in
  * interactive mode when the org is allowlisted via the
- * tengu_trace_lantern GrowthBook gate.
+ * nexus_trace_lantern GrowthBook gate.
  * For ant users, tracing is enabled in all modes.
  *
  * Visibility Rules:
@@ -28,7 +28,7 @@
 import type { Span } from '@opentelemetry/api'
 import { createHash } from 'crypto'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
 import { isEnvTruthy } from '../envUtils.js'
@@ -73,7 +73,7 @@ const MAX_CONTENT_SIZE = 60 * 1024 // 60KB (Honeycomb limit is 64KB, staying saf
  * Check if beta detailed tracing is enabled.
  * - Requires ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT
  * - For external users, enabled in SDK/headless mode OR when org is
- *   allowlisted via the tengu_trace_lantern GrowthBook gate
+ *   allowlisted via the nexus_trace_lantern GrowthBook gate
  */
 export function isBetaTracingEnabled(): boolean {
   const baseEnabled =
@@ -87,10 +87,10 @@ export function isBetaTracingEnabled(): boolean {
   // For external users, enable in SDK/headless mode OR when org is allowlisted.
   // Gate reads from disk cache, so first run after allowlisting returns false;
   // works from second run onward (same behavior as enhanced_telemetry_beta).
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return (
       getIsNonInteractiveSession() ||
-      getFeatureValue_CACHED_MAY_BE_STALE('tengu_trace_lantern', false)
+      getFeatureValue('nexus_trace_lantern', false)
     )
   }
 
@@ -428,7 +428,7 @@ export function addBetaLLMResponseAttributes(
 
   // Add thinking_output - ant-only
   if (
-    process.env.USER_TYPE === 'ant' &&
+    process.env.NEXUS_BUILD_FLAVOR === 'development' &&
     metadata.thinkingOutput !== undefined
   ) {
     const { content: thinkingOutput, truncated: thinkingTruncated } =

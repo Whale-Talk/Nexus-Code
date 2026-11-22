@@ -117,7 +117,7 @@ export function usePromptSuggestion({
       const wasAccepted = tabWasPressed || finalInput === suggestionText
       const timeMs = wasAccepted ? acceptedAt || Date.now() : Date.now()
 
-      logEvent('tengu_prompt_suggestion', {
+      logEvent('nexus_prompt_suggestion', {
         source:
           'cli' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         outcome: (wasAccepted
@@ -148,7 +148,7 @@ export function usePromptSuggestion({
           Math.round(
             (finalInput.length / (suggestionText?.length || 1)) * 100,
           ) / 100,
-        ...(process.env.USER_TYPE === 'ant' && {
+        ...(process.env.NEXUS_BUILD_FLAVOR === 'development' && {
           suggestion:
             suggestionText as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           userInput:

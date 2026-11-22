@@ -82,6 +82,9 @@ function handleInteractivePermission(
 
   const permissionPromptStartTimeMs = Date.now()
   const displayInput = result.updatedInput ?? ctx.input
+  const isSandboxOverride = result.decisionReason?.type === 'sandboxOverride'
+  const canAutomate = !awaitAutomatedChecksBeforeDialog && !isSandboxOverride
+  const promptDescription = isSandboxOverride ? result.message : description
 
   function clearClassifierIndicator(): void {
     if (feature('BASH_CLASSIFIER')) {
@@ -92,7 +95,7 @@ function handleInteractivePermission(
   ctx.pushToQueue({
     assistantMessage: ctx.assistantMessage,
     tool: ctx.tool,
-    description,
+    description: promptDescription,
     input: displayInput,
     toolUseContext: ctx.toolUseContext,
     toolUseID: ctx.toolUseID,
@@ -101,8 +104,7 @@ function handleInteractivePermission(
     ...(feature('BASH_CLASSIFIER')
       ? {
           classifierCheckInProgress:
-            !!result.pendingClassifierCheck &&
-            !awaitAutomatedChecksBeforeDialog,
+            !!result.pendingClassifierCheck && canAutomate,
         }
       : {}),
     onUserInteraction() {
@@ -158,12 +160,13 @@ function handleInteractivePermission(
       contentBlocks?: ContentBlockParam[],
     ) {
       if (!claim()) return // atomic check-and-mark before await
+      const allowedUpdates = isSandboxOverride ? [] : permissionUpdates
 
       if (bridgeCallbacks && bridgeRequestId) {
         bridgeCallbacks.sendResponse(bridgeRequestId, {
           behavior: 'allow',
           updatedInput,
-          updatedPermissions: permissionUpdates,
+          updatedPermissions: allowedUpdates,
         })
         bridgeCallbacks.cancelRequest(bridgeRequestId)
       }
@@ -172,7 +175,7 @@ function handleInteractivePermission(
       resolveOnce(
         await ctx.handleUserAllow(
           updatedInput,
-          permissionUpdates,
+          allowedUpdates,
           feedback,
           permissionPromptStartTimeMs,
           contentBlocks,
@@ -210,28 +213,20 @@ function handleInteractivePermission(
         ctx.assistantMessage,
         ctx.toolUseID,
       )
-      if (freshResult.behavior === 'allow') {
-        // claim() (atomic check-and-mark), not isResolved() — the async
-        // hasPermissionsToUseTool call above opens a window where CCR
-        // could have responded in flight. Matches onAllow/onReject/hook
-        // paths. cancelRequest tells CCR to dismiss its prompt — without
-        // it, the web UI shows a stale prompt for a tool that's already
-        // executing (particularly visible when recheck is triggered by
-        // a CCR-initiated mode switch, the very case this callback exists
-        // for after useReplBridge started calling it).
-        if (!claim()) return
-        if (bridgeCallbacks && bridgeRequestId) {
-          bridgeCallbacks.cancelRequest(bridgeRequestId)
-        }
-        channelUnsubscribe?.()
-        ctx.removeFromQueue()
-        ctx.logDecision({ decision: 'accept', source: 'config' })
-        resolveOnce(ctx.buildAllow(freshResult.updatedInput ?? ctx.input))
+      if (freshResult.behavior === 'ask' || !claim()) return
+      if (bridgeCallbacks && bridgeRequestId) {
+        bridgeCallbacks.cancelRequest(bridgeRequestId)
       }
+      channelUnsubscribe?.()
+      ctx.removeFromQueue()
+      ctx.logDecision({
+        decision: freshResult.behavior === 'allow' ? 'accept' : 'reject',
+        source: 'config',
+      })
+      resolveOnce(freshResult)
     },
   })
 
-  // Race 4: Bridge permission response from CCR (claude.ai)
   // When the bridge is connected, send the permission request to CCR and
   // subscribe for a response. Whichever side (CLI or CCR) responds first
   // wins via claim().
@@ -247,8 +242,8 @@ function handleInteractivePermission(
       ctx.tool.name,
       displayInput,
       ctx.toolUseID,
-      description,
-      result.suggestions,
+      promptDescription,
+      isSandboxOverride ? undefined : result.suggestions,
       result.blockedPath,
     )
 
@@ -264,7 +259,7 @@ function handleInteractivePermission(
         channelUnsubscribe?.()
 
         if (response.behavior === 'allow') {
-          if (response.updatedPermissions?.length) {
+          if (!isSandboxOverride && response.updatedPermissions?.length) {
             void ctx.persistPermissions(response.updatedPermissions)
           }
           ctx.logDecision(
@@ -272,12 +267,14 @@ function handleInteractivePermission(
               decision: 'accept',
               source: {
                 type: 'user',
-                permanent: !!response.updatedPermissions?.length,
+                permanent: !isSandboxOverride && !!response.updatedPermissions?.length,
               },
             },
             { permissionPromptStartTimeMs },
           )
-          resolveOnce(ctx.buildAllow(response.updatedInput ?? displayInput))
+          resolveOnce(ctx.buildAllow(response.updatedInput ?? displayInput, {
+            decisionReason: isSandboxOverride ? result.decisionReason : undefined,
+          }))
         } else {
           ctx.logDecision(
             {
@@ -334,7 +331,7 @@ function handleInteractivePermission(
       const params: ChannelPermissionRequestParams = {
         request_id: channelRequestId,
         tool_name: ctx.tool.name,
-        description,
+        description: promptDescription,
         input_preview: truncateForPreview(displayInput),
       }
 
@@ -381,7 +378,9 @@ function handleInteractivePermission(
               },
               { permissionPromptStartTimeMs },
             )
-            resolveOnce(ctx.buildAllow(displayInput))
+            resolveOnce(ctx.buildAllow(displayInput, {
+              decisionReason: isSandboxOverride ? result.decisionReason : undefined,
+            }))
           } else {
             ctx.logDecision(
               {
@@ -407,8 +406,8 @@ function handleInteractivePermission(
     }
   }
 
-  // Skip hooks if they were already awaited in the coordinator branch above
-  if (!awaitAutomatedChecksBeforeDialog) {
+  // An isolation override needs a one-shot human approval.
+  if (canAutomate) {
     // Execute PermissionRequest hooks asynchronously
     // If hook returns a decision before user responds, apply it
     void (async () => {
@@ -419,6 +418,7 @@ function handleInteractivePermission(
         result.suggestions,
         result.updatedInput,
         permissionPromptStartTimeMs,
+        () => !isResolved(),
       )
       if (!hookDecision || !claim()) return
       if (bridgeCallbacks && bridgeRequestId) {
@@ -435,7 +435,7 @@ function handleInteractivePermission(
     feature('BASH_CLASSIFIER') &&
     result.pendingClassifierCheck &&
     ctx.tool.name === BASH_TOOL_NAME &&
-    !awaitAutomatedChecksBeforeDialog
+    canAutomate
   ) {
     // UI indicator for "classifier running" — set here (not in
     // toolExecution.ts) so commands that auto-allow via prefix rules

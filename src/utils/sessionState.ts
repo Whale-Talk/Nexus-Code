@@ -123,8 +123,7 @@ export function notifySessionStateChanged(
   // Opt-in until CCR web + mobile clients learn to ignore this subtype in
   // their isWorking() last-message heuristics — the trailing idle event
   // currently pins them at "Running...".
-  // https://anthropic.slack.com/archives/C093BJBD1CP/p1774152406752229
-  if (isEnvTruthy(process.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS)) {
+  if (isEnvTruthy(process.env.NEXUS_EMIT_SESSION_STATE_EVENTS)) {
     enqueueSdkEvent({
       type: 'system',
       subtype: 'session_state_changed',

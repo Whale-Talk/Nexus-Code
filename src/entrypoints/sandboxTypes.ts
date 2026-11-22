@@ -98,7 +98,7 @@ export const SandboxSettingsSchema = lazySchema(() =>
         .describe(
           'Exit with an error at startup if sandbox.enabled is true but the sandbox cannot start ' +
             '(missing dependencies, unsupported platform, or platform not in enabledPlatforms). ' +
-            'When false (default), a warning is shown and commands run unsandboxed. ' +
+            'When false (default), a warning is shown and commands without isolation are subject to allowUnsandboxedCommands. ' +
             'Intended for managed-settings deployments that require sandboxing as a hard gate.',
         ),
       // Note: enabledPlatforms is an undocumented setting read via .passthrough()
@@ -109,13 +109,14 @@ export const SandboxSettingsSchema = lazySchema(() =>
       // sandbox support is newer and less battle-tested. This allows them to
       // set enabledPlatforms: ["macos"] to disable sandbox (and auto-allow)
       // on other platforms until they're ready to expand.
-      autoAllowBashIfSandboxed: z.boolean().optional(),
+      autoAllowBashIfSandboxed: z.boolean().optional()
+        .describe('Opt in to automatically allowing isolated Bash commands. Default: false.'),
       allowUnsandboxedCommands: z
         .boolean()
         .optional()
         .describe(
           'Allow commands to run outside the sandbox via the dangerouslyDisableSandbox parameter. ' +
-            'When false, the dangerouslyDisableSandbox parameter is completely ignored and all commands must run sandboxed. ' +
+          'When false, both the per-command override and configured exclusions are ignored. Commands require a working sandbox. ' +
             'Default: true.',
         ),
       network: SandboxNetworkConfigSchema(),

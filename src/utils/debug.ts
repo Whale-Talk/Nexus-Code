@@ -27,12 +27,12 @@ const LEVEL_ORDER: Record<DebugLogLevel, number> = {
 
 /**
  * Minimum log level to include in debug output. Defaults to 'debug', which
- * filters out 'verbose' messages. Set CLAUDE_CODE_DEBUG_LOG_LEVEL=verbose to
+ * filters out 'verbose' messages. Set NEXUS_DEBUG_LOG_LEVEL=verbose to
  * include high-volume diagnostics (e.g. full statusLine command, shell, cwd,
  * stdout/stderr) that would otherwise drown out useful debug output.
  */
 export const getMinDebugLogLevel = memoize((): DebugLogLevel => {
-  const raw = process.env.CLAUDE_CODE_DEBUG_LOG_LEVEL?.toLowerCase().trim()
+  const raw = process.env.NEXUS_DEBUG_LOG_LEVEL?.toLowerCase().trim()
   if (raw && Object.hasOwn(LEVEL_ORDER, raw)) {
     return raw as DebugLogLevel
   }
@@ -62,7 +62,7 @@ export const isDebugMode = memoize((): boolean => {
  * with --debug. Returns true if logging was already active.
  */
 export function enableDebugLogging(): boolean {
-  const wasActive = isDebugMode() || process.env.USER_TYPE === 'ant'
+  const wasActive = isDebugMode() || process.env.NEXUS_BUILD_FLAVOR === 'development'
   runtimeDebugEnabled = true
   isDebugMode.cache.clear?.()
   return wasActive
@@ -108,7 +108,7 @@ function shouldLogDebugMessage(message: string): boolean {
 
   // Non-ants only write debug logs when debug mode is active (via --debug at
   // startup or /debug mid-session). Ants always log for /share, bug reports.
-  if (process.env.USER_TYPE !== 'ant' && !isDebugMode()) {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development' && !isDebugMode()) {
     return false
   }
 
@@ -230,7 +230,7 @@ export function logForDebugging(
 export function getDebugLogPath(): string {
   return (
     getDebugFilePath() ??
-    process.env.CLAUDE_CODE_DEBUG_LOGS_DIR ??
+    process.env.NEXUS_DEBUG_LOGS_DIR ??
     join(getNexusConfigHomeDir(), 'debug', `${getSessionId()}.txt`)
   )
 }
@@ -256,7 +256,7 @@ const updateLatestDebugLogSymlink = memoize(async (): Promise<void> => {
  * Logs errors for Ants only, always visible in production.
  */
 export function logAntError(context: string, error: unknown): void {
-  if (process.env.USER_TYPE !== 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') {
     return
   }
 

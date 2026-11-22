@@ -14,6 +14,7 @@ import { commandHasAnyCd } from '../../tools/BashTool/bashPermissions.js'
 import { checkReadOnlyConstraints } from '../../tools/BashTool/readOnlyValidation.js'
 import type { SpeculationAcceptMessage } from '../../types/logs.js'
 import type { Message } from '../../types/message.js'
+import type { PermissionMode } from '../../types/permissions.js'
 import { createChildAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
 import { getGlobalConfig } from '../../utils/config.js'
@@ -39,7 +40,7 @@ import {
   INTERRUPT_MESSAGE,
   INTERRUPT_MESSAGE_FOR_TOOL_USE,
 } from '../../utils/messages.js'
-import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
+import { getNexusTempDir } from '../../utils/permissions/filesystem.js'
 import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
 import { getTranscriptPath } from '../../utils/sessionStorage.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
@@ -69,6 +70,10 @@ const SAFE_READ_ONLY_TOOLS = new Set([
   'TaskList',
 ])
 
+function canSpeculateEdits(mode: PermissionMode): boolean {
+  return mode === 'acceptEdits' || mode === 'bypassPermissions'
+}
+
 function safeRemoveOverlay(overlayPath: string): void {
   rm(
     overlayPath,
@@ -78,7 +83,7 @@ function safeRemoveOverlay(overlayPath: string): void {
 }
 
 function getOverlayPath(id: string): string {
-  return join(getClaudeTempDir(), 'speculation', String(process.pid), id)
+  return join(getNexusTempDir(), 'speculation', String(process.pid), id)
 }
 
 function denySpeculation(
@@ -130,7 +135,7 @@ function logSpeculation(
   boundary: CompletionBoundary | null,
   extras?: Record<string, string | number | boolean | undefined>,
 ): void {
-  logEvent('tengu_speculation', {
+  logEvent('nexus_speculation', {
     speculation_id:
       id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     outcome:
@@ -276,7 +281,7 @@ function createSpeculationFeedbackMessage(
   timeSavedMs: number,
   sessionTotalMs: number,
 ): Message | null {
-  if (process.env.USER_TYPE !== 'ant') return null
+  if (process.env.NEXUS_BUILD_FLAVOR !== 'development') return null
 
   if (messages.length === 0 || timeSavedMs === 0) return null
 
@@ -336,7 +341,7 @@ function resetSpeculationState(setAppState: SetAppState): void {
 
 export function isSpeculationEnabled(): boolean {
   const enabled =
-    process.env.USER_TYPE === 'ant' &&
+    process.env.NEXUS_BUILD_FLAVOR === 'development' &&
     (getGlobalConfig().speculationEnabled ?? true)
   logForDebugging(`[Speculation] enabled=${enabled}`)
   return enabled
@@ -407,6 +412,7 @@ export async function startSpeculation(
   cacheSafeParams?: CacheSafeParams,
 ): Promise<void> {
   if (!isSpeculationEnabled()) return
+  const permissionModeAtStart = context.toolUseContext.getAppState().toolPermissionContext.mode
 
   // Abort any existing speculation before starting a new one
   abortSpeculation(setAppState)
@@ -439,6 +445,7 @@ export async function startSpeculation(
     speculation: {
       status: 'active',
       id,
+      permissionModeAtStart,
       abort: () => abortController.abort(),
       startTime,
       messagesRef,
@@ -465,15 +472,9 @@ export async function startSpeculation(
         // Check permission mode BEFORE allowing file edits
         if (isWriteTool) {
           const appState = context.toolUseContext.getAppState()
-          const { mode, isBypassPermissionsModeAvailable } =
-            appState.toolPermissionContext
+          const { mode } = appState.toolPermissionContext
 
-          const canAutoAcceptEdits =
-            mode === 'acceptEdits' ||
-            mode === 'bypassPermissions' ||
-            (mode === 'plan' && isBypassPermissionsModeAvailable)
-
-          if (!canAutoAcceptEdits) {
+          if (mode !== permissionModeAtStart || !canSpeculateEdits(mode)) {
             logForDebugging(`[Speculation] Stopping at file edit: ${tool.name}`)
             const editPath = (
               'file_path' in input ? input.file_path : undefined
@@ -736,6 +737,15 @@ export async function acceptSpeculation(
 
   abort()
 
+  const mode = state.contextRef.current.toolUseContext.getAppState().toolPermissionContext.mode
+  if (writtenPathsRef.current.size > 0 && (mode !== state.permissionModeAtStart || !canSpeculateEdits(mode))) {
+    safeRemoveOverlay(overlayPath)
+    setAppState(prev => prev.speculation.status === 'active' && prev.speculation.id === id
+      ? { ...prev, speculation: IDLE_SPECULATION_STATE }
+      : prev)
+    return null
+  }
+
   if (cleanMessageCount > 0) {
     await copyOverlayToMain(overlayPath, writtenPathsRef.current, getCwdState())
   }
@@ -880,6 +890,8 @@ export async function handleSpeculationAccept(
       setAppState,
       cleanMessages.length,
     )
+
+    if (!result) cleanMessages = []
 
     const isComplete = result?.boundary?.type === 'complete'
 

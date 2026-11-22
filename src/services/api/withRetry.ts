@@ -1,49 +1,36 @@
 import { feature } from 'bun:bundle'
-import type { ProviderAdapter } from './provider/types.js'
 import {
   APIConnectionError,
+  APIConnectionTimeoutError,
   APIError,
   APIUserAbortError,
+  AuthenticationError,
 } from './provider/errors.js'
 import type { QuerySource } from 'src/constants/querySource.js'
 import type { SystemAPIErrorMessage } from 'src/types/message.js'
-import { isAwsCredentialsProviderError } from 'src/utils/aws.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { logError } from 'src/utils/log.js'
 import { createSystemAPIErrorMessage } from 'src/utils/messages.js'
-import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
-import {
-  clearApiKeyHelperCache,
-  clearAwsCredentialsCache,
-  clearGcpCredentialsCache,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-  isClaudeAISubscriber,
-  isEnterpriseSubscriber,
-} from '../../utils/auth.js'
+import { getAPIProviderForTelemetry } from 'src/utils/model/providers.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   type CooldownReason,
-  handleFastModeOverageRejection,
   handleFastModeRejectedByAPI,
   isFastModeCooldown,
   isFastModeEnabled,
   triggerFastModeCooldown,
 } from '../../utils/fastMode.js'
-import { isNonCustomOpusModel } from '../../utils/model/model.js'
+import { isQuarkModel } from '../../utils/model/model.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import {
-  checkMockRateLimitError,
-  isMockRateLimitError,
-} from '../rateLimitMocking.js'
+import { retryAfterMilliseconds } from '../providerLimits.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 
@@ -88,7 +75,7 @@ function shouldRetry529(querySource: QuerySource | undefined): boolean {
   )
 }
 
-// CLAUDE_CODE_UNATTENDED_RETRY: for unattended sessions (ant-only). Retries 429/529
+// NEXUS_UNATTENDED_RETRY: for unattended sessions (ant-only). Retries 429/529
 // indefinitely with higher backoff and periodic keep-alive yields so the host
 // environment does not mark the session idle mid-wait.
 // TODO(ANT-344): the keep-alive via SystemAPIErrorMessage yields is a stopgap
@@ -99,7 +86,7 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 
 function isPersistentRetryEnabled(): boolean {
   return feature('UNATTENDED_RETRY')
-    ? isEnvTruthy(process.env.CLAUDE_CODE_UNATTENDED_RETRY)
+    ? isEnvTruthy(process.env.NEXUS_UNATTENDED_RETRY)
     : false
 }
 
@@ -167,10 +154,10 @@ export class FallbackTriggeredError extends Error {
   }
 }
 
-export async function* withRetry<T>(
-  getClient: () => Promise<ProviderAdapter>,
+export async function* withRetry<T, Client>(
+  getClient: () => Promise<Client>,
   operation: (
-    client: ProviderAdapter,
+    client: Client,
     attempt: number,
     context: RetryContext,
   ) => Promise<T>,
@@ -182,7 +169,7 @@ export async function* withRetry<T>(
     thinkingConfig: options.thinkingConfig,
     ...(isFastModeEnabled() && { fastMode: options.fastMode }),
   }
-  let client: ProviderAdapter | null = null
+  let client: Client | null = null
   let consecutive529Errors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
   let persistentAttempt = 0
@@ -198,28 +185,12 @@ export async function* withRetry<T>(
       : false
 
     try {
-      // Check for mock rate limits (used by /mock-limits command for Ant employees)
-      if (process.env.USER_TYPE === 'ant') {
-        const mockError = checkMockRateLimitError(
-          retryContext.model,
-          wasFastModeActive,
-        )
-        if (mockError) {
-          throw mockError
-        }
-      }
-
-      // Get a fresh client instance on first attempt or after authentication errors
-      // - 401 for first-party API authentication failures
-      // - 403 "OAuth token has been revoked" (another process refreshed the token)
-      // - Bedrock-specific auth errors (403 or CredentialsProviderError)
-      // - Vertex-specific auth errors (credential refresh failures, 401)
-      // - ECONNRESET/EPIPE: stale keep-alive socket; disable pooling and reconnect
+      // Refresh only the transport of a stale connection.
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
         isStaleConnection &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'tengu_disable_keepalive_on_econnreset',
+        getFeatureValue(
+          'nexus_disable_keepalive_on_econnreset',
           false,
         )
       ) {
@@ -229,29 +200,14 @@ export async function* withRetry<T>(
         disableKeepAlive()
       }
 
-      if (
-        client === null ||
-        (lastError instanceof APIError && lastError.status === 401) ||
-        isOAuthTokenRevokedError(lastError) ||
-        isBedrockAuthError(lastError) ||
-        isVertexAuthError(lastError) ||
-        isStaleConnection
-      ) {
-        // On 401 "token expired" or 403 "token revoked", force a token refresh
-        if (
-          (lastError instanceof APIError && lastError.status === 401) ||
-          isOAuthTokenRevokedError(lastError)
-        ) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-          }
-        }
-        client = await getClient()
-      }
+      if (client === null || isStaleConnection) client = await getClient()
 
       return await operation(client, attempt, retryContext)
     } catch (error) {
+      // Channel keys are static for this request; retrying cannot refresh one.
+      if (error instanceof AuthenticationError || (error instanceof APIError && (error.status === 401 || error.status === 403))) {
+        throw new CannotRetryError(error, retryContext)
+      }
       lastError = error
       logForDebugging(
         `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof APIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
@@ -270,17 +226,6 @@ export async function* withRetry<T>(
         error instanceof APIError &&
         (error.status === 429 || is529Error(error))
       ) {
-        // If the 429 is specifically because extra usage (overage) is not
-        // available, permanently disable fast mode with a specific message.
-        const overageReason = error.headers?.get(
-          'anthropic-ratelimit-unified-overage-disabled-reason',
-        )
-        if (overageReason !== null && overageReason !== undefined) {
-          handleFastModeOverageRejection(overageReason)
-          retryContext.fastMode = false
-          continue
-        }
-
         const retryAfterMs = getRetryAfterMs(error)
         if (retryAfterMs !== null && retryAfterMs < SHORT_RETRY_THRESHOLD_MS) {
           // Short retry-after: wait and retry with fast mode still active
@@ -308,7 +253,7 @@ export async function* withRetry<T>(
       // (e.g., org doesn't have fast mode enabled), permanently disable fast
       // mode and retry at standard speed.
       if (wasFastModeActive && isFastModeNotEnabledError(error)) {
-        handleFastModeRejectedByAPI()
+        handleFastModeRejectedByAPI(retryContext.model)
         retryContext.fastMode = false
         continue
       }
@@ -316,7 +261,7 @@ export async function* withRetry<T>(
       // Non-foreground sources bail immediately on 529 — no retry amplification
       // during capacity cascades. User never sees these fail.
       if (is529Error(error) && !shouldRetry529(options.querySource)) {
-        logEvent('tengu_api_529_background_dropped', {
+        logEvent('nexus_api_529_background_dropped', {
           query_source:
             options.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         })
@@ -329,18 +274,18 @@ export async function* withRetry<T>(
         // If FALLBACK_FOR_ALL_PRIMARY_MODELS is not set, fall through only if the primary model is a non-custom Quark model.
         // TODO: Revisit if the isNonCustomQuarkModel check should still exist, or if isNonCustomQuarkModel is a stale artifact of when Nexus Code was hardcoded on Quark.
         (process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS ||
-          (!isClaudeAISubscriber() && isNonCustomOpusModel(options.model)))
+          isQuarkModel(options.model))
       ) {
         consecutive529Errors++
         if (consecutive529Errors >= MAX_529_RETRIES) {
           // Check if fallback model is specified
           if (options.fallbackModel) {
-            logEvent('tengu_api_opus_fallback_triggered', {
+            logEvent('nexus_api_quark_fallback_triggered', {
               original_model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
                 options.fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              provider: getAPIProviderForStatsig(),
+              provider: getAPIProviderForTelemetry(),
             })
 
             // Throw special error to indicate fallback was triggered
@@ -351,11 +296,11 @@ export async function* withRetry<T>(
           }
 
           if (
-            process.env.USER_TYPE === 'external' &&
+            process.env.NEXUS_BUILD_FLAVOR === 'external' &&
             !process.env.IS_SANDBOX &&
             !isPersistentRetryEnabled()
           ) {
-            logEvent('tengu_api_custom_529_overloaded_error', {})
+            logEvent('nexus_api_custom_529_overloaded_error', {})
             throw new CannotRetryError(
               new Error(REPEATED_529_ERROR_MESSAGE),
               retryContext,
@@ -371,13 +316,7 @@ export async function* withRetry<T>(
         throw new CannotRetryError(error, retryContext)
       }
 
-      // AWS/GCP errors aren't always APIError, but can be retried
-      const handledCloudAuthError =
-        handleAwsCredentialError(error) || handleGcpCredentialError(error)
-      if (
-        !handledCloudAuthError &&
-        (!(error instanceof APIError) || !shouldRetry(error))
-      ) {
+      if (!shouldRetry(error)) {
         throw new CannotRetryError(error, retryContext)
       }
 
@@ -415,7 +354,7 @@ export async function* withRetry<T>(
           )
           retryContext.maxTokensOverride = adjustedMaxTokens
 
-          logEvent('tengu_max_tokens_context_overflow_adjustment', {
+          logEvent('nexus_max_tokens_context_overflow_adjustment', {
             inputTokens,
             contextLimit,
             adjustedMaxTokens,
@@ -430,22 +369,7 @@ export async function* withRetry<T>(
       // Get retry-after header if available
       const retryAfter = getRetryAfter(error)
       let delayMs: number
-      if (persistent && error instanceof APIError && error.status === 429) {
-        persistentAttempt++
-        // Window-based limits (e.g. 5hr Max/Pro) include a reset timestamp.
-        // Wait until reset rather than polling every 5 min uselessly.
-        const resetDelay = getRateLimitResetDelayMs(error)
-        delayMs =
-          resetDelay ??
-          Math.min(
-            getRetryDelay(
-              persistentAttempt,
-              retryAfter,
-              PERSISTENT_MAX_BACKOFF_MS,
-            ),
-            PERSISTENT_RESET_CAP_MS,
-          )
-      } else if (persistent) {
+      if (persistent) {
         persistentAttempt++
         // Retry-After is a server directive and bypasses maxDelayMs inside
         // getRetryDelay (intentional — honoring it is correct). Cap at the
@@ -465,22 +389,22 @@ export async function* withRetry<T>(
       // In persistent mode the for-loop `attempt` is clamped at maxRetries+1;
       // use persistentAttempt for telemetry/yields so they show the true count.
       const reportedAttempt = persistent ? persistentAttempt : attempt
-      logEvent('tengu_api_retry', {
+      logEvent('nexus_api_retry', {
         attempt: reportedAttempt,
         delayMs: delayMs,
         error: (error as APIError)
           .message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         status: (error as APIError).status,
-        provider: getAPIProviderForStatsig(),
+        provider: getAPIProviderForTelemetry(),
       })
 
       if (persistent) {
         if (delayMs > 60_000) {
-          logEvent('tengu_api_persistent_retry_wait', {
+          logEvent('nexus_api_persistent_retry_wait', {
             status: (error as APIError).status,
             delayMs,
             attempt: reportedAttempt,
-            provider: getAPIProviderForStatsig(),
+            provider: getAPIProviderForTelemetry(),
           })
         }
         // Chunk long sleeps so the host sees periodic stdout activity and
@@ -532,12 +456,8 @@ export function getRetryDelay(
   retryAfterHeader?: string | null,
   maxDelayMs = 32000,
 ): number {
-  if (retryAfterHeader) {
-    const seconds = parseInt(retryAfterHeader, 10)
-    if (!isNaN(seconds)) {
-      return seconds * 1000
-    }
-  }
+  const requestedDelay = retryAfterMilliseconds(retryAfterHeader)
+  if (requestedDelay !== null) return requestedDelay
 
   const baseDelay = Math.min(
     BASE_DELAY_MS * Math.pow(2, attempt - 1),
@@ -620,99 +540,12 @@ export function is529Error(error: unknown): boolean {
   )
 }
 
-function isOAuthTokenRevokedError(error: unknown): boolean {
-  return (
-    error instanceof APIError &&
-    error.status === 403 &&
-    (error.message?.includes('OAuth token has been revoked') ?? false)
-  )
-}
-
-function isBedrockAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
-    // AWS libs reject without an API call if .aws holds a past Expiration value
-    // otherwise, API calls that receive expired tokens give generic 403
-    // "The security token included in the request is invalid"
-    if (
-      isAwsCredentialsProviderError(error) ||
-      (error instanceof APIError && error.status === 403)
-    ) {
-      return true
-    }
-  }
-  return false
-}
-
-/**
- * Clear AWS auth caches if appropriate.
- * @returns true if action was taken.
- */
-function handleAwsCredentialError(error: unknown): boolean {
-  if (isBedrockAuthError(error)) {
-    clearAwsCredentialsCache()
-    return true
-  }
-  return false
-}
-
-// google-auth-library throws plain Error (no typed name like AWS's
-// CredentialsProviderError). Match common SDK-level credential-failure messages.
-function isGoogleAuthLibraryCredentialError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const msg = error.message
-  return (
-    msg.includes('Could not load the default credentials') ||
-    msg.includes('Could not refresh access token') ||
-    msg.includes('invalid_grant')
-  )
-}
-
-function isVertexAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
-    // SDK-level: google-auth-library fails in prepareOptions() before the HTTP call
-    if (isGoogleAuthLibraryCredentialError(error)) {
-      return true
-    }
-    // Server-side: Vertex returns 401 for expired/invalid tokens
-    if (error instanceof APIError && error.status === 401) {
-      return true
-    }
-  }
-  return false
-}
-
-/**
- * Clear GCP auth caches if appropriate.
- * @returns true if action was taken.
- */
-function handleGcpCredentialError(error: unknown): boolean {
-  if (isVertexAuthError(error)) {
-    clearGcpCredentialsCache()
-    return true
-  }
-  return false
-}
-
-function shouldRetry(error: APIError): boolean {
-  // Never retry mock errors - they're from /mock-limits command for testing
-  if (isMockRateLimitError(error)) {
-    return false
-  }
-
+function shouldRetry(error: unknown): boolean {
+  if (error instanceof APIConnectionError || error instanceof APIConnectionTimeoutError) return true
+  if (!(error instanceof APIError)) return false
   // Persistent mode: 429/529 always retryable, bypass subscriber gates and
   // x-should-retry header.
   if (isPersistentRetryEnabled() && isTransientCapacityError(error)) {
-    return true
-  }
-
-  // CCR mode: auth is via infrastructure-provided JWTs, so a 401/403 is a
-  // transient blip (auth service flap, network hiccup) rather than bad
-  // credentials. Bypass x-should-retry:false — the server assumes we'd retry
-  // the same bad key, but our key is fine.
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-    (error.status === 401 || error.status === 403)
-  ) {
     return true
   }
 
@@ -731,28 +564,8 @@ function shouldRetry(error: APIError): boolean {
   // Note this is not a standard header.
   const shouldRetryHeader = error.headers?.get('x-should-retry')
 
-  // If the server explicitly says whether or not to retry, obey.
-  // For Max and Pro users, should-retry is true, but in several hours, so we shouldn't.
-  // Enterprise users can retry because they typically use PAYG instead of rate limits.
-  if (
-    shouldRetryHeader === 'true' &&
-    (!isClaudeAISubscriber() || isEnterpriseSubscriber())
-  ) {
-    return true
-  }
-
-  // Ants can ignore x-should-retry: false for 5xx server errors only.
-  // For other status codes (401, 403, 400, 429, etc.), respect the header.
-  if (shouldRetryHeader === 'false') {
-    const is5xxError = error.status !== undefined && error.status >= 500
-    if (!(process.env.USER_TYPE === 'ant' && is5xxError)) {
-      return false
-    }
-  }
-
-  if (error instanceof APIConnectionError) {
-    return true
-  }
+  if (shouldRetryHeader === 'true') return true
+  if (shouldRetryHeader === 'false') return false
 
   if (!error.status) return false
 
@@ -762,23 +575,7 @@ function shouldRetry(error: APIError): boolean {
   // Retry on lock timeouts.
   if (error.status === 409) return true
 
-  // Retry on rate limits, but not for ClaudeAI Subscription users
-  // Enterprise users can retry because they typically use PAYG instead of rate limits
-  if (error.status === 429) {
-    return !isClaudeAISubscriber() || isEnterpriseSubscriber()
-  }
-
-  // Clear API key cache on 401 and allow retry.
-  // OAuth token handling is done in the main retry loop via handleOAuth401Error.
-  if (error.status === 401) {
-    clearApiKeyHelperCache()
-    return true
-  }
-
-  // Retry on 403 "token revoked" (same refresh logic as 401, see above)
-  if (isOAuthTokenRevokedError(error)) {
-    return true
-  }
+  if (error.status === 429) return true
 
   // Retry internal errors.
   if (error.status && error.status >= 500) return true
@@ -787,8 +584,8 @@ function shouldRetry(error: APIError): boolean {
 }
 
 export function getDefaultMaxRetries(): number {
-  if (process.env.CLAUDE_CODE_MAX_RETRIES) {
-    return parseInt(process.env.CLAUDE_CODE_MAX_RETRIES, 10)
+  if (process.env.NEXUS_MAX_RETRIES) {
+    return parseInt(process.env.NEXUS_MAX_RETRIES, 10)
   }
   return DEFAULT_MAX_RETRIES
 }
@@ -801,22 +598,5 @@ const SHORT_RETRY_THRESHOLD_MS = 20 * 1000 // 20 seconds
 const MIN_COOLDOWN_MS = 10 * 60 * 1000 // 10 minutes
 
 function getRetryAfterMs(error: APIError): number | null {
-  const retryAfter = getRetryAfter(error)
-  if (retryAfter) {
-    const seconds = parseInt(retryAfter, 10)
-    if (!isNaN(seconds)) {
-      return seconds * 1000
-    }
-  }
-  return null
-}
-
-function getRateLimitResetDelayMs(error: APIError): number | null {
-  const resetHeader = error.headers?.get?.('anthropic-ratelimit-unified-reset')
-  if (!resetHeader) return null
-  const resetUnixSec = Number(resetHeader)
-  if (!Number.isFinite(resetUnixSec)) return null
-  const delayMs = resetUnixSec * 1000 - Date.now()
-  if (delayMs <= 0) return null
-  return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
+  return retryAfterMilliseconds(getRetryAfter(error))
 }

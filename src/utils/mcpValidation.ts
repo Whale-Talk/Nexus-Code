@@ -3,9 +3,9 @@ import type {
   ImageContentBlock,
   TextContentBlock,
 } from '../services/api/provider/types.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import {
-  countMessagesTokensWithAPI,
+  estimateRequestTokens,
   roughTokenCountEstimation,
 } from '../services/tokenEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
@@ -18,7 +18,7 @@ const DEFAULT_MAX_MCP_OUTPUT_TOKENS = 25000
 /**
  * Resolve the MCP output token cap. Precedence:
  *   1. MAX_MCP_OUTPUT_TOKENS env var (explicit user override)
- *   2. tengu_satin_quoll GrowthBook flag's `mcp_tool` key (tokens, not chars —
+ *   2. nexus_satin_quoll GrowthBook flag's `mcp_tool` key (tokens, not chars —
  *      unlike the other keys in that map which getPersistenceThreshold reads
  *      as chars; MCP has its own truncation layer upstream of that)
  *   3. Hardcoded default
@@ -31,10 +31,10 @@ export function getMaxMcpOutputTokens(): number {
       return parsed
     }
   }
-  const overrides = getFeatureValue_CACHED_MAY_BE_STALE<Record<
+  const overrides = getFeatureValue<Record<
     string,
     number
-  > | null>('tengu_satin_quoll', {})
+  > | null>('nexus_satin_quoll', {})
   const override = overrides?.['mcp_tool']
   if (
     typeof override === 'number' &&
@@ -168,7 +168,7 @@ export async function mcpContentNeedsTruncation(
         ? [{ role: 'user' as const, content }]
         : [{ role: 'user' as const, content }]
 
-    const tokenCount = await countMessagesTokensWithAPI(messages, [])
+    const tokenCount = estimateRequestTokens(messages, [])
     return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
   } catch (error) {
     logError(error)

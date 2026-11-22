@@ -214,14 +214,14 @@ export type HookCallback = {
     input: HookInput,
     toolUseID: string | null,
     abort: AbortSignal | undefined,
-    /** Hook index for SessionStart hooks to compute CLAUDE_ENV_FILE path */
+    /** Hook index for SessionStart hooks to compute NEXUS_ENV_FILE path */
     hookIndex?: number,
     /** Optional context for accessing app state */
     context?: HookCallbackContext,
   ) => Promise<HookJSONOutput>
   /** Timeout in seconds for this hook */
   timeout?: number
-  /** Internal hooks (e.g. session file access analytics) are excluded from tengu_run_hook metrics */
+  /** Internal hooks (e.g. session file access analytics) are excluded from nexus_run_hook metrics */
   internal?: boolean
 }
 

@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getKairosActive, getUserMsgOptIn } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics/growthbook.js'
+import { getFeatureValueWithRefresh } from '../../services/analytics/featureFlags.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
@@ -80,7 +80,7 @@ const KAIROS_BRIEF_REFRESH_MS = 5 * 60 * 1000
  * listing should be honored. Use `isBriefEnabled()` to decide whether the
  * tool is actually active in the current session.
  *
- * CLAUDE_CODE_BRIEF env var force-grants entitlement for dev/testing —
+ * NEXUS_BRIEF env var force-grants entitlement for dev/testing —
  * bypasses the GB gate so you can test without being enrolled. Still
  * requires an opt-in action to activate (--brief, defaultView, etc.), but
  * the env var alone also sets userMsgOptIn via maybeActivateBrief().
@@ -90,9 +90,9 @@ export function isBriefEntitled(): boolean {
   // would not eliminate the GB gate string from external builds.
   return feature('KAIROS') || feature('KAIROS_BRIEF')
     ? getKairosActive() ||
-        isEnvTruthy(process.env.CLAUDE_CODE_BRIEF) ||
-        getFeatureValue_CACHED_WITH_REFRESH(
-          'tengu_kairos_brief',
+        isEnvTruthy(process.env.NEXUS_BRIEF) ||
+        getFeatureValueWithRefresh(
+          'nexus_kairos_brief',
           false,
           KAIROS_BRIEF_REFRESH_MS,
         )
@@ -110,12 +110,12 @@ export function isBriefEntitled(): boolean {
  *   - `/brief` slash command (brief.ts)
  *   - `/config` defaultView picker (Config.tsx)
  *   - SendUserMessage in `--tools` / SDK `tools` option (main.tsx)
- *   - CLAUDE_CODE_BRIEF env var (maybeActivateBrief — dev/testing bypass)
+ *   - NEXUS_BRIEF env var (maybeActivateBrief — dev/testing bypass)
  * Assistant mode (kairosActive) bypasses opt-in since its system prompt
  * hard-codes "you MUST use SendUserMessage" (systemPrompt.md:14).
  *
  * The GB gate is re-checked here as a kill-switch AND — flipping
- * tengu_kairos_brief off mid-session disables the tool on the next 5-min
+ * nexus_kairos_brief off mid-session disables the tool on the next 5-min
  * refresh even for opted-in sessions. No opt-in → always false regardless
  * of GB (this is the fix for "brief defaults on for enrolled ants").
  *
@@ -185,7 +185,7 @@ export const BriefTool = buildTool({
   renderToolResultMessage,
   async call({ message, attachments, status }, context) {
     const sentAt = new Date().toISOString()
-    logEvent('tengu_brief_send', {
+    logEvent('nexus_brief_send', {
       proactive: status === 'proactive',
       attachment_count: attachments?.length ?? 0,
     })

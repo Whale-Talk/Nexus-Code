@@ -1,11 +1,11 @@
 import axios from 'axios'
 import { getOauthConfig } from 'src/constants/oauth.js'
 import { getOrganizationUUID } from 'src/services/oauth/client.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../../services/analytics/featureFlags.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  isClaudeAISubscriber,
+  getHostedAccountOAuthTokens,
+  isHostedAccountSubscriber,
 } from '../../auth.js'
 import { getCwd } from '../../cwd.js'
 import { logForDebugging } from '../../debug.js'
@@ -16,12 +16,11 @@ import { getOAuthHeaders } from '../../teleport/api.js'
 import { fetchEnvironments } from '../../teleport/environments.js'
 
 /**
- * Checks if user needs to log in with Claude.ai
  * Extracted from getTeleportErrors() in TeleportError.tsx
  * @returns true if login is required, false otherwise
  */
-export async function checkNeedsClaudeAiLogin(): Promise<boolean> {
-  if (!isClaudeAISubscriber()) {
+export async function checkNeedsHostedAccountLogin(): Promise<boolean> {
+  if (!isHostedAccountSubscriber()) {
     return false
   }
   return checkAndRefreshOAuthTokenIfNeeded()
@@ -71,8 +70,8 @@ export async function checkHasGitRemote(): Promise<boolean> {
 
 /**
  * Checks if GitHub app is installed on a specific repository
- * @param owner The repository owner (e.g., "anthropics")
- * @param repo The repository name (e.g., "claude-cli-internal")
+ * @param owner The repository owner (e.g., "providers")
+ * @param repo The repository name (e.g., "nexus-cli-internal")
  * @returns true if GitHub app is installed, false otherwise
  */
 export async function checkGithubAppInstalled(
@@ -81,7 +80,7 @@ export async function checkGithubAppInstalled(
   signal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken
+    const accessToken = getHostedAccountOAuthTokens()?.accessToken
     if (!accessToken) {
       logForDebugging(
         'checkGithubAppInstalled: No access token found, assuming app not installed',
@@ -163,7 +162,7 @@ export async function checkGithubAppInstalled(
  */
 export async function checkGithubTokenSynced(): Promise<boolean> {
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken
+    const accessToken = getHostedAccountOAuthTokens()?.accessToken
     if (!accessToken) {
       logForDebugging('checkGithubTokenSynced: No access token found')
       return false
@@ -226,7 +225,7 @@ export async function checkRepoForRemoteAccess(
     return { hasAccess: true, method: 'github-app' }
   }
   if (
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) &&
+    getFeatureValue('nexus_cobalt_lantern', false) &&
     (await checkGithubTokenSynced())
   ) {
     return { hasAccess: true, method: 'token-sync' }

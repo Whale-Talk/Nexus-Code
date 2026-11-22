@@ -1,3 +1,4 @@
+import { getAuthHeaders } from '../../utils/http.js'
 /**
  * Policy Limits Service
  *
@@ -7,7 +8,6 @@
  *
  * Eligibility:
  * - Console users (API key): All eligible
- * - OAuth users (Claude.ai): Only Team and Enterprise/C4E subscribers are eligible
  * - API fails open (non-blocking) - if fetch fails, continues without restrictions
  * - API returns empty restrictions for users without policy limits
  */
@@ -18,14 +18,13 @@ import { readFileSync as fsReadFileSync } from 'fs'
 import { unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
-  CLAUDE_AI_INFERENCE_SCOPE,
+  HOSTED_ACCOUNT_INFERENCE_SCOPE,
   getOauthConfig,
-  OAUTH_BETA_HEADER,
 } from '../../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
+  getProviderApiKeyWithSource,
+  getHostedAccountOAuthTokens,
 } from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -34,12 +33,12 @@ import { classifyAxiosError } from '../../utils/errors.js'
 import { safeParseJSON } from '../../utils/json.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  hasHostedAccountService,
 } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getNexusUserAgent } from '../../utils/userAgent.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {
   type PolicyLimitsFetchResult,
@@ -124,7 +123,7 @@ function getCachePath(): string {
  * Get the policy limits API endpoint
  */
 function getPolicyLimitsEndpoint(): string {
-  return `${getOauthConfig().BASE_API_URL}/api/claude_code/policy_limits`
+  return `${getOauthConfig().BASE_API_URL}/api/nexus_code/policy_limits`
 }
 
 /**
@@ -166,18 +165,18 @@ function computeChecksum(
  */
 export function isPolicyLimitsEligible(): boolean {
   // 3p provider users should not hit the policy limits endpoint
-  if (getAPIProvider() !== 'firstParty') {
+  if (getAPIProvider() !== 'channel') {
     return false
   }
 
   // Custom base URL users should not hit the policy limits endpoint
-  if (!isFirstPartyAnthropicBaseUrl()) {
+  if (!hasHostedAccountService()) {
     return false
   }
 
   // Console users (API key) are eligible if we can get the actual key
   try {
-    const { key: apiKey } = getAnthropicApiKeyWithSource({
+    const { key: apiKey } = getProviderApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true,
     })
     if (apiKey) {
@@ -187,14 +186,12 @@ export function isPolicyLimitsEligible(): boolean {
     // No API key available - continue to check OAuth
   }
 
-  // For OAuth users, check if they have Claude.ai tokens
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   if (!tokens?.accessToken) {
     return false
   }
 
-  // Must have Claude.ai inference scope
-  if (!tokens.scopes?.includes(CLAUDE_AI_INFERENCE_SCOPE)) {
+  if (!tokens.scopes?.includes(HOSTED_ACCOUNT_INFERENCE_SCOPE)) {
     return false
   }
 
@@ -224,42 +221,6 @@ export async function waitForPolicyLimitsToLoad(): Promise<void> {
  * Get auth headers for policy limits without calling getSettings()
  * Supports both API key and OAuth authentication
  */
-function getAuthHeaders(): {
-  headers: Record<string, string>
-  error?: string
-} {
-  // Try API key first (for Console users)
-  try {
-    const { key: apiKey } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true,
-    })
-    if (apiKey) {
-      return {
-        headers: {
-          'x-api-key': apiKey,
-        },
-      }
-    }
-  } catch {
-    // No API key available - continue to check OAuth
-  }
-
-  // Fall back to OAuth tokens (for Claude.ai users)
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (oauthTokens?.accessToken) {
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
-  }
-
-  return {
-    headers: {},
-    error: 'No authentication available',
-  }
-}
 
 /**
  * Fetch policy limits with retry logic and exponential backoff
@@ -315,7 +276,7 @@ async function fetchPolicyLimits(
     const endpoint = getPolicyLimitsEndpoint()
     const headers: Record<string, string> = {
       ...authHeaders.headers,
-      'User-Agent': getClaudeCodeUserAgent(),
+      'User-Agent': getNexusUserAgent(),
     }
 
     if (cachedChecksum) {

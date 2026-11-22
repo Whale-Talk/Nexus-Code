@@ -7,7 +7,7 @@ import {
   IMAGE_MAX_WIDTH,
   IMAGE_TARGET_RAW_SIZE,
 } from '../constants/apiLimits.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue } from '../services/analytics/featureFlags.js'
 import { getImageProcessor } from '../tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
@@ -19,7 +19,7 @@ import {
 } from './imageResizer.js'
 import { logError } from './log.js'
 
-// Native NSPasteboard reader. GrowthBook gate tengu_collage_kaleidoscope is
+// Native NSPasteboard reader. GrowthBook gate nexus_collage_kaleidoscope is
 // a kill switch (default on). Falls through to osascript when off.
 // The gate string is inlined at each callsite INSIDE the feature() condition
 // — module-scope helpers are NOT tree-shaken (see docs/feature-gating.md).
@@ -32,11 +32,11 @@ function getClipboardCommands() {
   const platform = process.platform as SupportedPlatform
 
   // Platform-specific temporary file paths
-  // Use CLAUDE_CODE_TMPDIR if set, otherwise fall back to platform defaults
+  // Use NEXUS_TMPDIR if set, otherwise fall back to platform defaults
   const baseTmpDir =
-    process.env.CLAUDE_CODE_TMPDIR ||
+    process.env.NEXUS_TMPDIR ||
     (platform === 'win32' ? process.env.TEMP || 'C:\\Temp' : '/tmp')
-  const screenshotFilename = 'claude_cli_latest_screenshot.png'
+  const screenshotFilename = 'nexus_cli_latest_screenshot.png'
   const tempPaths: Record<SupportedPlatform, string> = {
     darwin: join(baseTmpDir, screenshotFilename),
     linux: join(baseTmpDir, screenshotFilename),
@@ -99,7 +99,7 @@ export async function hasImageInClipboard(): Promise<boolean> {
   }
   if (
     feature('NATIVE_CLIPBOARD_IMAGE') &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_collage_kaleidoscope', true)
+    getFeatureValue('nexus_collage_kaleidoscope', true)
   ) {
     // Native NSPasteboard check (~0.03ms warm). Fall through to osascript
     // when the module/export is missing. Catch a throw too: it would surface
@@ -131,7 +131,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   if (
     feature('NATIVE_CLIPBOARD_IMAGE') &&
     process.platform === 'darwin' &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_collage_kaleidoscope', true)
+    getFeatureValue('nexus_collage_kaleidoscope', true)
   ) {
     try {
       const { getNativeModule } = await import('image-processor-napi')

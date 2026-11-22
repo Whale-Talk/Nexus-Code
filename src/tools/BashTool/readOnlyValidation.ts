@@ -1141,7 +1141,7 @@ const COMMAND_ALLOWLIST: Record<string, CommandConfig> = {
 const ANT_ONLY_COMMAND_ALLOWLIST: Record<string, CommandConfig> = {
   // All gh read-only commands from shared validation map
   ...GH_READ_ONLY_COMMANDS,
-  // aki — Anthropic internal knowledge-base search CLI.
+  // aki — Provider internal knowledge-base search CLI.
   // Network read-only (same policy as gh). --audit-csv omitted: writes to disk.
   aki: {
     safeFlags: {
@@ -1208,7 +1208,7 @@ function getCommandAllowlist(): Record<string, CommandConfig> {
     const { xargs: _, ...rest } = allowlist
     allowlist = rest
   }
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     return { ...allowlist, ...ANT_ONLY_COMMAND_ALLOWLIST }
   }
   return allowlist
@@ -1516,8 +1516,8 @@ const READONLY_COMMAND_REGEXES = new Set([
   /^echo(?:\s+(?:'[^']*'|"[^"$<>\n\r]*"|[^|;&`$(){}><#\\!"'\s]+))*(?:\s+2>&1)?\s*$/,
 
   // Nexus CLI help
-  /^claude -h$/,
-  /^claude --help$/,
+  /^nexus -h$/,
+  /^nexus --help$/,
 
   // Git readonly commands are now handled via COMMAND_ALLOWLIST with explicit flag validation
   // (git status, git blame, git ls-files, git config --get, git remote, git tag, git branch)

@@ -28,7 +28,7 @@ import { getSettingsForSource } from './settings/settings.js'
  * is lazy-initialized) and ensure Node.js compatibility.
  *
  * This is safe to call before the trust dialog because we only read from
- * user-controlled files (~/.nexus/settings.json and ~/.claude.json),
+ * user-controlled files (~/.nexus/settings.json and ~/.nexus/profile.json),
  * not from project-level settings.
  */
 export function applyExtraCACertsFromConfig(): void {
@@ -52,7 +52,7 @@ export function applyExtraCACertsFromConfig(): void {
  * after the trust dialog. But we need the CA cert early to establish the TLS
  * connection to an HTTPS proxy during init().
  *
- * We read from global config (~/.claude.json) and user settings
+ * We read from global config (~/.nexus/profile.json) and user settings
  * (~/.nexus/settings.json). These are user-controlled files that don't
  * require trust approval.
  */

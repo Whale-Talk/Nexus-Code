@@ -15,7 +15,7 @@
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { logEvent } from '../services/analytics/index.js'
-import { queryHaiku } from '../services/api/claude.js'
+import { queryElectron } from '../services/api/inference.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
@@ -84,7 +84,7 @@ export async function generateSessionTitle(
   if (!trimmed) return null
 
   try {
-    const result = await queryHaiku({
+    const result = await queryElectron({
       systemPrompt: asSystemPrompt([SESSION_TITLE_PROMPT]),
       userPrompt: trimmed,
       outputFormat: {
@@ -116,14 +116,14 @@ export async function generateSessionTitle(
     const parsed = titleSchema().safeParse(safeParseJSON(text))
     const title = parsed.success ? parsed.data.title.trim() || null : null
 
-    logEvent('tengu_session_title_generated', { success: title !== null })
+    logEvent('nexus_session_title_generated', { success: title !== null })
 
     return title
   } catch (error) {
     logForDebugging(`generateSessionTitle failed: ${error}`, {
       level: 'error',
     })
-    logEvent('tengu_session_title_generated', { success: false })
+    logEvent('nexus_session_title_generated', { success: false })
     return null
   }
 }

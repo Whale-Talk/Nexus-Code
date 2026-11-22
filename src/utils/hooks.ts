@@ -56,7 +56,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from 'src/services/analytics/index.js'
 import { logOTelEvent } from './telemetry/events.js'
-import { ALLOWED_OFFICIAL_MARKETPLACE_NAMES } from './plugins/schemas.js'
+import { ALLOWED_FEATURED_MARKETPLACE_NAMES } from './plugins/schemas.js'
 import {
   startHookSpan,
   endHookSpan,
@@ -174,7 +174,7 @@ const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
  */
 const SESSION_END_HOOK_TIMEOUT_MS_DEFAULT = 1500
 export function getSessionEndHookTimeoutMs(): number {
-  const raw = process.env.CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS
+  const raw = process.env.NEXUS_SESSIONEND_HOOKS_TIMEOUT_MS
   const parsed = raw ? parseInt(raw, 10) : NaN
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
@@ -741,7 +741,7 @@ function processHookJSONOutput({
  *
  * Shell resolution: hook.shell → 'bash'. PowerShell hooks spawn pwsh
  * with -NoProfile -NonInteractive -Command and skip bash-specific prep
- * (POSIX path conversion, .sh auto-prepend, CLAUDE_CODE_SHELL_PREFIX).
+ * (POSIX path conversion, .sh auto-prepend, NEXUS_SHELL_PREFIX).
  * See docs/design/ps-shell-selection.md §5.1.
  */
 async function execCommandHook(
@@ -810,14 +810,14 @@ async function execCommandHook(
       ? (p: string) => windowsPathToPosixPath(p)
       : (p: string) => p
 
-  // Set CLAUDE_PROJECT_DIR to the stable project root (not the worktree path).
+  // Set NEXUS_PROJECT_DIR to the stable project root (not the worktree path).
   // getProjectRoot() is never updated when entering a worktree, so hooks that
-  // reference $CLAUDE_PROJECT_DIR always resolve relative to the real repo root.
+  // reference $NEXUS_PROJECT_DIR always resolve relative to the real repo root.
   const projectDir = getProjectRoot()
 
-  // Substitute ${CLAUDE_PLUGIN_ROOT} and ${user_config.X} in the command string.
+  // Substitute ${NEXUS_PLUGIN_ROOT} and ${user_config.X} in the command string.
   // Order matches MCP/LSP (plugin vars FIRST, then user config) so a user-
-  // entered value containing the literal text ${CLAUDE_PLUGIN_ROOT} is treated
+  // entered value containing the literal text ${NEXUS_PLUGIN_ROOT} is treated
   // as opaque — not re-interpreted as a template.
   let command = hook.command
   let pluginOpts: ReturnType<typeof loadPluginOptions> | undefined
@@ -842,10 +842,10 @@ async function execCommandHook(
     // form .replace() so paths containing $ aren't mangled by $-pattern
     // interpretation (rare but possible: \\server\c$\plugin).
     const rootPath = toHookPath(pluginRoot)
-    command = command.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, () => rootPath)
+    command = command.replace(/\$\{NEXUS_PLUGIN_ROOT\}/g, () => rootPath)
     if (pluginId) {
       const dataPath = toHookPath(getPluginDataDir(pluginId))
-      command = command.replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, () => dataPath)
+      command = command.replace(/\$\{NEXUS_PLUGIN_DATA\}/g, () => dataPath)
     }
     if (pluginId) {
       pluginOpts = loadPluginOptions(pluginId)
@@ -865,13 +865,13 @@ async function execCommandHook(
     }
   }
 
-  // CLAUDE_CODE_SHELL_PREFIX wraps the command via POSIX quoting
+  // NEXUS_SHELL_PREFIX wraps the command via POSIX quoting
   // (formatShellPrefixCommand uses shell-quote). This makes no sense for
   // PowerShell — see design §8.1. For now PS hooks ignore the prefix;
-  // a CLAUDE_CODE_PS_SHELL_PREFIX (or shell-aware prefix) is a follow-up.
+  // a NEXUS_PS_SHELL_PREFIX (or shell-aware prefix) is a follow-up.
   const finalCommand =
-    !isPowerShell && process.env.CLAUDE_CODE_SHELL_PREFIX
-      ? formatShellPrefixCommand(process.env.CLAUDE_CODE_SHELL_PREFIX, command)
+    !isPowerShell && process.env.NEXUS_SHELL_PREFIX
+      ? formatShellPrefixCommand(process.env.NEXUS_SHELL_PREFIX, command)
       : command
 
   const hookTimeoutMs = hook.timeout
@@ -881,15 +881,15 @@ async function execCommandHook(
   // Build env vars — all paths go through toHookPath for Windows POSIX conversion
   const envVars: NodeJS.ProcessEnv = {
     ...subprocessEnv(),
-    CLAUDE_PROJECT_DIR: toHookPath(projectDir),
+    NEXUS_PROJECT_DIR: toHookPath(projectDir),
   }
 
-  // Plugin and skill hooks both set CLAUDE_PLUGIN_ROOT (skills use the same
+  // Plugin and skill hooks both set NEXUS_PLUGIN_ROOT (skills use the same
   // name for consistency — skills can migrate to plugins without code changes)
   if (pluginRoot) {
-    envVars.CLAUDE_PLUGIN_ROOT = toHookPath(pluginRoot)
+    envVars.NEXUS_PLUGIN_ROOT = toHookPath(pluginRoot)
     if (pluginId) {
-      envVars.CLAUDE_PLUGIN_DATA = toHookPath(getPluginDataDir(pluginId))
+      envVars.NEXUS_PLUGIN_DATA = toHookPath(getPluginDataDir(pluginId))
     }
   }
   // Expose plugin options as env vars too, so hooks can read them without
@@ -901,14 +901,14 @@ async function execCommandHook(
       // at schemas.ts:611 now constrains keys to /^[A-Za-z_]\w*$/ so this is
       // belt-and-suspenders, but cheap insurance if someone bypasses the schema.
       const envKey = key.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase()
-      envVars[`CLAUDE_PLUGIN_OPTION_${envKey}`] = String(value)
+      envVars[`NEXUS_PLUGIN_OPTION_${envKey}`] = String(value)
     }
   }
   if (skillRoot) {
-    envVars.CLAUDE_PLUGIN_ROOT = toHookPath(skillRoot)
+    envVars.NEXUS_PLUGIN_ROOT = toHookPath(skillRoot)
   }
 
-  // CLAUDE_ENV_FILE points to a .sh file that the hook writes env var
+  // NEXUS_ENV_FILE points to a .sh file that the hook writes env var
   // definitions into; getSessionEnvironmentScript() concatenates them and
   // bashProvider injects the content into bash commands. A PS hook would
   // naturally write PS syntax ($env:FOO = 'bar'), which bash can't parse.
@@ -922,7 +922,7 @@ async function execCommandHook(
       hookEvent === 'FileChanged') &&
     hookIndex !== undefined
   ) {
-    envVars.CLAUDE_ENV_FILE = await getHookEnvFilePath(hookEvent, hookIndex)
+    envVars.NEXUS_ENV_FILE = await getHookEnvFilePath(hookEvent, hookIndex)
   }
 
   // When agent worktrees are removed, getCwd() may return a deleted path via
@@ -1447,7 +1447,7 @@ function isInternalHook(matched: MatchedHook): boolean {
  * Settings-file hooks (no pluginRoot/skillRoot) share the '' prefix so the
  * same command defined in user/project/local still collapses to one — the
  * original intent of the dedup. Plugin/skill hooks get their root as the
- * prefix, so two plugins sharing an unexpanded `${CLAUDE_PLUGIN_ROOT}/hook.sh`
+ * prefix, so two plugins sharing an unexpanded `${NEXUS_PLUGIN_ROOT}/hook.sh`
  * template don't collapse: after expansion they point to different files.
  */
 function hookDedupKey(m: MatchedHook, payload: string): string {
@@ -1470,7 +1470,7 @@ function getPluginHookCounts(
     const atIndex = h.pluginId!.lastIndexOf('@')
     const isOfficial =
       atIndex > 0 &&
-      ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(h.pluginId!.slice(atIndex + 1))
+      ALLOWED_FEATURED_MARKETPLACE_NAMES.has(h.pluginId!.slice(atIndex + 1))
     const key = isOfficial ? h.pluginId! : 'third-party'
     counts[key] = (counts[key] || 0) + 1
   }
@@ -1979,7 +1979,7 @@ async function* executeHooks({
     return
   }
 
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.NEXUS_SIMPLE)) {
     return
   }
 
@@ -2020,7 +2020,7 @@ async function* executeHooks({
   if (userHooks.length > 0) {
     const pluginHookCounts = getPluginHookCounts(userHooks)
     const hookTypeCounts = getHookTypeCounts(userHooks)
-    logEvent(`tengu_run_hook`, {
+    logEvent(`nexus_run_hook`, {
       hookName:
         hookName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       numCommands: userHooks.length,
@@ -2053,7 +2053,7 @@ async function* executeHooks({
     const totalDurationMs = Date.now() - batchStartTime
     getStatsStore()?.observe('hook_duration_ms', totalDurationMs)
     addToTurnHookDuration(totalDurationMs)
-    logEvent(`tengu_repl_hook_finished`, {
+    logEvent(`nexus_repl_hook_finished`, {
       hookName:
         hookName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       numCommands: matchingHooks.length,
@@ -2932,7 +2932,7 @@ async function* executeHooks({
   getStatsStore()?.observe('hook_duration_ms', totalDurationMs)
   addToTurnHookDuration(totalDurationMs)
 
-  logEvent(`tengu_repl_hook_finished`, {
+  logEvent(`nexus_repl_hook_finished`, {
     hookName:
       hookName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     numCommands: matchingHooks.length,
@@ -3013,7 +3013,7 @@ async function executeHooksOutsideREPL({
   signal?: AbortSignal
   timeoutMs: number
 }): Promise<HookOutsideReplResult[]> {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)) {
+  if (isEnvTruthy(process.env.NEXUS_SIMPLE)) {
     return []
   }
 
@@ -3056,7 +3056,7 @@ async function executeHooksOutsideREPL({
   if (userHooks.length > 0) {
     const pluginHookCounts = getPluginHookCounts(userHooks)
     const hookTypeCounts = getHookTypeCounts(userHooks)
-    logEvent(`tengu_run_hook`, {
+    logEvent(`nexus_run_hook`, {
       hookName:
         hookName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       numCommands: userHooks.length,

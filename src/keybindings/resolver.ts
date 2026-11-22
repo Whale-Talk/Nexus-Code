@@ -69,10 +69,13 @@ export function getBindingDisplayText(
   context: KeybindingContextName,
   bindings: ParsedBinding[],
 ): string | undefined {
-  // Find the last binding for this action in this context
-  const binding = bindings.findLast(
-    b => b.action === action && b.context === context,
-  )
+  const binding = bindings.findLast(candidate => {
+    if (candidate.action !== action || candidate.context !== context) return false
+    const effective = bindings.findLast(other =>
+      other.context === context && chordExactlyMatches(candidate.chord, other),
+    )
+    return effective === candidate
+  })
   return binding ? chordToString(binding.chord) : undefined
 }
 

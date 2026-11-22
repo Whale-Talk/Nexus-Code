@@ -2,6 +2,7 @@ import { nonAlphanumericKeys, type ParsedKey } from '../parse-keypress.js'
 import { Event } from './event.js'
 
 export type Key = {
+  functionKey?: string
   upArrow: boolean
   downArrow: boolean
   leftArrow: boolean
@@ -26,6 +27,7 @@ export type Key = {
 
 function parseKey(keypress: ParsedKey): [Key, string] {
   const key: Key = {
+    functionKey: keypress.name && /^f(?:[1-9]|1[0-2])$/.test(keypress.name) ? keypress.name : undefined,
     upArrow: keypress.name === 'up',
     downArrow: keypress.name === 'down',
     leftArrow: keypress.name === 'left',

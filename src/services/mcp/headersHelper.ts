@@ -51,7 +51,7 @@ export async function getMcpHeadersFromHelper(
         `Security: headersHelper for MCP server '${serverName}' executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
       )
       logAntError('MCP headersHelper invoked before trust check', error)
-      logEvent('tengu_mcp_headersHelper_missing_trust', {})
+      logEvent('nexus_mcp_headersHelper_missing_trust', {})
       return null
     }
   }
@@ -62,11 +62,11 @@ export async function getMcpHeadersFromHelper(
       shell: true,
       timeout: 10000,
       // Pass server context so one helper script can serve multiple MCP servers
-      // (git credential-helper style). See deshaw/anthropic-issues#28.
+      // (git credential-helper style). See deshaw/provider-issues#28.
       env: {
         ...process.env,
-        CLAUDE_CODE_MCP_SERVER_NAME: serverName,
-        CLAUDE_CODE_MCP_SERVER_URL: config.url,
+        NEXUS_MCP_SERVER_NAME: serverName,
+        NEXUS_MCP_SERVER_URL: config.url,
       },
     })
     if (execResult.code !== 0 || !execResult.stdout) {

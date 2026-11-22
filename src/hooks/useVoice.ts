@@ -1,9 +1,9 @@
-// React hook for hold-to-talk voice input using Anthropic voice_stream STT.
+// React hook for hold-to-talk voice input using Provider voice_stream STT.
 //
 // Hold the keybinding to record; release to stop and submit.  Auto-repeat
 // key events reset an internal timer — when no keypress arrives within
 // RELEASE_TIMEOUT_MS the recording stops automatically.  Uses the native
-// audio module (macOS) or SoX for recording, and Anthropic's voice_stream
+// audio module (macOS) or SoX for recording, and Provider's voice_stream
 // endpoint (conversation_engine) for STT.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -236,11 +236,10 @@ export function useVoice({
   // connectionRef mid-way through the next session.
   const sessionGenRef = useRef(0)
   // True if the early-error retry fired during this session.
-  // Tracked for the tengu_voice_recording_completed analytics event.
+  // Tracked for the nexus_voice_recording_completed analytics event.
   const retryUsedRef = useRef(false)
   // Full audio captured this session, kept for silent-drop replay. ~1% of
   // sessions get a sticky-broken CE pod that accepts audio but returns zero
-  // transcripts (anthropics/anthropic#287008 session-sticky variant); when
   // finalize() resolves via no_data_timeout with hadAudioSignal=true, we
   // replay the buffer on a fresh WS once. Bounded: 32KB/s × ~60s max ≈ 2MB.
   const fullAudioRef = useRef<Buffer[]>([])
@@ -390,7 +389,7 @@ export function useVoice({
           logForDebugging(
             `[voice] Silent-drop detected (no_data_timeout, ${String(fullAudioRef.current.length)} chunks); replaying on fresh connection`,
           )
-          logEvent('tengu_voice_silent_drop_replay', {
+          logEvent('nexus_voice_silent_drop_replay', {
             recordingDurationMs,
             chunkCount: fullAudioRef.current.length,
           })
@@ -468,7 +467,7 @@ export function useVoice({
         // fallthrough and !conn (no-OAuth) paths bypass this → don't compute
         // COUNT(completed)/COUNT(started) as a success rate; the silent-drop
         // denominator (completed events only) is internally consistent.
-        logEvent('tengu_voice_recording_completed', {
+        logEvent('nexus_voice_recording_completed', {
           transcriptChars: text.length + focusFlushedChars,
           recordingDurationMs,
           hadAudioSignal,
@@ -746,7 +745,7 @@ export function useVoice({
 
     const rawLanguage = getInitialSettings().language
     const stt = normalizeLanguageForSTT(rawLanguage)
-    logEvent('tengu_voice_recording_started', {
+    logEvent('nexus_voice_recording_started', {
       focusTriggered: focusTriggeredRef.current,
       sttLanguage:
         stt.code as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -761,7 +760,6 @@ export function useVoice({
     // Retry once if the connection errors before delivering any transcript.
     // The conversation-engine proxy can reject rapid reconnects (~1/N_pods
     // same-pod collision) or CE's Deepgram upstream can fail during its own
-    // teardown window (anthropics/anthropic#287008 surfaces this as
     // TranscriptError instead of silent-drop). A 250ms backoff clears both.
     // Audio captured during the retry window routes to audioBuffer (via the
     // connectionRef.current null check in the recording callback above) and
@@ -873,7 +871,7 @@ export function useVoice({
                 logForDebugging(
                   `[voice] early voice_stream error (pre-transcript), retrying once: ${error}`,
                 )
-                logEvent('tengu_voice_stream_early_retry', {})
+                logEvent('nexus_voice_stream_early_retry', {})
                 connectionRef.current = null
                 attemptGenRef.current++
                 setTimeout(
@@ -988,7 +986,7 @@ export function useVoice({
             '[voice] Failed to connect to voice_stream (no OAuth token?)',
           )
           onErrorRef.current?.(
-            'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+            'Voice mode requires a hosted account. Please run /login to sign in.',
           )
           // Clear the audio buffer on failure
           audioBuffer.length = 0

@@ -29,11 +29,11 @@ function isDevMode(): boolean {
 
 /**
  * Builds a deep link URL for Nexus Desktop to resume a CLI session.
- * Format: claude://resume?session={sessionId}&cwd={cwd}
- * In dev mode: claude-dev://resume?session={sessionId}&cwd={cwd}
+ * Format: nexus://resume?session={sessionId}&cwd={cwd}
+ * In dev mode: nexus-dev://resume?session={sessionId}&cwd={cwd}
  */
 function buildDesktopDeepLink(sessionId: string): string {
-  const protocol = isDevMode() ? 'claude-dev' : 'claude'
+  const protocol = isDevMode() ? 'nexus-dev' : 'nexus'
   const url = new URL(`${protocol}://resume`)
   url.searchParams.set('session', sessionId)
   url.searchParams.set('cwd', getCwd())
@@ -43,7 +43,7 @@ function buildDesktopDeepLink(sessionId: string): string {
 /**
  * Check if Nexus Desktop app is installed.
  * On macOS, checks for /Applications/Nexus.app.
- * On Linux, checks if xdg-open can handle claude:// protocol.
+ * On Linux, checks if xdg-open can handle nexus:// protocol.
  * On Windows, checks if the protocol handler exists.
  * In dev mode, always returns true (assumes dev Desktop is running).
  */
@@ -59,19 +59,19 @@ async function isDesktopInstalled(): Promise<boolean> {
     // Check for Nexus.app in /Applications
     return pathExists('/Applications/Nexus.app')
   } else if (platform === 'linux') {
-    // Check if xdg-mime can find a handler for claude://
+    // Check if xdg-mime can find a handler for nexus://
     // Note: xdg-mime returns exit code 0 even with no handler, so check stdout too
     const { code, stdout } = await execFileNoThrow('xdg-mime', [
       'query',
       'default',
-      'x-scheme-handler/claude',
+      'x-scheme-handler/nexus',
     ])
     return code === 0 && stdout.trim().length > 0
   } else if (platform === 'win32') {
     // On Windows, try to query the registry for the protocol handler
     const { code } = await execFileNoThrow('reg', [
       'query',
-      'HKEY_CLASSES_ROOT\\claude',
+      'HKEY_CLASSES_ROOT\\nexus',
       '/ve',
     ])
     return code === 0

@@ -22,7 +22,7 @@ Usage notes:
 \`\`\`
 # NEXUS.md
 
-This file provides guidance to Nexus Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Nexus Code when working with code in this repository.
 \`\`\``
 
 const NEW_INIT_PROMPT = `Set up a minimal NEXUS.md (and optionally skills and hooks) for this repo. NEXUS.md is loaded into every Nexus Code session, so it must be concise — only include what Nexus would get wrong without it.
@@ -125,7 +125,7 @@ Prefix the file with:
 \`\`\`
 # NEXUS.md
 
-This file provides guidance to Nexus Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Nexus Code when working with code in this repository.
 \`\`\`
 
 If NEXUS.md already exists: read it, propose specific changes as diffs, and explain why each change improves it. Do not silently overwrite.
@@ -217,21 +217,30 @@ Recap what was set up — which files were written and the key points included i
 Then tell the user that you'll be introducing a few more suggestions for optimizing their codebase and Nexus Code setup based on what you found. Present these as a single, well-formatted to-do list where every item is relevant to this repo. Put the most impactful items first.
 
 When building the list, work through these checks and include only what applies:
-- If frontend code was detected (React, Vue, Svelte, etc.): \`/plugin install frontend-design@claude-plugins-official\` gives Claude design principles and component patterns so it produces polished UI; \`/plugin install playwright@claude-plugins-official\` lets Claude launch a real browser, screenshot what it built, and fix visual bugs itself.
+- If frontend code was detected (React, Vue, Svelte, etc.): \`/plugin install frontend-design@nexus-plugins-official\` gives Nexus design principles and component patterns so it produces polished UI; \`/plugin install playwright@nexus-plugins-official\` lets Nexus launch a real browser, screenshot what it built, and fix visual bugs itself.
 - If you found gaps in Phase 7 (missing GitHub CLI, missing linting) and the user said no: list them here with a one-line reason why each helps.
 - If tests are missing or sparse: suggest setting up a test framework so Nexus can verify its own changes.
-- To help you create skills and optimize existing skills using evals, Nexus Code has an official skill-creator plugin you can install. Install it with \`/plugin install skill-creator@claude-plugins-official\`, then run \`/skill-creator <skill-name>\` to create new skills or refine any existing skill. (Always include this one.)
 - Browse official plugins with \`/plugin\` — these bundle skills, agents, hooks, and MCP servers that you may find helpful. You can also create your own custom plugins to share them with others. (Always include this one.)`
+
+function usesExtendedInit(): boolean {
+  if (feature('NEW_INIT')) {
+    return process.env.NEXUS_BUILD_FLAVOR === 'development' || isEnvTruthy(process.env.NEXUS_NEW_INIT)
+  }
+  return false
+}
 
 const command = {
   type: 'prompt',
   name: 'init',
   get description() {
-    return feature('NEW_INIT') &&
-      (process.env.USER_TYPE === 'ant' ||
-        isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT))
+    return usesExtendedInit()
       ? 'Initialize new NEXUS.md file(s) and optional skills/hooks with codebase documentation'
       : 'Initialize a new NEXUS.md file with codebase documentation'
+  },
+  get userFacingDescription() {
+    return usesExtendedInit()
+      ? '根据代码库生成 NEXUS.md 项目说明，并可选择配置技能和钩子'
+      : '根据代码库生成 NEXUS.md 项目说明'
   },
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your codebase',
@@ -242,12 +251,7 @@ const command = {
     return [
       {
         type: 'text',
-        text:
-          feature('NEW_INIT') &&
-          (process.env.USER_TYPE === 'ant' ||
-            isEnvTruthy(process.env.CLAUDE_CODE_NEW_INIT))
-            ? NEW_INIT_PROMPT
-            : OLD_INIT_PROMPT,
+        text: usesExtendedInit() ? NEW_INIT_PROMPT : OLD_INIT_PROMPT,
       },
     ]
   },

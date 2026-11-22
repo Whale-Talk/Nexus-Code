@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
+import { rgPath } from '@vscode/ripgrep'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
@@ -58,26 +59,13 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
 
   // 项目根 = src/utils 向上两级（dev 模式直跑 src；发布包同为 包根/src/utils）
   const projectRoot = path.resolve(__dirname, '..', '..')
-  // 候选根目录: 项目自部署 vendor/ → npm 依赖 claude-agent-sdk 自带 vendor
-  const rgRootCandidates = [
-    path.join(projectRoot, 'vendor', 'ripgrep'),
-    path.join(
-      projectRoot,
-      'node_modules',
-      '@anthropic-ai',
-      'claude-agent-sdk',
-      'vendor',
-      'ripgrep',
-    ),
-  ]
-  const rgRoot =
-    rgRootCandidates.find(r => existsSync(r)) ?? rgRootCandidates[0]
-  const command =
+  const rgRoot = path.join(projectRoot, 'vendor', 'ripgrep')
+  const vendored =
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
       : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
 
-  return { mode: 'builtin', command, args: [] }
+  return { mode: 'builtin', command: existsSync(vendored) ? vendored : rgPath, args: [] }
 })
 
 export function ripgrepCommand(): {
@@ -145,7 +133,7 @@ function ripGrepRaw(
   // WSL has severe performance penalty for file reads (3-5x slower on WSL2)
   const defaultTimeout = getPlatform() === 'wsl' ? 60_000 : 20_000
   const parsedSeconds =
-    parseInt(process.env.CLAUDE_CODE_GLOB_TIMEOUT_SECONDS || '', 10) || 0
+    parseInt(process.env.NEXUS_GLOB_TIMEOUT_SECONDS || '', 10) || 0
   const timeout = parsedSeconds > 0 ? parsedSeconds * 1000 : defaultTimeout
 
   // For embedded ripgrep, use spawn with argv0 (execFile doesn't support argv0 properly)
@@ -411,7 +399,7 @@ export async function ripGrep(
         logForDebugging(
           `rg EAGAIN error detected, retrying with single-threaded mode (-j 1)`,
         )
-        logEvent('tengu_ripgrep_eagain_retry', {})
+        logEvent('nexus_ripgrep_eagain_retry', {})
         ripGrepRaw(
           args,
           target,
@@ -618,7 +606,7 @@ const testRipgrepOnFirstUse = memoize(async (): Promise<void> => {
     )
 
     // Log telemetry for actual ripgrep availability
-    logEvent('tengu_ripgrep_availability', {
+    logEvent('nexus_ripgrep_availability', {
       working: working ? 1 : 0,
       using_system: config.mode === 'system' ? 1 : 0,
     })

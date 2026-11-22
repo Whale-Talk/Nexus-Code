@@ -91,7 +91,7 @@ import {
   extractDiscoveredToolNames,
   isToolSearchEnabled,
 } from '../../utils/toolSearch.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -99,7 +99,7 @@ import {
 import {
   getMaxOutputTokensForModel,
   queryModelWithStreaming,
-} from '../api/claude.js'
+} from '../api/inference.js'
 import {
   getPromptTooLongTokenGap,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
@@ -122,7 +122,7 @@ import {
 export const POST_COMPACT_MAX_FILES_TO_RESTORE = 5
 export const POST_COMPACT_TOKEN_BUDGET = 50_000
 export const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000
-// Skills can be large (verify=18.7KB, claude-api=20.1KB). Previously re-injected
+// Skills can be large (verify=18.7KB, nexus-api=20.1KB). Previously re-injected
 // unbounded on every compact → 5-10K tok/compact. Per-skill truncation beats
 // dropping — instructions at the top of a skill file are usually the critical
 // part. Budget sized to hold ~5 skills at the per-skill cap.
@@ -311,7 +311,7 @@ export interface CompactionResult {
 
 /**
  * Diagnosis context passed from autoCompactIfNeeded into compactConversation.
- * Lets the tengu_compact event disambiguate same-chain loops (H2) from
+ * Lets the nexus_compact event disambiguate same-chain loops (H2) from
  * cross-agent (H1/H5) and manual-vs-auto (H3) compactions without joins.
  */
 export type RecompactionInfo = {
@@ -432,8 +432,8 @@ export async function compactConversation(
     // Experiment (Jan 2026) confirmed: false path is 98% cache miss, costs ~0.76% of
     // fleet cache_creation (~38B tok/day), concentrated in ephemeral envs (CCR/GHA/SDK)
     // with cold GB cache and 3P providers where GB is disabled. GB gate kept as kill-switch.
-    const promptCacheSharingEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_compact_cache_prefix',
+    const promptCacheSharingEnabled = getFeatureValue(
+      'nexus_compact_cache_prefix',
       true,
     )
 
@@ -467,7 +467,7 @@ export async function compactConversation(
           ? truncateHeadForPTLRetry(messagesToSummarize, summaryResponse)
           : null
       if (!truncated) {
-        logEvent('tengu_compact_failed', {
+        logEvent('nexus_compact_failed', {
           reason:
             'prompt_too_long' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           preCompactTokenCount,
@@ -476,7 +476,7 @@ export async function compactConversation(
         })
         throw new Error(ERROR_MESSAGE_PROMPT_TOO_LONG)
       }
-      logEvent('tengu_compact_ptl_retry', {
+      logEvent('nexus_compact_ptl_retry', {
         attempt: ptlAttempts,
         droppedMessages: messagesToSummarize.length - truncated.length,
         remainingMessages: truncated.length,
@@ -495,7 +495,7 @@ export async function compactConversation(
         `Compact failed: no summary text in response. Response: ${jsonStringify(summaryResponse)}`,
         { level: 'error' },
       )
-      logEvent('tengu_compact_failed', {
+      logEvent('nexus_compact_failed', {
         reason:
           'no_summary' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         preCompactTokenCount,
@@ -505,7 +505,7 @@ export async function compactConversation(
         `Failed to generate conversation summary - response did not contain valid text content`,
       )
     } else if (startsWithApiErrorPrefix(summary)) {
-      logEvent('tengu_compact_failed', {
+      logEvent('nexus_compact_failed', {
         reason:
           'api_error' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         preCompactTokenCount,
@@ -647,7 +647,7 @@ export async function compactConversation(
     const querySourceForEvent =
       recompactionInfo?.querySource ?? context.options.querySource ?? 'unknown'
 
-    logEvent('tengu_compact', {
+    logEvent('nexus_compact', {
       preCompactTokenCount,
       // Kept for continuity — semantically the compact API call's total usage
       postCompactTokenCount: compactionCallTotalTokens,
@@ -877,7 +877,7 @@ export async function partialCompactConversation(
           ? truncateHeadForPTLRetry(apiMessages, summaryResponse)
           : null
       if (!truncated) {
-        logEvent('tengu_partial_compact_failed', {
+        logEvent('nexus_partial_compact_failed', {
           reason:
             'prompt_too_long' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           ...failureMetadata,
@@ -885,7 +885,7 @@ export async function partialCompactConversation(
         })
         throw new Error(ERROR_MESSAGE_PROMPT_TOO_LONG)
       }
-      logEvent('tengu_compact_ptl_retry', {
+      logEvent('nexus_compact_ptl_retry', {
         attempt: ptlAttempts,
         droppedMessages: apiMessages.length - truncated.length,
         remainingMessages: truncated.length,
@@ -898,7 +898,7 @@ export async function partialCompactConversation(
       }
     }
     if (!summary) {
-      logEvent('tengu_partial_compact_failed', {
+      logEvent('nexus_partial_compact_failed', {
         reason:
           'no_summary' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         ...failureMetadata,
@@ -907,7 +907,7 @@ export async function partialCompactConversation(
         'Failed to generate conversation summary - response did not contain valid text content',
       )
     } else if (startsWithApiErrorPrefix(summary)) {
-      logEvent('tengu_partial_compact_failed', {
+      logEvent('nexus_partial_compact_failed', {
         reason:
           'api_error' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         ...failureMetadata,
@@ -987,7 +987,7 @@ export async function partialCompactConversation(
     ])
     const compactionUsage = getTokenUsage(summaryResponse)
 
-    logEvent('tengu_partial_compact', {
+    logEvent('nexus_partial_compact', {
       preCompactTokenCount,
       postCompactTokenCount,
       messagesKept: messagesToKeep.length,
@@ -1151,9 +1151,9 @@ async function streamCompactSummary({
   // When prompt cache sharing is enabled, use forked agent to reuse the
   // main conversation's cached prefix (system prompt, tools, context messages).
   // Falls back to regular streaming path on failure.
-  // 3P default: true — see comment at the other tengu_compact_cache_prefix read above.
-  const promptCacheSharingEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_compact_cache_prefix',
+  // 3P default: true — see comment at the other nexus_compact_cache_prefix read above.
+  const promptCacheSharingEnabled = getFeatureValue(
+    'nexus_compact_cache_prefix',
     true,
   )
   // Send keep-alive signals during compaction to prevent remote session
@@ -1181,7 +1181,7 @@ async function streamCompactSummary({
         // DO NOT set maxOutputTokens here. The fork piggybacks on the main thread's
         // prompt cache by sending identical cache-key params (system, tools, model,
         // messages prefix, thinking config). Setting maxOutputTokens would clamp
-        // budget_tokens via Math.min(budget, maxOutputTokens-1) in claude.ts,
+        // budget_tokens via Math.min(budget, maxOutputTokens-1) in nexus.ts,
         // creating a thinking config mismatch that invalidates the cache.
         // The streaming fallback path (below) can safely set maxOutputTokensOverride
         // since it doesn't share cache with the main thread.
@@ -1211,7 +1211,7 @@ async function streamCompactSummary({
           // Skip success logging for PTL error text — it's returned so the
           // caller's retry loop catches it, but it's not a successful summary.
           if (!assistantText.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE)) {
-            logEvent('tengu_compact_cache_sharing_success', {
+            logEvent('nexus_compact_cache_sharing_success', {
               preCompactTokenCount,
               outputTokens: result.totalUsage.output_tokens,
               cacheReadInputTokens: result.totalUsage.cache_read_input_tokens,
@@ -1232,14 +1232,14 @@ async function streamCompactSummary({
           `Compact cache sharing: no text in response, falling back. Response: ${jsonStringify(assistantMsg)}`,
           { level: 'warn' },
         )
-        logEvent('tengu_compact_cache_sharing_fallback', {
+        logEvent('nexus_compact_cache_sharing_fallback', {
           reason:
             'no_text_response' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           preCompactTokenCount,
         })
       } catch (error) {
         logError(error)
-        logEvent('tengu_compact_cache_sharing_fallback', {
+        logEvent('nexus_compact_cache_sharing_fallback', {
           reason:
             'error' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           preCompactTokenCount,
@@ -1248,8 +1248,8 @@ async function streamCompactSummary({
     }
 
     // Regular streaming path (fallback when cache sharing fails or is disabled)
-    const retryEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-      'tengu_compact_streaming_retry',
+    const retryEnabled = getFeatureValue(
+      'nexus_compact_streaming_retry',
       false,
     )
     const maxAttempts = retryEnabled ? MAX_COMPACT_STREAMING_RETRIES : 1
@@ -1361,7 +1361,7 @@ async function streamCompactSummary({
       }
 
       if (attempt < maxAttempts) {
-        logEvent('tengu_compact_streaming_retry', {
+        logEvent('nexus_compact_streaming_retry', {
           attempt,
           preCompactTokenCount,
           hasStartedStreaming,
@@ -1376,7 +1376,7 @@ async function streamCompactSummary({
         `Compact streaming failed after ${attempt} attempts. hasStartedStreaming=${hasStartedStreaming}`,
         { level: 'error' },
       )
-      logEvent('tengu_compact_failed', {
+      logEvent('nexus_compact_failed', {
         reason:
           'no_streaming_response' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         preCompactTokenCount,
@@ -1441,8 +1441,8 @@ export async function createPostCompactFileAttachments(
             maxTokens: POST_COMPACT_MAX_TOKENS_PER_FILE,
           },
         },
-        'tengu_post_compact_file_restore_success',
-        'tengu_post_compact_file_restore_error',
+        'nexus_post_compact_file_restore_success',
+        'nexus_post_compact_file_restore_error',
         'compact',
       )
       return attachment ? createAttachmentMessage(attachment) : null
@@ -1686,7 +1686,7 @@ function shouldExcludeFromPostCompactRestore(
     // If we can't get plan file path, continue with other checks
   }
 
-  // Exclude all types of claude.md files
+  // Exclude all types of nexus.md files
   // TODO: Refactor to use isMemoryFilePath() from nexusmd.ts for consistency
   // and to also match child directory memory files (.nexus/rules/*.md, etc.)
   try {

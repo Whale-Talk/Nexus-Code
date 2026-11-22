@@ -68,6 +68,8 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+x ctrl+k': 'chat:killAgents',
       [MODE_CYCLE_KEY]: 'chat:cycleMode',
       'meta+p': 'chat:modelPicker',
+      f2: 'command:config',
+      'ctrl+p': 'command:config',
       'meta+o': 'chat:fastMode',
       'meta+t': 'chat:thinkingToggle',
       enter: 'chat:submit',
@@ -117,10 +119,10 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       j: 'select:next',
       'ctrl+p': 'select:previous',
       'ctrl+n': 'select:next',
-      // Toggle/activate the selected setting (space only — enter saves & closes)
+      // Activate the selected setting and keep saving a separate action.
       space: 'select:accept',
-      // Save and close the config panel
-      enter: 'settings:close',
+      enter: 'select:accept',
+      'ctrl+s': 'settings:close',
       // Enter search mode
       '/': 'settings:search',
       // Retry loading usage data (only active on error)
@@ -303,6 +305,19 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       up: 'diff:previousFile',
       down: 'diff:nextFile',
       enter: 'diff:viewDetails',
+      pageup: 'diff:previousPage',
+      pagedown: 'diff:nextPage',
+      wheelup: 'diff:previousFile',
+      wheeldown: 'diff:nextFile',
+      home: 'diff:firstLine',
+      end: 'diff:lastLine',
+      '/': 'diff:search',
+      n: 'diff:nextMatch',
+      'shift+n': 'diff:previousMatch',
+      '[': 'diff:previousHunk',
+      ']': 'diff:nextHunk',
+      h: 'diff:panLeft',
+      l: 'diff:panRight',
       // Note: diff:back is handled by left arrow in detail mode
     },
   },

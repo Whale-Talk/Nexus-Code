@@ -27,6 +27,7 @@ function getInkModifiers(key: Key): InkModifiers {
  * that match our ParsedKeystroke.key format.
  */
 export function getKeyName(input: string, key: Key): string | null {
+  if (key.functionKey) return key.functionKey
   if (key.escape) return 'escape'
   if (key.return) return 'enter'
   if (key.tab) return 'tab'

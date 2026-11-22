@@ -13,7 +13,7 @@ import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { query } from '../../query.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js'
 import { cleanupAgentTracking } from '../../services/api/promptCacheBreakDetection.js'
 import {
@@ -57,7 +57,7 @@ import { clearSessionHooks } from '../../utils/hooks/sessionHooks.js'
 import { executeSubagentStartHooks } from '../../utils/hooks.js'
 import { createUserMessage } from '../../utils/messages.js'
 import { getAgentModel } from '../../utils/model/agent.js'
-import type { ModelAlias } from '../../utils/model/aliases.js'
+import type { ModelSelection } from '../../utils/model/roles.js'
 import {
   clearAgentTranscriptSubdir,
   recordSidechainTranscript,
@@ -285,7 +285,7 @@ export async function* runAgent({
     abortController?: AbortController
     agentId?: AgentId
   }
-  model?: ModelAlias
+  model?: ModelSelection
   maxTurns?: number
   /** Preserve toolUseResult on messages for subagents with viewable transcripts */
   preserveToolUseResults?: boolean
@@ -359,7 +359,7 @@ export async function* runAgent({
   }
 
   // Log API calls path for subagents (ant-only)
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     logForDebugging(
       `[Subagent ${agentDefinition.agentType}] API calls: ${getDisplayPath(getDumpPromptsPath(agentId))}`,
     )
@@ -386,12 +386,12 @@ export async function* runAgent({
   // NEXUS.md — the main agent has full context and interprets their output.
   // Dropping nexusMd here saves ~5-15 Gtok/week across 34M+ Explore spawns.
   // Explicit override.userContext from callers is preserved untouched.
-  // Kill-switch defaults true; flip tengu_slim_subagent_claudemd=false to revert.
+  // Kill-switch defaults true; flip nexus_slim_subagent_nexusmd=false to revert.
   const shouldOmitNexusMd =
     agentDefinition.omitNexusMd &&
     !override?.userContext &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_slim_subagent_claudemd', true)
-  const { claudeMd: _omittedNexusMd, ...userContextNoNexusMd } =
+    getFeatureValue('nexus_slim_subagent_nexusmd', true)
+  const { projectInstructions: _omittedNexusMd, ...userContextNoNexusMd } =
     baseUserContext
   const resolvedUserContext = shouldOmitNexusMd
     ? userContextNoNexusMd
@@ -409,17 +409,18 @@ export async function* runAgent({
       ? systemContextNoGit
       : baseSystemContext
 
-  // Override permission mode if agent defines one
-  // However, don't override if parent is in bypassPermissions or acceptEdits mode - those should always take precedence
-  // For async agents, also set shouldAvoidPermissionPrompts since they can't show UI
   const agentPermissionMode = agentDefinition.permissionMode
   const agentGetAppState = () => {
     const state = toolUseContext.getAppState()
     let toolPermissionContext = state.toolPermissionContext
 
-    // Override permission mode if agent defines one (unless parent is bypassPermissions, acceptEdits, or auto)
+    // Local agents inherit the live plan/no-prompt restrictions. An agent
+    // definition cannot select bypass for the user.
     if (
       agentPermissionMode &&
+      agentPermissionMode !== 'bypassPermissions' &&
+      state.toolPermissionContext.mode !== 'plan' &&
+      state.toolPermissionContext.mode !== 'dontAsk' &&
       state.toolPermissionContext.mode !== 'bypassPermissions' &&
       state.toolPermissionContext.mode !== 'acceptEdits' &&
       !(

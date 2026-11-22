@@ -1,3 +1,4 @@
+import { getAuthHeaders as getSettingsSyncAuthHeaders } from '../../utils/http.js'
 /**
  * Settings Sync Service
  *
@@ -6,7 +7,7 @@
  * - Interactive CLI: Uploads local settings to remote (incremental, only changed entries)
  * - CCR: Downloads remote settings to local before plugin installation
  *
- * Backend API: anthropic/anthropic#218817
+ * Backend API: provider/provider#218817
  */
 
 import { feature } from 'bun:bundle'
@@ -16,13 +17,12 @@ import pickBy from 'lodash-es/pickBy.js'
 import { dirname } from 'path'
 import { getIsInteractive } from '../../bootstrap/state.js'
 import {
-  CLAUDE_AI_INFERENCE_SCOPE,
+  HOSTED_ACCOUNT_INFERENCE_SCOPE,
   getOauthConfig,
-  OAUTH_BETA_HEADER,
 } from '../../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
+  getHostedAccountOAuthTokens,
 } from '../../utils/auth.js'
 import { clearMemoryFileCaches } from '../../utils/nexusmd.js'
 import { getMemoryPath } from '../../utils/config.js'
@@ -31,14 +31,14 @@ import { classifyAxiosError } from '../../utils/errors.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
+  hasHostedAccountService,
 } from '../../utils/model/providers.js'
 import { markInternalWrite } from '../../utils/settings/internalWrites.js'
 import { getSettingsFilePathForSource } from '../../utils/settings/settings.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { sleep } from '../../utils/sleep.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getNexusUserAgent } from '../../utils/userAgent.js'
+import { getFeatureValue } from '../analytics/featureFlags.js'
 import { logEvent } from '../analytics/index.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {
@@ -61,15 +61,15 @@ export async function uploadUserSettingsInBackground(): Promise<void> {
   try {
     if (
       !feature('UPLOAD_USER_SETTINGS') ||
-      !getFeatureValue_CACHED_MAY_BE_STALE(
-        'tengu_enable_settings_sync_push',
+      !getFeatureValue(
+        'nexus_enable_settings_sync_push',
         false,
       ) ||
       !getIsInteractive() ||
       !isUsingOAuth()
     ) {
       logForDiagnosticsNoPII('info', 'settings_sync_upload_skipped')
-      logEvent('tengu_settings_sync_upload_skipped_ineligible', {})
+      logEvent('nexus_settings_sync_upload_skipped_ineligible', {})
       return
     }
 
@@ -77,7 +77,7 @@ export async function uploadUserSettingsInBackground(): Promise<void> {
     const result = await fetchUserSettings()
     if (!result.success) {
       logForDiagnosticsNoPII('warn', 'settings_sync_upload_fetch_failed')
-      logEvent('tengu_settings_sync_upload_fetch_failed', {})
+      logEvent('nexus_settings_sync_upload_fetch_failed', {})
       return
     }
 
@@ -92,17 +92,17 @@ export async function uploadUserSettingsInBackground(): Promise<void> {
     const entryCount = Object.keys(changedEntries).length
     if (entryCount === 0) {
       logForDiagnosticsNoPII('info', 'settings_sync_upload_no_changes')
-      logEvent('tengu_settings_sync_upload_skipped', {})
+      logEvent('nexus_settings_sync_upload_skipped', {})
       return
     }
 
     const uploadResult = await uploadUserSettings(changedEntries)
     if (uploadResult.success) {
       logForDiagnosticsNoPII('info', 'settings_sync_upload_success')
-      logEvent('tengu_settings_sync_upload_success', { entryCount })
+      logEvent('nexus_settings_sync_upload_success', { entryCount })
     } else {
       logForDiagnosticsNoPII('warn', 'settings_sync_upload_failed')
-      logEvent('tengu_settings_sync_upload_failed', { entryCount })
+      logEvent('nexus_settings_sync_upload_failed', { entryCount })
     }
   } catch {
     // Fail-open: log unexpected errors but don't block startup
@@ -160,11 +160,11 @@ async function doDownloadUserSettings(
   if (feature('DOWNLOAD_USER_SETTINGS')) {
     try {
       if (
-        !getFeatureValue_CACHED_MAY_BE_STALE('tengu_strap_foyer', false) ||
+        !getFeatureValue('nexus_strap_foyer', false) ||
         !isUsingOAuth()
       ) {
         logForDiagnosticsNoPII('info', 'settings_sync_download_skipped')
-        logEvent('tengu_settings_sync_download_skipped', {})
+        logEvent('nexus_settings_sync_download_skipped', {})
         return false
       }
 
@@ -172,13 +172,13 @@ async function doDownloadUserSettings(
       const result = await fetchUserSettings(maxRetries)
       if (!result.success) {
         logForDiagnosticsNoPII('warn', 'settings_sync_download_fetch_failed')
-        logEvent('tengu_settings_sync_download_fetch_failed', {})
+        logEvent('nexus_settings_sync_download_fetch_failed', {})
         return false
       }
 
       if (result.isEmpty) {
         logForDiagnosticsNoPII('info', 'settings_sync_download_empty')
-        logEvent('tengu_settings_sync_download_empty', {})
+        logEvent('nexus_settings_sync_download_empty', {})
         return false
       }
 
@@ -189,12 +189,12 @@ async function doDownloadUserSettings(
         entryCount,
       })
       await applyRemoteEntriesToLocal(entries, projectId)
-      logEvent('tengu_settings_sync_download_success', { entryCount })
+      logEvent('nexus_settings_sync_download_success', { entryCount })
       return true
     } catch {
       // Fail-open: log error but don't block CCR startup
       logForDiagnosticsNoPII('error', 'settings_sync_download_error')
-      logEvent('tengu_settings_sync_download_error', {})
+      logEvent('nexus_settings_sync_download_error', {})
       return false
     }
   }
@@ -210,39 +210,20 @@ async function doDownloadUserSettings(
  * download a no-op there. Upload is independently guarded by getIsInteractive().
  */
 function isUsingOAuth(): boolean {
-  if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {
+  if (getAPIProvider() !== 'channel' || !hasHostedAccountService()) {
     return false
   }
 
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   return Boolean(
-    tokens?.accessToken && tokens.scopes?.includes(CLAUDE_AI_INFERENCE_SCOPE),
+    tokens?.accessToken && tokens.scopes?.includes(HOSTED_ACCOUNT_INFERENCE_SCOPE),
   )
 }
 
 function getSettingsSyncEndpoint(): string {
-  return `${getOauthConfig().BASE_API_URL}/api/claude_code/user_settings`
+  return `${getOauthConfig().BASE_API_URL}/api/nexus_code/user_settings`
 }
 
-function getSettingsSyncAuthHeaders(): {
-  headers: Record<string, string>
-  error?: string
-} {
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (oauthTokens?.accessToken) {
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
-  }
-
-  return {
-    headers: {},
-    error: 'No OAuth token available',
-  }
-}
 
 async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
   try {
@@ -259,7 +240,7 @@ async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
 
     const headers: Record<string, string> = {
       ...authHeaders.headers,
-      'User-Agent': getClaudeCodeUserAgent(),
+      'User-Agent': getNexusUserAgent(),
     }
 
     const endpoint = getSettingsSyncEndpoint()
@@ -360,7 +341,7 @@ async function uploadUserSettings(
 
     const headers: Record<string, string> = {
       ...authHeaders.headers,
-      'User-Agent': getClaudeCodeUserAgent(),
+      'User-Agent': getNexusUserAgent(),
       'Content-Type': 'application/json',
     }
 

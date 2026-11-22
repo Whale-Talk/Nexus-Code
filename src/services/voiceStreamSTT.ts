@@ -1,8 +1,8 @@
-// Anthropic voice_stream speech-to-text client for push-to-talk.
+// Provider voice_stream speech-to-text client for push-to-talk.
 //
 // Only reachable in ant builds (gated by feature('VOICE_MODE') in useVoice.ts import).
 //
-// Connects to Anthropic's voice_stream WebSocket endpoint using the same
+// Connects to Provider's voice_stream WebSocket endpoint using the same
 // OAuth credentials as Nexus Code.  The endpoint uses conversation_engine
 // backed models for speech-to-text.  Designed for hold-to-talk: hold the
 // keybinding to record, release to stop and submit.
@@ -16,8 +16,8 @@ import WebSocket from 'ws'
 import { getOauthConfig } from '../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  isAnthropicAuthEnabled,
+  getHostedAccountOAuthTokens,
+  isHostedLoginEnabled,
 } from '../utils/auth.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getUserAgent } from '../utils/http.js'
@@ -29,7 +29,7 @@ import { jsonParse, jsonStringify } from '../utils/slowOperations.js'
 const KEEPALIVE_MSG = '{"type":"KeepAlive"}'
 const CLOSE_STREAM_MSG = '{"type":"CloseStream"}'
 
-import { getFeatureValue_CACHED_MAY_BE_STALE } from './analytics/growthbook.js'
+import { getFeatureValue } from './analytics/featureFlags.js'
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -56,7 +56,6 @@ export type VoiceStreamCallbacks = {
 }
 
 // How finalize() resolved. `no_data_timeout` means zero server messages
-// after CloseStream — the silent-drop signature (anthropics/anthropic#287008).
 export type FinalizeSource =
   | 'post_closestream_endpoint'
   | 'no_data_timeout'
@@ -97,12 +96,11 @@ type VoiceStreamMessage =
 
 export function isVoiceStreamAvailable(): boolean {
   // voice_stream uses the same OAuth as Nexus Code — available when the
-  // user is authenticated with Anthropic (Claude.ai subscriber or has
   // valid OAuth tokens).
-  if (!isAnthropicAuthEnabled()) {
+  if (!isHostedLoginEnabled()) {
     return false
   }
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   return tokens !== null && tokens.accessToken !== null
 }
 
@@ -115,19 +113,15 @@ export async function connectVoiceStream(
   // Ensure OAuth token is fresh before connecting
   await checkAndRefreshOAuthTokenIfNeeded()
 
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = getHostedAccountOAuthTokens()
   if (!tokens?.accessToken) {
     logForDebugging('[voice_stream] No OAuth token available')
     return null
   }
 
   // voice_stream is a private_api route, but /api/ws/ is also exposed on
-  // the api.anthropic.com listener (service_definitions.yaml private-api:
-  // visibility.external: true). We target that host instead of claude.ai
-  // because the claude.ai CF zone uses TLS fingerprinting and challenges
-  // non-browser clients (anthropics/claude-code#34094). Same private-api
+  // non-browser clients (Whale-Talk/Nexus-Code#34094). Same private-api
   // pod, same OAuth Bearer auth — just a CF zone that doesn't block us.
-  // Desktop dictation still uses claude.ai (Swift URLSession has a
   // browser-class JA3 fingerprint, so CF lets it through).
   const wsBaseUrl =
     process.env.VOICE_STREAM_BASE_URL ||
@@ -152,16 +146,15 @@ export async function connectVoiceStream(
 
   // Route through conversation-engine with Deepgram Nova 3 (bypassing
   // the server's project_bell_v2_config GrowthBook gate). The server
-  // side is anthropics/anthropic#278327 + #281372; this lets us ramp
   // clients independently.
-  const isNova3 = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_cobalt_frost',
+  const isNova3 = getFeatureValue(
+    'nexus_cobalt_frost',
     false,
   )
   if (isNova3) {
     params.set('use_conversation_engine', 'true')
     params.set('stt_provider', 'deepgram-nova3')
-    logForDebugging('[voice_stream] Nova 3 gate enabled (tengu_cobalt_frost)')
+    logForDebugging('[voice_stream] Nova 3 gate enabled (nexus_cobalt_frost)')
   }
 
   // Append keyterms as query params — the voice_stream proxy forwards
@@ -511,7 +504,7 @@ export async function connectVoiceStream(
   ws.on('unexpected-response', (req: ClientRequest, res: IncomingMessage) => {
     const status = res.statusCode ?? 0
     // Bun's ws implementation on Windows can fire this event for a
-    // successful 101 Switching Protocols response (anthropics/claude-code#40510).
+    // successful 101 Switching Protocols response (Whale-Talk/Nexus-Code#40510).
     // 101 is never a rejection — bail before we destroy a working upgrade.
     if (status === 101) {
       logForDebugging(

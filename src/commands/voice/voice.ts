@@ -2,7 +2,7 @@ import { normalizeLanguageForSTT } from '../../hooks/useVoice.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { LocalCommandCall } from '../../types/command.js'
-import { isAnthropicAuthEnabled } from '../../utils/auth.js'
+import { isHostedLoginEnabled } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import {
@@ -18,11 +18,11 @@ export const call: LocalCommandCall = async () => {
   if (!isVoiceModeEnabled()) {
     // Differentiate: OAuth-less users get an auth hint, everyone else
     // gets nothing (command shouldn't be reachable when the kill-switch is on).
-    if (!isAnthropicAuthEnabled()) {
+    if (!isHostedLoginEnabled()) {
       return {
         type: 'text' as const,
         value:
-          'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+          'Voice mode requires a hosted account. Please run /login to sign in.',
       }
     }
     return {
@@ -47,7 +47,7 @@ export const call: LocalCommandCall = async () => {
       }
     }
     settingsChangeDetector.notifyChange('userSettings')
-    logEvent('tengu_voice_toggled', { enabled: false })
+    logEvent('nexus_voice_toggled', { enabled: false })
     return {
       type: 'text' as const,
       value: 'Voice mode disabled.',
@@ -75,7 +75,7 @@ export const call: LocalCommandCall = async () => {
     return {
       type: 'text' as const,
       value:
-        'Voice mode requires a Claude.ai account. Please run /login to sign in.',
+        'Voice mode requires a hosted account. Please run /login to sign in.',
     }
   }
 
@@ -121,7 +121,7 @@ export const call: LocalCommandCall = async () => {
     }
   }
   settingsChangeDetector.notifyChange('userSettings')
-  logEvent('tengu_voice_toggled', { enabled: true })
+  logEvent('nexus_voice_toggled', { enabled: true })
   const key = getShortcutDisplay('voice:pushToTalk', 'Chat', 'Space')
   const stt = normalizeLanguageForSTT(currentSettings.language)
   const cfg = getGlobalConfig()

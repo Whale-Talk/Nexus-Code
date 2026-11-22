@@ -20,7 +20,7 @@ export function WelcomeV2() {
   }
   let t1;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Box flexDirection="column" alignItems="center" width={WELCOME_V2_WIDTH}><Text><Text color="claude">{"欢迎使用 Nexus Code"} </Text><Text dimColor={true}>v{MACRO.VERSION} </Text></Text><NexusLogo /></Box>;
+    t1 = <Box flexDirection="column" alignItems="center" width={WELCOME_V2_WIDTH}><Text><Text color="nexus">{"欢迎使用 Nexus Code"} </Text><Text dimColor={true}>v{MACRO.VERSION} </Text></Text><NexusLogo /></Box>;
     $[2] = t1;
   } else {
     t1 = $[2];

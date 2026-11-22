@@ -21,7 +21,7 @@ import type { AssistantMessage } from 'src/types/message.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import type { EffortLevel } from 'src/utils/effort.js'
 import { logError } from 'src/utils/log.js'
-import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
+import { getAPIProviderForTelemetry } from 'src/utils/model/providers.js'
 import type { PermissionMode } from 'src/utils/permissions/PermissionMode.js'
 import { jsonStringify } from 'src/utils/slowOperations.js'
 import { logOTelEvent } from 'src/utils/telemetry/events.js'
@@ -140,7 +140,7 @@ function detectGateway({
   return undefined
 }
 
-function getAnthropicEnvMetadata() {
+function getProviderEnvMetadata() {
   return {
     ...(process.env.NEXUS_BASE_URL
       ? {
@@ -195,11 +195,11 @@ export function logAPIQuery({
   fastMode?: boolean
   previousRequestId?: string | null
 }): void {
-  logEvent('tengu_api_query', {
+  logEvent('nexus_api_query', {
     model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     messagesLength,
     temperature: temperature,
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForTelemetry(),
     buildAgeMins: getBuildAgeMinutes(),
     ...(betas?.length
       ? {
@@ -230,7 +230,7 @@ export function logAPIQuery({
             previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getProviderEnvMetadata(),
   })
 }
 
@@ -303,7 +303,7 @@ export function logAPIError({
   }
 
   logError(error as Error)
-  logEvent('tengu_api_error', {
+  logEvent('nexus_api_error', {
     model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     error: errStr as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     status:
@@ -315,7 +315,7 @@ export function logAPIError({
     durationMs,
     durationMsIncludingRetries,
     attempt,
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForTelemetry(),
     requestId:
       (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ||
       undefined,
@@ -363,7 +363,7 @@ export function logAPIError({
             previousRequestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         }
       : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getProviderEnvMetadata(),
   })
 
   // Log API error event for OTLP
@@ -387,7 +387,7 @@ export function logAPIError({
   // Log first error for teleported sessions (reliability tracking)
   const teleportInfo = getTeleportedSessionInfo()
   if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    logEvent('tengu_teleport_first_message_error', {
+    logEvent('nexus_teleport_first_message_error', {
       session_id:
         teleportInfo.sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       error_type:
@@ -462,7 +462,7 @@ function logAPISuccess({
 
   const invocation = consumeInvokingRequestId()
 
-  logEvent('tengu_api_success', {
+  logEvent('nexus_api_success', {
     model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     ...(preNormalizedModel !== model
       ? {
@@ -488,7 +488,7 @@ function logAPISuccess({
     attempt: attempt,
     ttftMs: ttftMs ?? undefined,
     buildAgeMins: getBuildAgeMinutes(),
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForTelemetry(),
     requestId:
       (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
       undefined,
@@ -573,7 +573,7 @@ function logAPISuccess({
         }
       : {}),
     ...(isPostCompaction ? { isPostCompaction } : {}),
-    ...getAnthropicEnvMetadata(),
+    ...getProviderEnvMetadata(),
     timeSinceLastApiCallMs,
   })
 
@@ -745,7 +745,7 @@ export function logAPISuccessAndDuration({
         .join('\n') || undefined
 
     // Thinking output - Ant-only (build-time gated)
-    if (process.env.USER_TYPE === 'ant') {
+    if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
       thinkingOutput =
         newMessages
           .flatMap(m =>
@@ -781,7 +781,7 @@ export function logAPISuccessAndDuration({
   // Log first successful message for teleported sessions (reliability tracking)
   const teleportInfo = getTeleportedSessionInfo()
   if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    logEvent('tengu_teleport_first_message_success', {
+    logEvent('nexus_teleport_first_message_success', {
       session_id:
         teleportInfo.sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })

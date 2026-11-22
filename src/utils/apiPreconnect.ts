@@ -1,5 +1,5 @@
 /**
- * Preconnect to the Anthropic API to overlap TCP+TLS handshake with startup.
+ * Preconnect to the Provider API to overlap TCP+TLS handshake with startup.
  *
  * The TCP+TLS handshake is ~100-200ms that normally blocks inside the first
  * API call. Kicking a fire-and-forget fetch during init lets the handshake
@@ -28,15 +28,15 @@ import { isEnvTruthy } from './envUtils.js'
 
 let fired = false
 
-export function preconnectAnthropicApi(): void {
+export function preconnectProviderApi(): void {
   if (fired) return
   fired = true
 
   // Skip if using a cloud provider — different endpoint + auth
   if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
+    isEnvTruthy(process.env.NEXUS_USE_BEDROCK) ||
+    isEnvTruthy(process.env.NEXUS_USE_VERTEX) ||
+    isEnvTruthy(process.env.NEXUS_USE_FOUNDRY)
   ) {
     return
   }
@@ -46,9 +46,9 @@ export function preconnectAnthropicApi(): void {
     process.env.https_proxy ||
     process.env.HTTP_PROXY ||
     process.env.http_proxy ||
-    process.env.ANTHROPIC_UNIX_SOCKET ||
-    process.env.CLAUDE_CODE_CLIENT_CERT ||
-    process.env.CLAUDE_CODE_CLIENT_KEY
+    process.env.NEXUS_PROVIDER_UNIX_SOCKET ||
+    process.env.NEXUS_CLIENT_CERT ||
+    process.env.NEXUS_CLIENT_KEY
   ) {
     return
   }

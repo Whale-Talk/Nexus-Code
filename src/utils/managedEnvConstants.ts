@@ -2,61 +2,53 @@
  * Environment variables that control inference routing: which provider to use,
  * which endpoint to hit, and which model IDs to send.
  *
- * When CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST is truthy in the spawn env, these
+ * When NEXUS_PROVIDER_MANAGED_BY_HOST is truthy in the spawn env, these
  * are stripped from settings-sourced env so the host's routing config isn't
  * overridden by a user's ~/.nexus/settings.json — e.g. a Bedrock setup for
  * terminal CLI that would break a host that only supports first-party auth.
  *
  * @[MODEL LAUNCH]: New models usually don't need changes here —
- * VERTEX_REGION_CLAUDE_* is prefix-matched. New providers or new routing
+ * VERTEX_REGION_NEXUS_* is prefix-matched. New providers or new routing
  * config vars (endpoint, project, region, auth) do.
  */
 const PROVIDER_MANAGED_ENV_VARS = new Set([
   // The flag itself — settings can't unset it once the host set it
-  'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
+  'NEXUS_PROVIDER_MANAGED_BY_HOST',
   // Provider selection
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_VERTEX',
-  'CLAUDE_CODE_USE_FOUNDRY',
+  'NEXUS_USE_BEDROCK',
+  'NEXUS_USE_VERTEX',
+  'NEXUS_USE_FOUNDRY',
   // Endpoint config (base URLs, project/resource identifiers)
   'NEXUS_BASE_URL',
-  'ANTHROPIC_BEDROCK_BASE_URL',
-  'ANTHROPIC_VERTEX_BASE_URL',
+  'NEXUS_BEDROCK_BASE_URL',
+  'NEXUS_VERTEX_BASE_URL',
   'NEXUS_FOUNDRY_BASE_URL',
   'NEXUS_FOUNDRY_RESOURCE',
   'NEXUS_VERTEX_PROJECT_ID',
-  // Region routing (per-model VERTEX_REGION_CLAUDE_* handled by prefix below)
+  // Region routing (per-model VERTEX_REGION_NEXUS_* handled by prefix below)
   'CLOUD_ML_REGION',
   // Auth
   'NEXUS_API_KEY',
   // Nexus: NEXUS_AUTH_TOKEN is NOT provider-managed — new-api relays
   // authenticate via Bearer tokens from settings.env.
-  'CLAUDE_CODE_OAUTH_TOKEN',
+  'NEXUS_OAUTH_TOKEN',
   'AWS_BEARER_TOKEN_BEDROCK',
   'NEXUS_FOUNDRY_API_KEY',
-  'CLAUDE_CODE_SKIP_BEDROCK_AUTH',
-  'CLAUDE_CODE_SKIP_VERTEX_AUTH',
-  'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
-  // Model defaults — the launcher sets provider-specific model IDs that
-  // MUST flow through. Settings (e.g. stale ~/.nexus/settings.json from
-  // upstream Claude Code) must NOT override them — otherwise the model
-  // becomes claude-sonnet-4-6 and the relay returns 503.
+  'NEXUS_SKIP_BEDROCK_AUTH',
+  'NEXUS_SKIP_VERTEX_AUTH',
+  'NEXUS_SKIP_FOUNDRY_AUTH',
+  // Preserve the physical model IDs already selected by the launcher.
   'NEXUS_MODEL',
-  'ANTHROPIC_MODEL',
   'NEXUS_QUARK_MODEL',
   'NEXUS_ATOM_MODEL',
   'NEXUS_ELECTRON_MODEL',
-  'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'NEXUS_SUBAGENT_MODEL',
-  'CLAUDE_CODE_SUBAGENT_MODEL',
 ])
 
 const PROVIDER_MANAGED_ENV_PREFIXES = [
   // Per-model Vertex region overrides — scales with model releases, so
   // prefix-matched to avoid drift on each launch.
-  'VERTEX_REGION_CLAUDE_',
+  'VERTEX_REGION_NEXUS_',
 ]
 
 export function isProviderManagedEnvVar(key: string): boolean {
@@ -90,7 +82,7 @@ export const DANGEROUS_SHELL_SETTINGS = [
  * Dangerous env vars (NOT in this list):
  *
  * === REDIRECT TO ATTACKER-CONTROLLED SERVER ===
- * - NEXUS_BASE_URL, ANTHROPIC_BEDROCK_BASE_URL, NEXUS_FOUNDRY_BASE_URL, ANTHROPIC_VERTEX_BASE_URL
+ * - NEXUS_BASE_URL, NEXUS_BEDROCK_BASE_URL, NEXUS_FOUNDRY_BASE_URL, NEXUS_VERTEX_BASE_URL
  * - HTTP_PROXY, HTTPS_PROXY, NO_PROXY, http_proxy, https_proxy, no_proxy
  * - OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
  *
@@ -116,21 +108,21 @@ export const SAFE_ENV_VARS = new Set([
   'BASH_DEFAULT_TIMEOUT_MS',
   'BASH_MAX_OUTPUT_LENGTH',
   'BASH_MAX_TIMEOUT_MS',
-  'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR',
-  'CLAUDE_CODE_API_KEY_HELPER_TTL_MS',
-  'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
-  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-  'CLAUDE_CODE_DISABLE_TERMINAL_TITLE',
-  'CLAUDE_CODE_ENABLE_TELEMETRY',
-  'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS',
-  'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL',
-  'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
-  'CLAUDE_CODE_SKIP_BEDROCK_AUTH',
-  'CLAUDE_CODE_SKIP_FOUNDRY_AUTH',
-  'CLAUDE_CODE_SKIP_VERTEX_AUTH',
-  'CLAUDE_CODE_USE_BEDROCK',
-  'CLAUDE_CODE_USE_FOUNDRY',
-  'CLAUDE_CODE_USE_VERTEX',
+  'NEXUS_BASH_MAINTAIN_PROJECT_WORKING_DIR',
+  'NEXUS_API_KEY_HELPER_TTL_MS',
+  'NEXUS_DISABLE_EXPERIMENTAL_BETAS',
+  'NEXUS_DISABLE_NONESSENTIAL_TRAFFIC',
+  'NEXUS_DISABLE_TERMINAL_TITLE',
+  'NEXUS_ENABLE_TELEMETRY',
+  'NEXUS_EXPERIMENTAL_AGENT_TEAMS',
+  'NEXUS_IDE_SKIP_AUTO_INSTALL',
+  'NEXUS_MAX_OUTPUT_TOKENS',
+  'NEXUS_SKIP_BEDROCK_AUTH',
+  'NEXUS_SKIP_FOUNDRY_AUTH',
+  'NEXUS_SKIP_VERTEX_AUTH',
+  'NEXUS_USE_BEDROCK',
+  'NEXUS_USE_FOUNDRY',
+  'NEXUS_USE_VERTEX',
   'DISABLE_AUTOUPDATER',
   'DISABLE_BUG_COMMAND',
   'DISABLE_COST_WARNINGS',
@@ -162,13 +154,13 @@ export const SAFE_ENV_VARS = new Set([
   'OTEL_METRICS_INCLUDE_VERSION',
   'OTEL_RESOURCE_ATTRIBUTES',
   'USE_BUILTIN_RIPGREP',
-  'VERTEX_REGION_CLAUDE_3_5_HAIKU',
-  'VERTEX_REGION_CLAUDE_3_5_SONNET',
-  'VERTEX_REGION_CLAUDE_3_7_SONNET',
-  'VERTEX_REGION_CLAUDE_4_0_OPUS',
-  'VERTEX_REGION_CLAUDE_4_0_SONNET',
-  'VERTEX_REGION_CLAUDE_4_1_OPUS',
-  'VERTEX_REGION_CLAUDE_4_5_SONNET',
-  'VERTEX_REGION_CLAUDE_4_6_SONNET',
-  'VERTEX_REGION_CLAUDE_HAIKU_4_5',
+  'VERTEX_REGION_NEXUS_3_5_ELECTRON',
+  'VERTEX_REGION_NEXUS_3_5_ATOM',
+  'VERTEX_REGION_NEXUS_3_7_ATOM',
+  'VERTEX_REGION_NEXUS_4_0_QUARK',
+  'VERTEX_REGION_NEXUS_4_0_ATOM',
+  'VERTEX_REGION_NEXUS_4_1_QUARK',
+  'VERTEX_REGION_NEXUS_4_5_ATOM',
+  'VERTEX_REGION_NEXUS_4_6_ATOM',
+  'VERTEX_REGION_NEXUS_ELECTRON_4_5',
 ])

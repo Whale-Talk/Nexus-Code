@@ -4,6 +4,16 @@ import type { Tool } from '../Tool.js'
 import type { AssistantMessage } from '../types/message.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 
+export type RemotePermissionResponse =
+  | {
+      behavior: 'allow'
+      updatedInput: Record<string, unknown>
+    }
+  | {
+      behavior: 'deny'
+      message: string
+    }
+
 /**
  * Create a synthetic AssistantMessage for remote permission requests.
  * The ToolUseConfirm type requires an AssistantMessage, but in remote mode

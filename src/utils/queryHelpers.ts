@@ -82,7 +82,7 @@ export function isResultSuccessful(
 
   // Carve-out: API completed (message_delta set stop_reason) but yielded
   // no assistant content — last(messages) is still this turn's prompt.
-  // claude.ts:2026 recognizes end_turn-with-zero-content-blocks as
+  // nexus.ts:2026 recognizes end_turn-with-zero-content-blocks as
   // legitimate and passes through without throwing. Observed on
   // task_notification drain turns: model returns stop_reason=end_turn,
   // outputTokens=4, textContentLength=0 — it saw the subagent result
@@ -161,8 +161,8 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         // Filter bash progress to send only one per minute
         // Only emit for Nexus Code Remote for now
         if (
-          !isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-          !process.env.CLAUDE_CODE_CONTAINER_ID
+          !isEnvTruthy(process.env.NEXUS_REMOTE) &&
+          !process.env.NEXUS_CONTAINER_ID
         ) {
           break
         }

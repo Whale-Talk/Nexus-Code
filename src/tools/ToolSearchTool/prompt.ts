@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { isReplBridgeActive } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import type { Tool } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 
@@ -34,8 +34,8 @@ const PROMPT_HEAD = `Fetches full schema definitions for deferred tools so they 
 // <available-deferred-tools> block (pre-gate behavior).
 function getToolLocationHint(): string {
   const deltaEnabled =
-    process.env.USER_TYPE === 'ant' ||
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_glacier_2xr', false)
+    process.env.NEXUS_BUILD_FLAVOR === 'development' ||
+    getFeatureValue('nexus_glacier_2xr', false)
   return deltaEnabled
     ? 'Deferred tools appear by name in <system-reminder> messages.'
     : 'Deferred tools appear by name in <available-deferred-tools> messages.'
@@ -57,10 +57,10 @@ Query forms:
  * - It has shouldDefer: true
  *
  * A tool is NEVER deferred if it has alwaysLoad: true (MCP tools set this via
- * _meta['anthropic/alwaysLoad']). This check runs first, before any other rule.
+ * _meta['provider/alwaysLoad']). This check runs first, before any other rule.
  */
 export function isDeferredTool(tool: Tool): boolean {
-  // Explicit opt-out via _meta['anthropic/alwaysLoad'] — tool appears in the
+  // Explicit opt-out via _meta['provider/alwaysLoad'] — tool appears in the
   // initial prompt with full schema. Checked first so MCP tools can opt out.
   if (tool.alwaysLoad === true) return false
 

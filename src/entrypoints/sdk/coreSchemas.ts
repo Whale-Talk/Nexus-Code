@@ -148,21 +148,7 @@ export const McpServerConfigForProcessTransportSchema = lazySchema(() =>
   ]),
 )
 
-export const McpClaudeAIProxyServerConfigSchema = lazySchema(() =>
-  z.object({
-    type: z.literal('claudeai-proxy'),
-    url: z.string(),
-    id: z.string(),
-  }),
-)
-
-// Broader config type for status responses (includes claudeai-proxy which is output-only)
-export const McpServerStatusConfigSchema = lazySchema(() =>
-  z.union([
-    McpServerConfigForProcessTransportSchema(),
-    McpClaudeAIProxyServerConfigSchema(),
-  ]),
-)
+export const McpServerStatusConfigSchema = McpServerConfigForProcessTransportSchema
 
 export const McpServerStatusSchema = lazySchema(() =>
   z
@@ -189,7 +175,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Configuration scope (e.g., project, user, local, claudeai, managed)',
+          'Configuration scope (e.g., project, user, local, hostedAccount, managed)',
         ),
       tools: z
         .array(
@@ -213,7 +199,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         })
         .optional()
         .describe(
-          "@internal Server capabilities (available when connected). experimental['claude/channel'] is only present if the server's plugin is on the approved channels allowlist — use its presence to decide whether to show an Enable-channel prompt.",
+          "@internal Server capabilities (available when connected). experimental['nexus/channel'] is only present if the server's plugin is on the approved channels allowlist — use its presence to decide whether to show an Enable-channel prompt.",
         ),
     })
     .describe('Status information for an MCP server connection.'),
@@ -1087,10 +1073,10 @@ export const AccountInfoSchema = lazySchema(() =>
       tokenSource: z.string().optional(),
       apiKeySource: z.string().optional(),
       apiProvider: z
-        .enum(['firstParty', 'bedrock', 'vertex', 'foundry'])
+        .enum(['channel', 'bedrock', 'vertex', 'foundry'])
         .optional()
         .describe(
-          'Active API backend. OAuth login only applies when "firstParty"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
+          'Active API backend. OAuth login only applies when "channel"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
         ),
     })
     .describe("Information about the logged in user's account."),
@@ -1128,7 +1114,7 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          "Model alias (e.g. 'sonnet', 'opus', 'haiku') or full model ID (e.g. 'claude-opus-4-5'). If omitted or 'inherit', uses the main model",
+          "Model alias (e.g. 'atom', 'quark', 'electron') or full model ID (e.g. 'work::coder'). If omitted or 'inherit', uses the main model",
         ),
       mcpServers: z.array(AgentMcpServerSpecSchema()).optional(),
       criticalSystemReminder_EXPERIMENTAL: z
@@ -1163,7 +1149,7 @@ export const AgentDefinitionSchema = lazySchema(() =>
         .enum(['user', 'project', 'local'])
         .optional()
         .describe(
-          "Scope for auto-loading agent memory files. 'user' - ~/.nexus/agent-memory/<agentType>/, 'project' - .claude/agent-memory/<agentType>/, 'local' - .claude/agent-memory-local/<agentType>/",
+          "Scope for auto-loading agent memory files. 'user' - ~/.nexus/agent-memory/<agentType>/, 'project' - .nexus/agent-memory/<agentType>/, 'local' - .nexus/agent-memory-local/<agentType>/",
         ),
       effort: z
         .union([z.enum(['low', 'medium', 'high', 'max']), z.number().int()])
@@ -1234,13 +1220,13 @@ export const RewindFilesResultSchema = lazySchema(() =>
 // The generation script uses TypeOverrideMap to output the correct TS type references.
 // This allows us to define SDK message types in Zod while maintaining proper typing.
 
-/** Placeholder for APIUserMessage from @anthropic-ai/sdk */
+/** Placeholder for APIUserMessage */
 export const APIUserMessagePlaceholder = lazySchema(() => z.unknown())
 
-/** Placeholder for APIAssistantMessage from @anthropic-ai/sdk */
+/** Placeholder for APIAssistantMessage */
 export const APIAssistantMessagePlaceholder = lazySchema(() => z.unknown())
 
-/** Placeholder for RawMessageStreamEvent from @anthropic-ai/sdk */
+/** Placeholder for RawMessageStreamEvent */
 export const RawMessageStreamEventPlaceholder = lazySchema(() => z.unknown())
 
 /** Placeholder for UUID from crypto */
@@ -1303,45 +1289,11 @@ export const SDKUserMessageReplaySchema = lazySchema(() =>
 )
 
 export const SDKRateLimitInfoSchema = lazySchema(() =>
-  z
-    .object({
-      status: z.enum(['allowed', 'allowed_warning', 'rejected']),
-      resetsAt: z.number().optional(),
-      rateLimitType: z
-        .enum([
-          'five_hour',
-          'seven_day',
-          'seven_day_opus',
-          'seven_day_sonnet',
-          'overage',
-        ])
-        .optional(),
-      utilization: z.number().optional(),
-      overageStatus: z
-        .enum(['allowed', 'allowed_warning', 'rejected'])
-        .optional(),
-      overageResetsAt: z.number().optional(),
-      overageDisabledReason: z
-        .enum([
-          'overage_not_provisioned',
-          'org_level_disabled',
-          'org_level_disabled_until',
-          'out_of_credits',
-          'seat_tier_level_disabled',
-          'member_level_disabled',
-          'seat_tier_zero_credit_limit',
-          'group_zero_credit_limit',
-          'member_zero_credit_limit',
-          'org_service_level_disabled',
-          'org_service_zero_credit_limit',
-          'no_limits_configured',
-          'unknown',
-        ])
-        .optional(),
-      isUsingOverage: z.boolean().optional(),
-      surpassedThreshold: z.number().optional(),
-    })
-    .describe('Rate limit information for claude.ai subscription users.'),
+  z.object({
+    status: z.enum(['allowed', 'allowed_warning', 'rejected']),
+    model: z.string().optional(),
+    resetsAt: z.number().optional(),
+  }).describe('Rate limit state for a model channel. resetsAt is the Unix timestamp from Retry-After.'),
 )
 
 export const SDKAssistantMessageSchema = lazySchema(() =>
@@ -1461,7 +1413,7 @@ export const SDKSystemMessageSchema = lazySchema(() =>
     agents: z.array(z.string()).optional(),
     apiKeySource: ApiKeySourceSchema(),
     betas: z.array(z.string()).optional(),
-    claude_code_version: z.string(),
+    nexus_code_version: z.string(),
     cwd: z.string(),
     tools: z.array(z.string()),
     mcp_servers: z.array(

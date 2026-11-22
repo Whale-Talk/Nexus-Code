@@ -1,5 +1,5 @@
 import { open, stat } from 'fs/promises'
-import { CLAUDE_CODE_GUIDE_AGENT_TYPE } from 'src/tools/AgentTool/built-in/claudeCodeGuideAgent.js'
+import { NEXUS_GUIDE_AGENT_TYPE } from 'src/tools/AgentTool/built-in/nexusGuideAgent.js'
 import { getSettingsFilePathForSource } from 'src/utils/settings/settings.js'
 import { enableDebugLogging, getDebugLogPath } from '../../utils/debug.js'
 import { errorMessage, isENOENT } from '../../utils/errors.js'
@@ -13,7 +13,7 @@ export function registerDebugSkill(): void {
   registerBundledSkill({
     name: 'debug',
     description:
-      process.env.USER_TYPE === 'ant'
+      process.env.NEXUS_BUILD_FLAVOR === 'development'
         ? 'Debug your current Nexus Code session by reading the session debug log. Includes all event logging'
         : 'Enable debug logging for this session and help diagnose issues',
     allowedTools: ['Read', 'Grep', 'Glob'],
@@ -63,7 +63,7 @@ export function registerDebugSkill(): void {
 
 Debug logging was OFF for this session until now. Nothing prior to this /debug invocation was captured.
 
-Tell the user that debug logging is now active at \`${debugLogPath}\`, ask them to reproduce the issue, then re-read the log. If they can't reproduce, they can also restart with \`claude --debug\` to capture logs from startup.
+Tell the user that debug logging is now active at \`${debugLogPath}\`, ask them to reproduce the issue, then re-read the log. If they can't reproduce, they can also restart with \`nexus --debug\` to capture logs from startup.
 `
 
       const prompt = `# Debug Skill
@@ -93,7 +93,7 @@ Remember that settings are in:
 
 1. Review the user's issue description
 2. The last ${DEFAULT_DEBUG_LINES_READ} lines show the debug file format. Look for [ERROR] and [WARN] entries, stack traces, and failure patterns across the file
-3. Consider launching the ${CLAUDE_CODE_GUIDE_AGENT_TYPE} subagent to understand the relevant Nexus Code features
+3. Consider launching the ${NEXUS_GUIDE_AGENT_TYPE} subagent to understand the relevant Nexus Code features
 4. Explain what you found in plain language
 5. Suggest concrete fixes or next steps
 `

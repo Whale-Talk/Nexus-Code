@@ -47,6 +47,7 @@ export type UseTextInputProps = {
   onClearInput?: () => void
   focus?: boolean
   mask?: string
+  showMaskedSuffix?: boolean
   multiline?: boolean
   cursorChar: string
   highlightPastedText?: boolean
@@ -81,6 +82,7 @@ export function useTextInput({
   onHistoryReset,
   onClearInput,
   mask = '',
+  showMaskedSuffix,
   multiline = false,
   cursorChar,
   invert,
@@ -142,7 +144,7 @@ export function useTextInput({
       if (originalValue) {
         // Track double-escape usage for feature discovery
         // Save to history before clearing
-        if (originalValue.trim() !== '') {
+        if (!mask && originalValue.trim() !== '') {
           addToHistory(originalValue)
         }
         onChange('')
@@ -179,19 +181,19 @@ export function useTextInput({
 
   function killToLineEnd(): Cursor {
     const { cursor: newCursor, killed } = cursor.deleteToLineEnd()
-    pushToKillRing(killed, 'append')
+    if (!mask) pushToKillRing(killed, 'append')
     return newCursor
   }
 
   function killToLineStart(): Cursor {
     const { cursor: newCursor, killed } = cursor.deleteToLineStart()
-    pushToKillRing(killed, 'prepend')
+    if (!mask) pushToKillRing(killed, 'prepend')
     return newCursor
   }
 
   function killWordBefore(): Cursor {
     const { cursor: newCursor, killed } = cursor.deleteWordBefore()
-    pushToKillRing(killed, 'prepend')
+    if (!mask) pushToKillRing(killed, 'prepend')
     return newCursor
   }
 
@@ -396,7 +398,7 @@ export function useTextInput({
               // paste — convert to \n. Backslash+\r is a stale VS Code
               // Shift+Enter binding (pre-#8991 /terminal-setup wrote
               // args.text "\\\r\n" to keybindings.json); keep the \r so
-              // it becomes \n below (anthropics/claude-code#31316).
+              // it becomes \n below (Whale-Talk/Nexus-Code#31316).
               const text = stripAnsi(input)
                 // eslint-disable-next-line custom-rules/no-lookbehind-regex -- .replace(re, str) on 1-2 char keystrokes: no-match returns same string (Object.is), regex never runs
                 .replace(/(?<=[^\\\r\n])\r$/, '')
@@ -518,6 +520,7 @@ export function useTextInput({
       invert,
       ghostTextForRender,
       maxVisibleLines,
+      showMaskedSuffix,
     ),
     offset,
     setOffset,

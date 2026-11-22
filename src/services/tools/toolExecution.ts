@@ -34,6 +34,7 @@ import {
 } from '../../Tool.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
 import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
+import { shouldUseSandbox } from '../../tools/BashTool/shouldUseSandbox.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
@@ -82,6 +83,8 @@ import {
   startSessionActivity,
   stopSessionActivity,
 } from '../../utils/sessionActivity.js'
+import { checkPlanModePermission } from '../../utils/permissions/planModePermissions.js'
+import { permissionModeChanged } from '../../utils/permissions/permissions.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { Stream } from '../../utils/stream.js'
 import { logOTelEvent } from '../../utils/telemetry/events.js'
@@ -274,7 +277,6 @@ export type McpServerType =
   | 'sdk'
   | 'sse-ide'
   | 'ws-ide'
-  | 'claudeai-proxy'
   | undefined
 
 function findMcpServerConnection(
@@ -290,8 +292,7 @@ function findMcpServerConnection(
     return undefined
   }
 
-  // mcpInfo.serverName is normalized (e.g., "claude_ai_Slack"), but client.name
-  // is the original name (e.g., "claude.ai Slack"). Normalize both for comparison.
+  // mcpInfo.serverName is normalized (e.g., "nexus_ai_Slack"), but client.name
   return mcpClients.find(
     client => normalizeNameForMCP(client.name) === mcpInfo.serverName,
   )
@@ -366,7 +367,7 @@ export async function* runToolUse(
   if (!tool) {
     const sanitizedToolName = sanitizeToolNameForAnalytics(toolName)
     logForDebugging(`Unknown tool ${toolName}: ${toolUse.id}`)
-    logEvent('tengu_tool_use_error', {
+    logEvent('nexus_tool_use_error', {
       error:
         `No such tool available: ${sanitizedToolName}` as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizedToolName,
@@ -410,7 +411,7 @@ export async function* runToolUse(
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
-      logEvent('tengu_tool_use_cancelled', {
+      logEvent('nexus_tool_use_cancelled', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         toolUseID:
           toolUse.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -516,7 +517,7 @@ function streamedCheckPermissionsAndCallTool(
     mcpServerType,
     mcpServerBaseUrl,
     progress => {
-      logEvent('tengu_tool_use_progress', {
+      logEvent('nexus_tool_use_progress', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -568,7 +569,7 @@ function streamedCheckPermissionsAndCallTool(
 
 /**
  * Appended to Zod errors when a deferred tool wasn't in the discovered-tool
- * set — re-runs the claude.ts schema-filter scan dispatch-time to detect the
+ * set — re-runs the nexus.ts schema-filter scan dispatch-time to detect the
  * mismatch. The raw Zod error ("expected array, got string") doesn't tell the
  * model to re-load the tool; this hint does. Null if the schema was sent.
  */
@@ -577,7 +578,7 @@ export function buildSchemaNotSentHint(
   messages: Message[],
   tools: readonly { name: string }[],
 ): string | null {
-  // Optimistic gating — reconstructing claude.ts's full useToolSearch
+  // Optimistic gating — reconstructing nexus.ts's full useToolSearch
   // computation is fragile. These two gates prevent pointing at a ToolSearch
   // that isn't callable; occasional misfires (Electron, tst-auto below threshold)
   // cost one extra round-trip on an already-failing path.
@@ -619,7 +620,7 @@ async function checkPermissionsAndCallTool(
       toolUseContext.options.tools,
     )
     if (schemaHint) {
-      logEvent('tengu_deferred_tool_schema_not_sent', {
+      logEvent('nexus_deferred_tool_schema_not_sent', {
         toolName: sanitizeToolNameForAnalytics(tool.name),
         isMcp: tool.isMcp ?? false,
       })
@@ -629,7 +630,7 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool input error: ${errorContent.slice(0, 200)}`,
     )
-    logEvent('tengu_tool_use_error', {
+    logEvent('nexus_tool_use_error', {
       error:
         'InputValidationError' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       errorDetails: errorContent.slice(
@@ -685,7 +686,7 @@ async function checkPermissionsAndCallTool(
     logForDebugging(
       `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
     )
-    logEvent('tengu_tool_use_error', {
+    logEvent('nexus_tool_use_error', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -868,7 +869,7 @@ async function checkPermissionsAndCallTool(
 
   // Emit PreToolUse summary immediately so it's visible while the tool executes.
   // Use wall-clock time (not sum of individual durations) since hooks run in parallel.
-  if (process.env.USER_TYPE === 'ant' && preToolHookInfos.length > 0) {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development' && preToolHookInfos.length > 0) {
     if (preToolHookDurationMs > HOOK_TIMING_DISPLAY_THRESHOLD_MS) {
       resultingMessages.push({
         message: createStopHookSummaryMessage(
@@ -914,6 +915,11 @@ async function checkPermissionsAndCallTool(
   // and ask the user for permission if we don't
   const permissionMode = toolUseContext.getAppState().toolPermissionContext.mode
   const permissionStart = Date.now()
+  const isShell = tool.name === BASH_TOOL_NAME || tool.name === POWERSHELL_TOOL_NAME
+  const hookUpdatedInput = hookPermissionResult?.behavior === 'allow' || hookPermissionResult?.behavior === 'ask'
+    ? hookPermissionResult.updatedInput
+    : undefined
+  const wasSandboxed = isShell && shouldUseSandbox(hookUpdatedInput ?? processedInput)
 
   const resolved = await resolveHookPermissionDecision(
     hookPermissionResult,
@@ -924,7 +930,24 @@ async function checkPermissionsAndCallTool(
     assistantMessage,
     toolUseID,
   )
-  const permissionDecision = resolved.decision
+  let permissionDecision = resolved.decision
+  if (permissionDecision.behavior === 'allow') {
+    const approvedInput = permissionDecision.updatedInput ?? resolved.input
+    permissionDecision = (await checkPlanModePermission(tool, approvedInput, toolUseContext)) ?? permissionDecision
+    const reason = permissionDecision.decisionReason
+    const liveMode = toolUseContext.getAppState().toolPermissionContext.mode
+    // An automatic mode grant or sandboxed approval must still apply at dispatch.
+    if (permissionDecision.behavior === 'allow' && reason?.type === 'mode' &&
+      (reason.mode === 'acceptEdits' || reason.mode === 'bypassPermissions') && reason.mode !== liveMode) {
+      permissionDecision = permissionModeChanged()
+    } else if (permissionDecision.behavior === 'allow' && wasSandboxed && !shouldUseSandbox(approvedInput)) {
+      permissionDecision = {
+        behavior: 'deny',
+        message: '命令执行隔离在审批期间已变更。请按当前设置重新发起此命令。',
+        decisionReason: { type: 'other', reason: 'Shell sandbox changed during approval' },
+      }
+    }
+  }
   processedInput = resolved.input
   const permissionDurationMs = Date.now() - permissionStart
   // In auto mode, canUseTool awaits the classifier (side_query) — if that's
@@ -995,7 +1018,7 @@ async function checkPermissionsAndCallTool(
     endToolBlockedOnUserSpan('reject', decisionInfo?.source || 'unknown')
     endToolSpan()
 
-    logEvent('tengu_tool_use_can_use_tool_rejected', {
+    logEvent('nexus_tool_use_can_use_tool_rejected', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1099,7 +1122,7 @@ async function checkPermissionsAndCallTool(
 
     return resultingMessages
   }
-  logEvent('tengu_tool_use_can_use_tool_allowed', {
+  logEvent('nexus_tool_use_can_use_tool_allowed', {
     messageID:
       messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1325,7 +1348,7 @@ async function checkPermissionsAndCallTool(
       }
     }
 
-    logEvent('tengu_tool_use_success', {
+    logEvent('nexus_tool_use_success', {
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -1540,7 +1563,7 @@ async function checkPermissionsAndCallTool(
 
     // Show PostToolUse hook timing inline below tool result when > 500ms.
     // Use wall-clock time (not sum of individual durations) since hooks run in parallel.
-    if (process.env.USER_TYPE === 'ant' && postToolHookInfos.length > 0) {
+    if (process.env.NEXUS_BUILD_FLAVOR === 'development' && postToolHookInfos.length > 0) {
       if (postToolHookDurationMs > HOOK_TIMING_DISPLAY_THRESHOLD_MS) {
         resultingMessages.push({
           message: createStopHookSummaryMessage(
@@ -1633,7 +1656,7 @@ async function checkPermissionsAndCallTool(
       if (!(error instanceof ShellError)) {
         logError(error)
       }
-      logEvent('tengu_tool_use_error', {
+      logEvent('nexus_tool_use_error', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),

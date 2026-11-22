@@ -1,12 +1,12 @@
 import { feature } from 'bun:bundle'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryModelWithoutStreaming } from '../../services/api/inference.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../abortController.js'
@@ -19,7 +19,7 @@ import {
   extractTag,
   extractTextContent,
 } from '../messages.js'
-import { getSmallFastModel } from '../model/model.js'
+import { getElectronModel } from '../model/model.js'
 import { jsonParse } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import {
@@ -148,7 +148,7 @@ Output <updates>[]</updates> if no updates are needed.`,
         const projectSkill = findProjectSkill()
         const skillName = projectSkill?.skillName ?? 'unknown'
 
-        logEvent('tengu_skill_improvement_detected', {
+        logEvent('nexus_skill_improvement_detected', {
           updateCount: result.result
             .length as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           uuid: result.uuid as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -166,7 +166,7 @@ Output <updates>[]</updates> if no updates are needed.`,
       }
     },
 
-    getModel: getSmallFastModel,
+    getModel: getElectronModel,
   }
 
   return createApiQueryHook(config)
@@ -175,7 +175,7 @@ Output <updates>[]</updates> if no updates are needed.`,
 export function initSkillImprovement(): void {
   if (
     feature('SKILL_IMPROVEMENT') &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_copper_panda', false)
+    getFeatureValue('nexus_copper_panda', false)
   ) {
     registerPostSamplingHook(createSkillImprovementHook())
   }
@@ -195,7 +195,7 @@ export async function applySkillImprovement(
   const fs = await import('fs/promises')
 
   // Skills live at .nexus/skills/<name>/SKILL.md relative to CWD
-  const filePath = join(getCwd(), '.claude', 'skills', skillName, 'SKILL.md')
+  const filePath = join(getCwd(), '.nexus', 'skills', skillName, 'SKILL.md')
 
   let currentContent: string
   try {
@@ -238,7 +238,7 @@ Rules:
     signal: createAbortController().signal,
     options: {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
-      model: getSmallFastModel(),
+      model: getElectronModel(),
       toolChoice: undefined,
       isNonInteractiveSession: false,
       hasAppendSystemPrompt: false,

@@ -2,15 +2,15 @@ import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
 
-// Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
+// Memoized: 150+ callers, many on hot paths. Keyed off NEXUS_CONFIG_DIR so
 // tests that change the env var get a fresh value without explicit cache.clear.
 export const getNexusConfigHomeDir = memoize(
   (): string => {
     return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.nexus')
+      process.env.NEXUS_CONFIG_DIR ?? join(homedir(), '.nexus')
     ).normalize('NFC')
   },
-  () => process.env.CLAUDE_CONFIG_DIR,
+  () => process.env.NEXUS_CONFIG_DIR,
 )
 
 export function getTeamsDir(): string {
@@ -47,19 +47,19 @@ export function isEnvDefinedFalsy(
 }
 
 /**
- * --bare / CLAUDE_CODE_SIMPLE — skip hooks, LSP, plugin sync, skill dir-walk,
+ * --bare / NEXUS_SIMPLE — skip hooks, LSP, plugin sync, skill dir-walk,
  * attribution, background prefetches, and ALL keychain/credential reads.
  * Auth is strictly NEXUS_API_KEY env or apiKeyHelper from --settings.
  * Explicit CLI flags (--plugin-dir, --add-dir, --mcp-config) still honored.
  * ~30 gates across the codebase.
  *
  * Checks argv directly (in addition to the env var) because several gates
- * run before main.tsx's action handler sets CLAUDE_CODE_SIMPLE=1 from --bare
+ * run before main.tsx's action handler sets NEXUS_SIMPLE=1 from --bare
  * — notably startKeychainPrefetch() at main.tsx top-level.
  */
 export function isBareMode(): boolean {
   return (
-    isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE) ||
+    isEnvTruthy(process.env.NEXUS_SIMPLE) ||
     process.argv.includes('--bare')
   )
 }
@@ -91,7 +91,7 @@ export function parseEnvVars(
 
 /**
  * Get the AWS region with fallback to default
- * Matches the Anthropic Bedrock SDK's region behavior
+ * Matches the Provider Bedrock SDK's region behavior
  */
 export function getAWSRegion(): string {
   return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
@@ -106,10 +106,10 @@ export function getDefaultVertexRegion(): string {
 
 /**
  * Check if bash commands should maintain project working directory (reset to original after each command)
- * @returns true if CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR is set to a truthy value
+ * @returns true if NEXUS_BASH_MAINTAIN_PROJECT_WORKING_DIR is set to a truthy value
  */
 export function shouldMaintainProjectWorkingDir(): boolean {
-  return isEnvTruthy(process.env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR)
+  return isEnvTruthy(process.env.NEXUS_BASH_MAINTAIN_PROJECT_WORKING_DIR)
 }
 
 /**
@@ -117,7 +117,7 @@ export function shouldMaintainProjectWorkingDir(): boolean {
  */
 export function isRunningOnHomespace(): boolean {
   return (
-    process.env.USER_TYPE === 'ant' &&
+    process.env.NEXUS_BUILD_FLAVOR === 'development' &&
     isEnvTruthy(process.env.COO_RUNNING_ON_HOMESPACE)
   )
 }
@@ -134,9 +134,9 @@ export function isRunningOnHomespace(): boolean {
  * Used for telemetry to measure auto-mode usage in sensitive environments.
  */
 export function isInProtectedNamespace(): boolean {
-  // USER_TYPE is build-time --define'd; in external builds this block is
+  // NEXUS_BUILD_FLAVOR is build-time --define'd; in external builds this block is
   // DCE'd so the require() and namespace allowlist never appear in the bundle.
-  if (process.env.USER_TYPE === 'ant') {
+  if (process.env.NEXUS_BUILD_FLAVOR === 'development') {
     /* eslint-disable @typescript-eslint/no-require-imports */
     return (
       require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
@@ -146,38 +146,7 @@ export function isInProtectedNamespace(): boolean {
   return false
 }
 
-// @[MODEL LAUNCH]: Add a Vertex region override env var for the new model.
-/**
- * Model prefix → env var for Vertex region overrides.
- * Order matters: more specific prefixes must come before less specific ones
- * (e.g., 'claude-quark-4-1' before 'claude-quark-4').
- */
-const VERTEX_REGION_OVERRIDES: ReadonlyArray<[string, string]> = [
-  ['claude-haiku-4-5', 'VERTEX_REGION_CLAUDE_HAIKU_4_5'],
-  ['claude-3-5-haiku', 'VERTEX_REGION_CLAUDE_3_5_HAIKU'],
-  ['claude-3-5-sonnet', 'VERTEX_REGION_CLAUDE_3_5_SONNET'],
-  ['claude-3-7-sonnet', 'VERTEX_REGION_CLAUDE_3_7_SONNET'],
-  ['claude-opus-4-1', 'VERTEX_REGION_CLAUDE_4_1_OPUS'],
-  ['claude-opus-4', 'VERTEX_REGION_CLAUDE_4_0_OPUS'],
-  ['claude-sonnet-4-6', 'VERTEX_REGION_CLAUDE_4_6_SONNET'],
-  ['claude-sonnet-4-5', 'VERTEX_REGION_CLAUDE_4_5_SONNET'],
-  ['claude-sonnet-4', 'VERTEX_REGION_CLAUDE_4_0_SONNET'],
-]
-
-/**
- * Get the Vertex AI region for a specific model.
- * Different models may be available in different regions.
- */
-export function getVertexRegionForModel(
-  model: string | undefined,
-): string | undefined {
-  if (model) {
-    const match = VERTEX_REGION_OVERRIDES.find(([prefix]) =>
-      model.startsWith(prefix),
-    )
-    if (match) {
-      return process.env[match[1]] || getDefaultVertexRegion()
-    }
-  }
+/** Use the channel-wide region when a deployment needs one. */
+export function getVertexRegionForModel(_model?: string): string {
   return getDefaultVertexRegion()
 }

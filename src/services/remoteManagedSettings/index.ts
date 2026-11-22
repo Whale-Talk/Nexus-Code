@@ -1,3 +1,4 @@
+import { getAuthHeaders as getRemoteSettingsAuthHeaders } from '../../utils/http.js'
 /**
  * Remote Managed Settings Service
  *
@@ -7,7 +8,6 @@
  *
  * Eligibility:
  * - Console users (API key): All eligible
- * - OAuth users (Claude.ai): Only Enterprise/C4E and Team subscribers are eligible
  * - API fails open (non-blocking) - if fetch fails, continues without remote settings
  * - API returns empty settings for users without managed settings
  */
@@ -15,11 +15,11 @@
 import axios from 'axios'
 import { createHash } from 'crypto'
 import { open, unlink } from 'fs/promises'
-import { getOauthConfig, OAUTH_BETA_HEADER } from '../../constants/oauth.js'
+import { getOauthConfig } from '../../constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
-  getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
+  getProviderApiKeyWithSource,
+  getHostedAccountOAuthTokens,
 } from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -31,7 +31,7 @@ import {
 } from '../../utils/settings/types.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
+import { getNexusUserAgent } from '../../utils/userAgent.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {
   checkManagedSettingsSecurity,
@@ -103,7 +103,7 @@ export function initializeRemoteManagedSettingsLoadingPromise(): void {
  * Uses the OAuth config base API URL
  */
 function getRemoteManagedSettingsEndpoint() {
-  return `${getOauthConfig().BASE_API_URL}/api/claude_code/settings`
+  return `${getOauthConfig().BASE_API_URL}/api/nexus_code/settings`
 }
 
 /**
@@ -163,44 +163,6 @@ export async function waitForRemoteManagedSettingsToLoad(): Promise<void> {
  * This avoids circular dependencies during settings loading
  * Supports both API key and OAuth authentication
  */
-function getRemoteSettingsAuthHeaders(): {
-  headers: Record<string, string>
-  error?: string
-} {
-  // Try API key first (for Console users)
-  // Skip apiKeyHelper to avoid circular dependency with getSettings()
-  // Wrap in try-catch because getAnthropicApiKeyWithSource throws in CI/test environments
-  try {
-    const { key: apiKey } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true,
-    })
-    if (apiKey) {
-      return {
-        headers: {
-          'x-api-key': apiKey,
-        },
-      }
-    }
-  } catch {
-    // No API key available - continue to check OAuth
-  }
-
-  // Fall back to OAuth tokens (for Claude.ai users)
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (oauthTokens?.accessToken) {
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
-  }
-
-  return {
-    headers: {},
-    error: 'No authentication available',
-  }
-}
 
 /**
  * Fetch remote settings with retry logic and exponential backoff
@@ -267,7 +229,7 @@ async function fetchRemoteManagedSettings(
     const endpoint = getRemoteManagedSettingsEndpoint()
     const headers: Record<string, string> = {
       ...authHeaders.headers,
-      'User-Agent': getClaudeCodeUserAgent(),
+      'User-Agent': getNexusUserAgent(),
     }
 
     // Add If-None-Match header for ETag-based caching

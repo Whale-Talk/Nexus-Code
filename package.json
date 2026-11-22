@@ -2,7 +2,7 @@
   "name": "@while_talk/nexus-code",
   "version": "1.0.13",
   "private": false,
-  "description": "Nexus — Claude Code restored with multi-agent capabilities and configurable backend.",
+  "description": "Nexus — a terminal coding assistant with configurable model channels.",
   "license": "MIT",
   "type": "module",
   "main": "src/dev-entry.ts",
@@ -15,8 +15,7 @@
     "tsconfig.json",
     "bun.lock",
     "README.md",
-    "AGENTS.md",
-    "preview.png"
+    "AGENTS.md"
   ],
   "bin": {
     "nexus": "bin/nexus.cjs"
@@ -24,16 +23,16 @@
   "packageManager": "bun@1.3.14",
   "repository": {
     "type": "git",
-    "url": "https://github.com/NexusAir-Technologies/agent_NexusCode.git"
+    "url": "https://github.com/Whale-Talk/Nexus-Code.git"
   },
   "engines": {
     "bun": ">=1.3.5",
     "node": ">=24.0.0"
   },
   "scripts": {
-    "dev": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
-    "start": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
-    "version": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts --version",
+    "dev": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 NEXUS_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
+    "start": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 NEXUS_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts",
+    "version": "DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 NEXUS_DISABLE_NONESSENTIAL_TRAFFIC=1 bun run ./src/dev-entry.ts --version",
     "test": "bun test",
     "typecheck": "bun run .github/scripts/typecheck-baseline.ts",
     "typecheck:raw": "bunx tsc --noEmit",
@@ -41,20 +40,15 @@
     "postinstall": "node scripts/postinstall.cjs || true"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "4.0.36",
     "@ai-sdk/openai-compatible": "3.0.27",
     "@alcalzone/ansi-tokenize": "*",
-    "@ant/claude-for-chrome-mcp": "file:./shims/ant-claude-for-chrome-mcp",
-    "@ant/computer-use-input": "file:./shims/ant-computer-use-input",
-    "@ant/computer-use-mcp": "file:./shims/ant-computer-use-mcp",
-    "@ant/computer-use-swift": "file:./shims/ant-computer-use-swift",
-    "@anthropic-ai/claude-agent-sdk": "*",
-    "@anthropic-ai/mcpb": "*",
+    "@nexus-local/browser-companion": "file:./shims/nexus-browser-companion",
+    "@nexus-local/computer-use-input": "file:./shims/nexus-computer-use-input",
+    "@nexus-local/computer-use-mcp": "file:./shims/nexus-computer-use-mcp",
+    "@nexus-local/computer-use-swift": "file:./shims/nexus-computer-use-swift",
     "@anthropic-ai/sandbox-runtime": "*",
-    "@anthropic-ai/sdk": "*",
     "@aws-sdk/client-bedrock-runtime": "*",
     "@commander-js/extra-typings": "*",
-    "@growthbook/growthbook": "*",
     "@modelcontextprotocol/sdk": "*",
     "@opentelemetry/api": "*",
     "@opentelemetry/api-logs": "*",
@@ -64,6 +58,7 @@
     "@opentelemetry/sdk-metrics": "*",
     "@opentelemetry/sdk-trace-base": "*",
     "@opentelemetry/semantic-conventions": "*",
+    "@vscode/ripgrep": "1.18.0",
     "ai": "7.0.58",
     "ajv": "*",
     "asciichart": "*",
@@ -79,6 +74,7 @@
     "emoji-regex": "*",
     "env-paths": "*",
     "execa": "*",
+    "fflate": "0.8.2",
     "figures": "*",
     "fuse.js": "*",
     "get-east-asian-width": "*",

@@ -1,131 +1,50 @@
+import { getCatalogDefault } from '../../services/api/provider/catalog.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
-import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
-import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
-import {
-  getCanonicalName,
-  getRuntimeMainLoopModel,
-  parseUserSpecifiedModel,
-} from './model.js'
-import { getAPIProvider } from './providers.js'
+import { MODEL_SELECTIONS, type ModelRole, type ModelSelection } from './roles.js'
+import { getRuntimeMainLoopModel, getSelectedModelRole, parseUserSpecifiedModel } from './model.js'
 
-export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
-export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
+export const AGENT_MODEL_OPTIONS = [...MODEL_SELECTIONS, 'inherit'] as const
+export type AgentModelSelection = (typeof AGENT_MODEL_OPTIONS)[number]
 
 export type AgentModelOption = {
-  value: AgentModelAlias
+  value: AgentModelSelection
   label: string
   description: string
 }
 
 /**
- * Get the default subagent model. Returns 'inherit' so subagents inherit
- * the model from the parent thread.
+ * A subagent with no explicit model inherits the parent model.
  */
 export function getDefaultSubagentModel(): string {
   return 'inherit'
 }
 
-/**
- * Get the effective model string for an agent.
- *
- * For Bedrock, if the parent model uses a cross-region inference prefix (e.g., "eu.", "us."),
- * that prefix is inherited by subagents using alias models (e.g., "atom", "electron", "quark").
- * This ensures subagents use the same region as the parent, which is necessary when
- * IAM permissions are scoped to specific cross-region inference profiles.
- */
+function getSingleChannelAgentModelOverride(): string | undefined {
+  return getCatalogDefault() ? undefined : process.env.NEXUS_SUBAGENT_MODEL || undefined
+}
+
 export function getAgentModel(
   agentModel: string | undefined,
   parentModel: string,
-  toolSpecifiedModel?: ModelAlias,
+  toolSpecifiedModel?: ModelSelection,
   permissionMode?: PermissionMode,
 ): string {
-  // NEXUS_SUBAGENT_MODEL (new) with CLAUDE_CODE_SUBAGENT_MODEL (legacy) fallback
-  const subagentModel =
-    process.env.NEXUS_SUBAGENT_MODEL || process.env.CLAUDE_CODE_SUBAGENT_MODEL
-  if (subagentModel) {
-    return parseUserSpecifiedModel(subagentModel)
+  // An explicit single-channel override remains opt-in. Multi-channel agents use their own bindings.
+  const override = getSingleChannelAgentModelOverride()
+  if (override) return parseUserSpecifiedModel(override)
+  const selected = toolSpecifiedModel ?? agentModel ?? getDefaultSubagentModel()
+  if (selected === 'inherit') {
+    return getRuntimeMainLoopModel({ permissionMode: permissionMode ?? 'default', mainLoopModel: parentModel })
   }
-
-  // Extract Bedrock region prefix from parent model to inherit for subagents.
-  // This ensures subagents use the same cross-region inference profile (e.g., "eu.", "us.")
-  // as the parent, which is required when IAM permissions only allow specific regions.
-  const parentRegionPrefix = getBedrockRegionPrefix(parentModel)
-
-  // Helper to apply parent region prefix for Bedrock models.
-  // `originalSpec` is the raw model string before resolution (alias or full ID).
-  // If the user explicitly specified a full model ID that already carries its own
-  // region prefix (e.g., "eu.anthropic.…"), we preserve it instead of overwriting
-  // with the parent's prefix. This prevents silent data-residency violations when
-  // an agent config intentionally pins to a different region than the parent.
-  const applyParentRegionPrefix = (
-    resolvedModel: string,
-    originalSpec: string,
-  ): string => {
-    if (parentRegionPrefix && getAPIProvider() === 'bedrock') {
-      if (getBedrockRegionPrefix(originalSpec)) return resolvedModel
-      return applyBedrockRegionPrefix(resolvedModel, parentRegionPrefix)
-    }
-    return resolvedModel
-  }
-
-  // Prioritize tool-specified model if provided
-  if (toolSpecifiedModel) {
-    if (aliasMatchesParentTier(toolSpecifiedModel, parentModel)) {
-      return parentModel
-    }
-    const model = parseUserSpecifiedModel(toolSpecifiedModel)
-    return applyParentRegionPrefix(model, toolSpecifiedModel)
-  }
-
-  const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
-
-  if (agentModelWithExp === 'inherit') {
-    // Apply runtime model resolution for inherit to get the effective model
-    // This ensures agents using 'inherit' get quarkplan→Quark resolution in plan mode
-    return getRuntimeMainLoopModel({
-      permissionMode: permissionMode ?? 'default',
-      mainLoopModel: parentModel,
-      exceeds200kTokens: false,
-    })
-  }
-
-  if (aliasMatchesParentTier(agentModelWithExp, parentModel)) {
-    return parentModel
-  }
-  const model = parseUserSpecifiedModel(agentModelWithExp)
-  return applyParentRegionPrefix(model, agentModelWithExp)
+  return parseUserSpecifiedModel(selected)
 }
 
-/**
- * Check if a bare family alias (quark/atom/electron) matches the parent model's
- * tier. When it does, the subagent inherits the parent's exact model string
- * instead of resolving the alias to a provider default.
- *
- * Prevents surprising downgrades: a Vertex user on Nexus Quark (via /model) who
- * spawns a subagent with `model: quark` should get Nexus Quark, not whatever
- * getDefaultQuarkModel() returns for 3P.
- * See https://github.com/Whale-Talk/Nexus-Code.
- *
- * Only bare family aliases match. `quark[1m]`, `best`, `quarkplan` fall through
- * since they carry semantics beyond "same tier as parent".
- */
-function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
-  const canonical = getCanonicalName(parentModel)
-  switch (alias.toLowerCase()) {
-    case 'opus':
-      return canonical.includes('opus')
-    case 'sonnet':
-      return canonical.includes('sonnet')
-    case 'haiku':
-      return canonical.includes('haiku')
-    default:
-      return false
-  }
+export function getAgentModelRole(agentModel: string | undefined, toolSpecifiedModel?: ModelSelection): ModelRole | undefined {
+  return getSelectedModelRole(getSingleChannelAgentModelOverride() ?? toolSpecifiedModel ?? agentModel)
 }
 
 export function getAgentModelDisplay(model: string | undefined): string {
-  // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime
   if (!model) return 'Inherit from parent (default)'
   if (model === 'inherit') return 'Inherit from parent'
   return capitalize(model)
@@ -137,18 +56,18 @@ export function getAgentModelDisplay(model: string | undefined): string {
 export function getAgentModelOptions(): AgentModelOption[] {
   return [
     {
-      value: 'sonnet',
-      label: 'Sonnet',
+      value: 'atom',
+      label: 'Atom',
       description: 'Balanced performance - best for most agents',
     },
     {
-      value: 'opus',
-      label: 'Opus',
+      value: 'quark',
+      label: 'Quark',
       description: 'Most capable for complex reasoning tasks',
     },
     {
-      value: 'haiku',
-      label: 'Haiku',
+      value: 'electron',
+      label: 'Electron',
       description: 'Fast and efficient for simple tasks',
     },
     {

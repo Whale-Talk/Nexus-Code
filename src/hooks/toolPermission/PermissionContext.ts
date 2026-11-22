@@ -33,6 +33,7 @@ import {
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import {
   applyPermissionUpdates,
+  filterHookPermissionUpdates,
   persistPermissionUpdates,
   supportsPersistence,
 } from '../../utils/permissions/PermissionUpdate.js'
@@ -130,7 +131,7 @@ function createPermissionContext(
       )
     },
     logCancelled() {
-      logEvent('tengu_tool_use_cancelled', {
+      logEvent('nexus_tool_use_cancelled', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -218,7 +219,16 @@ function createPermissionContext(
       suggestions: PermissionUpdate[] | undefined,
       updatedInput?: Record<string, unknown>,
       permissionPromptStartTimeMs?: number,
+      isPending: () => boolean = () => true,
     ): Promise<PermissionDecision | null> {
+      const modeAtStart =
+        toolUseContext.getAppState().toolPermissionContext.mode
+      if (
+        modeAtStart === 'dontAsk' ||
+        (permissionMode !== undefined && permissionMode !== modeAtStart)
+      ) {
+        return null
+      }
       for await (const hookResult of executePermissionRequestHooks(
         tool.name,
         toolUseID,
@@ -228,6 +238,13 @@ function createPermissionContext(
         suggestions,
         toolUseContext.abortController.signal,
       )) {
+        if (
+          !isPending() ||
+          toolUseContext.abortController.signal.aborted ||
+          toolUseContext.getAppState().toolPermissionContext.mode !== modeAtStart
+        ) {
+          return null
+        }
         if (hookResult.permissionRequestResult) {
           const decision = hookResult.permissionRequestResult
           if (decision.behavior === 'allow') {
@@ -321,8 +338,9 @@ function createPermissionContext(
       permissionUpdates: PermissionUpdate[],
       permissionPromptStartTimeMs?: number,
     ): Promise<PermissionAllowDecision> {
-      const acceptedPermanentUpdates =
-        await this.persistPermissions(permissionUpdates)
+      const acceptedPermanentUpdates = await this.persistPermissions(
+        filterHookPermissionUpdates(permissionUpdates),
+      )
       this.logDecision(
         {
           decision: 'accept',

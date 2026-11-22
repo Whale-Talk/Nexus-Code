@@ -5,8 +5,9 @@ import { formatFileSize } from '../../utils/format.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js'
-import { isPreapprovedHost } from './preapproved.js'
 import { DESCRIPTION, WEB_FETCH_TOOL_NAME } from './prompt.js'
+import { responseRoute } from '../../services/api/provider/index.js'
+import { fetchDeepSeekPage, fetchProvider } from './deepseekFetch.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -19,6 +20,7 @@ import {
   getURLMarkdownContent,
   isPreapprovedUrl,
   MAX_MARKDOWN_LENGTH,
+  validateURL,
 } from './utils.js'
 
 const inputSchema = lazySchema(() =>
@@ -105,21 +107,6 @@ export const WebFetchTool = buildTool({
     const appState = context.getAppState()
     const permissionContext = appState.toolPermissionContext
 
-    // Check if the hostname is in the preapproved list
-    try {
-      const { url } = input as { url: string }
-      const parsedUrl = new URL(url)
-      if (isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname)) {
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-          decisionReason: { type: 'other', reason: 'Preapproved host' },
-        }
-      }
-    } catch {
-      // If URL parsing fails, continue with normal permission checks
-    }
-
     // Check for a rule specific to the tool input (matching hostname)
     const ruleContent = webFetchToolInputToPermissionRuleContent(input)
 
@@ -172,6 +159,14 @@ export const WebFetchTool = buildTool({
       }
     }
 
+    if (isPreapprovedUrl(input.url)) {
+      return {
+        behavior: 'allow',
+        updatedInput: input,
+        decisionReason: { type: 'other', reason: 'Preapproved host' },
+      }
+    }
+
     return {
       behavior: 'ask',
       message: `Nexus requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
@@ -183,19 +178,16 @@ export const WebFetchTool = buildTool({
     // currently in the tools list. Conditionally toggling this prefix based
     // on ToolSearch availability caused the tool description to flicker
     // between SDK query() calls (when ToolSearch enablement varies due to
-    // MCP tool count thresholds), invalidating the Anthropic API prompt
+    // MCP tool count thresholds), invalidating the Provider API prompt
     // cache on each toggle — two consecutive cache misses per flicker event.
     return `IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, look for a specialized MCP tool that provides authenticated access.
 ${DESCRIPTION}`
   },
-  async validateInput(input) {
-    const { url } = input
-    try {
-      new URL(url)
-    } catch {
+  async validateInput({ url }) {
+    if (!validateURL(url)) {
       return {
         result: false,
-        message: `Error: Invalid URL "${url}". The URL provided could not be parsed.`,
+        message: 'WebFetch requires an HTTP(S) address without embedded credentials.',
         meta: { reason: 'invalid_url' },
         errorCode: 1,
       }
@@ -208,8 +200,15 @@ ${DESCRIPTION}`
   async call(
     { url, prompt },
     { abortController, options: { isNonInteractiveSession } },
+    _canUseTool,
+    parentMessage,
   ) {
     const start = Date.now()
+    const route = responseRoute(parentMessage?.message)
+    if (fetchProvider(route) === 'deepseek') {
+      const page = await fetchDeepSeekPage(url, abortController.signal, route)
+      return { data: { ...page, code: 200, codeText: 'DeepSeek Fetch API OK', durationMs: Date.now() - start, url } }
+    }
 
     const response = await getURLMarkdownContent(url, abortController)
 
