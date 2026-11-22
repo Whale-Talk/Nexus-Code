@@ -58,6 +58,7 @@ test('sandbox auto-allow respects a tool-wide ask and dontAsk turns that request
   }
 })
 
+// The PowerShell parser can spend two five-second attempts on a cold runner.
 test('an optional sandbox exit needs an explicit approval in bypass and across a hook approval', async () => {
   const enabled = spyOn(SandboxManager, 'isSandboxingEnabled').mockReturnValue(true)
   const escapeAllowed = spyOn(SandboxManager, 'areUnsandboxedCommandsAllowed').mockReturnValue(true)
@@ -79,4 +80,4 @@ test('an optional sandbox exit needs an explicit approval in bypass and across a
     escapeAllowed.mockRestore()
     enabled.mockRestore()
   }
-})
+}, 20_000)

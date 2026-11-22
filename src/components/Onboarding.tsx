@@ -11,7 +11,7 @@ import { env } from '../utils/env.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
 import type { ThemeSetting } from '../utils/theme.js';
 import { ApproveApiKey } from './ApproveApiKey.js';
-import { NexusConfigForm } from '../commands/nexus-config/NexusConfigForm.js';
+import { ModelChannelForm } from './ModelChannelForm.js';
 import { Select } from './CustomSelect/select.js';
 import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
@@ -116,7 +116,7 @@ export function Onboarding({
     // Nexus: 无 API key 时直接进入配置引导（替代 OAuth 登录）
     steps.push({
       id: 'nexus-config',
-      component: <NexusConfigForm onDone={goToNextStep} />
+      component: <ModelChannelForm onSave={goToNextStep} onCancel={goToNextStep} />
     });
   }
   steps.push({

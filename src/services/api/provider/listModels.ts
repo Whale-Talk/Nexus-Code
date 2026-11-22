@@ -5,16 +5,17 @@ import { normalizeOpenAICompatibleBaseURL } from './implementations/openai-compa
 
 type ChannelConnection = Pick<ModelChannel, 'baseURL' | 'apiKeyEnv' | 'protocol'>
 export type ModelDirectoryScope = 'glm-api' | 'glm-coding-plan'
-export type ModelDirectoryEntry = { id: string; contextWindow?: number }
+export type ModelDirectoryEntry = { id: string; contextWindow?: number; maxOutputTokens?: number }
 
 const connectionSchema = channelSchema.pick({ baseURL: true, apiKeyEnv: true, protocol: true })
-const optionalContextWindow = z.int().positive().optional().catch(undefined)
+const optionalTokenLimit = z.int().positive().optional().catch(undefined)
 const pageSchema = z.object({
   data: z.array(z.object({
     id: channelSchema.shape.models.element.shape.id,
-    context_window: optionalContextWindow,
-    context_length: optionalContextWindow,
-    limit: z.object({ context: optionalContextWindow }).optional().catch(undefined),
+    context_window: optionalTokenLimit,
+    context_length: optionalTokenLimit,
+    max_output_tokens: optionalTokenLimit,
+    limit: z.object({ context: optionalTokenLimit, output: optionalTokenLimit }).optional().catch(undefined),
   })),
   has_more: z.boolean().optional(),
   last_id: z.string().optional(),
@@ -101,7 +102,7 @@ function responseError(status: number) {
   return new Error(`读取渠道模型列表失败（HTTP ${status}）`)
 }
 
-/** Only called on an explicit request in the terminal. Discovery never writes a catalog. */
+/** Reads only the configured channel directory. Discovery never writes a catalog. */
 export async function fetchChannelModels(channel: ChannelConnection, signal: AbortSignal, apiKeyOverride?: string, scope?: ModelDirectoryScope): Promise<ModelDirectoryEntry[]> {
   const { headers, endpoint } = listRequest(channel, apiKeyOverride, scope)
   const timeout = AbortSignal.timeout(10_000)
@@ -132,12 +133,13 @@ export async function fetchChannelModels(channel: ChannelConnection, signal: Abo
     }
     const parsed = pageSchema.safeParse(json)
     if (!parsed.success) throw new Error('渠道返回的模型列表格式无效，可以手动填写模型 ID')
-    for (const { id, limit, context_length, context_window } of parsed.data.data) {
+    for (const { id, limit, context_length, context_window, max_output_tokens } of parsed.data.data) {
+      const model: ModelDirectoryEntry = models.get(id) ?? { id }
       const contextWindow = limit?.context ?? context_length ?? context_window
-      const existing = models.get(id)
-      if (!existing || (existing.contextWindow === undefined && contextWindow !== undefined)) {
-        models.set(id, contextWindow === undefined ? { id } : { id, contextWindow })
-      }
+      const maxOutputTokens = limit?.output ?? max_output_tokens
+      if (model.contextWindow === undefined && contextWindow !== undefined) model.contextWindow = contextWindow
+      if (model.maxOutputTokens === undefined && maxOutputTokens !== undefined) model.maxOutputTokens = maxOutputTokens
+      models.set(id, model)
     }
     if (!parsed.data.has_more) return [...models.values()]
     const cursor = parsed.data.last_id

@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import memoize from 'lodash-es/memoize.js'
 import { z } from 'zod/v4'
 import { getNexusConfigHomeDir } from '../../../utils/envUtils.js'
 import { MODEL_ROLES as roles, type ModelRole } from '../../../utils/model/roles.js'
 import { updateUserJsonAtomically } from '../../../utils/settings/atomicUserJson.js'
+import { getOfficialModelService } from './officialChannels.js'
 import { reasoningDialects } from './reasoning.js'
 
 const protocolSchema = z.enum(['messages', 'openai-compatible'])
@@ -42,6 +43,10 @@ const unsafeTerminalText = /[\p{Cc}\u2028\u2029]/u
 const modelLabelSchema = z.string()
   .refine(value => !unsafeTerminalText.test(value), '模型名称不能包含控制字符或换行')
   .pipe(z.string().trim().min(1))
+const tokenLimit = z.int().positive().optional()
+const modelBudgetOverridesSchema = z.object({ contextWindow: tokenLimit, outputBudget: tokenLimit })
+export type ModelBudgetOverrides = z.infer<typeof modelBudgetOverridesSchema>
+
 export const channelSchema = z.looseObject({
   protocol: protocolSchema,
   baseURL: z.string().trim().refine(value => {
@@ -57,9 +62,10 @@ export const channelSchema = z.looseObject({
   models: z.array(z.looseObject({
     id: modelLabelSchema,
     name: modelLabelSchema.optional(),
-    contextWindow: z.number().int().positive().optional(),
-    discoveredContextWindow: z.number().int().positive().optional(),
-    maxOutputTokens: z.number().int().positive().optional(),
+    ...modelBudgetOverridesSchema.shape,
+    discoveredContextWindow: tokenLimit,
+    maxOutputTokens: tokenLimit,
+    discoveredMaxOutputTokens: tokenLimit,
     capabilities: capabilitySchema.optional(),
     reasoningDialect: z.enum(reasoningDialects).optional(),
     pricing: pricingSchema.optional(),
@@ -197,13 +203,14 @@ export function subscribeModelCatalog(onChange: () => void): () => void {
   return () => { catalogListeners.delete(onChange) }
 }
 
-function updateCatalog(edit: (config: CatalogConfig) => void): CatalogConfig {
+function updateCatalog(edit: (config: CatalogConfig, persisted: boolean) => void): CatalogConfig {
   const directory = getNexusConfigHomeDir()
   const filename = join(directory, 'models.json')
   const saved = updateUserJsonAtomically(filename, () => {
     // Merge only the requested change with the latest disk state, including future schema fields.
-    const config = readModelCatalog(directory)?.config ?? getLegacyModelCatalog()
-    edit(config)
+    const persisted = readModelCatalog(directory)
+    const config = persisted?.config ?? getLegacyModelCatalog()
+    edit(config, persisted !== undefined)
     return indexCatalog(config, filename).config
   })
   getModelCatalog.cache.delete?.(directory)
@@ -237,10 +244,37 @@ function validateCredentialOrigin(config: CatalogConfig, connection: ChannelConn
   }
 }
 
-export function addModelChannel(id: string, channel: ModelChannel): CatalogConfig {
-  return updateCatalog(config => {
+function isUnconfiguredCatalog(config: CatalogConfig, persisted: boolean): boolean {
+  const entries = Object.entries(config.channels)
+  if (!entries.length) return roles.every(role => !config.roles[role])
+  if (persisted || entries.length !== 1) return false
+
+  const [channelId, channel] = entries[0]!
+  if (channelId !== 'deepseek' || getOfficialModelService(channel.protocol, channel.baseURL) !== 'deepseek') return false
+  if (channel.apiKeyEnv && process.env[channel.apiKeyEnv]?.trim()) return false
+
+  const quark = config.roles.quark
+  return (quark === 'deepseek::deepseek-v4-pro' || quark === 'deepseek::deepseek-v4-pro[1m]') &&
+    roles.every(role => config.roles[role] === quark) &&
+    channel.models.every(({ id }) => id === 'deepseek-v4-pro[1m]' || deepSeekOfficialModelIds.some(known => known === id))
+}
+
+export function isUnconfiguredModelCatalog(config: CatalogConfig): boolean {
+  return isUnconfiguredCatalog(config, existsSync(join(getNexusConfigHomeDir(), 'models.json')))
+}
+
+export function addModelChannel(
+  id: string,
+  channel: ModelChannel,
+  { initializeRoles = false }: { initializeRoles?: boolean } = {},
+): CatalogConfig {
+  return updateCatalog((config, persisted) => {
     if (!channelIdSchema.safeParse(id).success) {
       throw new Error('渠道名称须以字母或数字开头，可以包含点、横线或下划线')
+    }
+    if (initializeRoles) {
+      if (!isUnconfiguredCatalog(config, persisted)) throw new Error('模型角色或渠道已配置，请返回渠道列表确认')
+      config.channels = {}
     }
     if (Object.hasOwn(config.channels, id)) throw new Error(`渠道 ${id} 已存在`)
     validateCredentialOrigin(config, channel)
@@ -267,7 +301,10 @@ export function updateModelChannelConnection(id: string, expected: ChannelConnec
     validateCredentialOrigin(config, parsed.data)
     if (channel.protocol !== parsed.data.protocol || channel.baseURL !== parsed.data.baseURL ||
         channel.apiKeyEnv !== parsed.data.apiKeyEnv) {
-      for (const model of channel.models) delete model.discoveredContextWindow
+      for (const model of channel.models) {
+        delete model.discoveredContextWindow
+        delete model.discoveredMaxOutputTokens
+      }
     }
     channel.protocol = parsed.data.protocol
     channel.baseURL = parsed.data.baseURL
@@ -288,7 +325,7 @@ export function addChannelModels(channelId: string, modelIds: string[]): Catalog
 export function saveDiscoveredChannelModel(
   channelId: string,
   expected: ChannelConnection,
-  entry: { id: string; contextWindow?: number },
+  entry: { id: string; contextWindow?: number; maxOutputTokens?: number },
 ): CatalogConfig {
   return updateCatalog(config => {
     const channel = Object.hasOwn(config.channels, channelId) && config.channels[channelId]
@@ -297,12 +334,42 @@ export function saveDiscoveredChannelModel(
       throw new Error('渠道连接已变更，请返回渠道列表重新打开')
     }
     const existing = channel.models.find(model => model.id === entry.id)
-    if (existing) {
-      if (entry.contextWindow === undefined) throw new Error('该渠道已包含此模型')
-      existing.discoveredContextWindow = entry.contextWindow
-    } else {
-      channel.models.push({ id: entry.id, discoveredContextWindow: entry.contextWindow })
+    if (existing && entry.contextWindow === undefined && entry.maxOutputTokens === undefined) {
+      throw new Error('该渠道已包含此模型')
     }
+    const model: ModelChannel['models'][number] = existing ?? { id: entry.id }
+    if (entry.contextWindow !== undefined) model.discoveredContextWindow = entry.contextWindow
+    if (entry.maxOutputTokens !== undefined) model.discoveredMaxOutputTokens = entry.maxOutputTokens
+    if (!existing) channel.models.push(model)
+  })
+}
+
+export function saveModelBudgetSettings(
+  channelId: string,
+  modelId: string,
+  expected: ChannelConnection,
+  original: ModelBudgetOverrides,
+  next: ModelBudgetOverrides,
+): CatalogConfig {
+  const budgets = modelBudgetOverridesSchema.safeParse(next)
+  if (!budgets.success) throw new Error('上下文窗口和输出预算须为有效的正整数')
+
+  return updateCatalog(config => {
+    const channel = Object.hasOwn(config.channels, channelId) && config.channels[channelId]
+    if (!channel || channel.protocol !== expected.protocol || channel.baseURL !== expected.baseURL ||
+        channel.apiKeyEnv !== expected.apiKeyEnv) {
+      throw new Error('渠道连接已变更，请返回渠道列表重新打开')
+    }
+    const model = channel.models.find(entry => entry.id === modelId)
+    if (!model || model.contextWindow !== original.contextWindow || model.outputBudget !== original.outputBudget) {
+      throw new Error('模型预算已变更，请返回模型列表重新打开')
+    }
+
+    const { contextWindow, outputBudget } = budgets.data
+    if (contextWindow === undefined) delete model.contextWindow
+    else model.contextWindow = contextWindow
+    if (outputBudget === undefined) delete model.outputBudget
+    else model.outputBudget = outputBudget
   })
 }
 

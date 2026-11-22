@@ -1,5 +1,5 @@
 import { getCatalogModel } from '../services/api/provider/catalog.js'
-import { getKnownContextWindow } from '../services/api/provider/modelContext.js'
+import { getKnownContextLimit, getKnownOutputLimit, type KnownContextSource } from '../services/api/provider/modelContext.js'
 import { isEnvTruthy } from './envUtils.js'
 
 // Conservative working defaults for a channel without declared limits.
@@ -33,12 +33,22 @@ export function modelSupports1M(model: string): boolean {
   return getContextWindowForModel(model) >= 1_000_000
 }
 
-export function getContextWindowForModel(model: string, _betas?: string[]): number {
-  const known = getKnownContextWindow(model)
+function getModelContextDetails(model: string): {
+  contextWindow: number
+  contextSource: KnownContextSource | 'fallback'
+} {
+  const known = getKnownContextLimit(model)
   const override = Number(process.env.NEXUS_MAX_CONTEXT_TOKENS)
-  const limit = known ?? (has1mContext(model) ? 1_000_000 : MODEL_CONTEXT_WINDOW_DEFAULT)
+  const limit = known?.contextWindow ?? (has1mContext(model) ? 1_000_000 : MODEL_CONTEXT_WINDOW_DEFAULT)
   const enabledLimit = is1mContextDisabled() ? Math.min(limit, MODEL_CONTEXT_WINDOW_DEFAULT) : limit
-  return Number.isSafeInteger(override) && override > 0 ? Math.min(enabledLimit, override) : enabledLimit
+  return {
+    contextWindow: Number.isSafeInteger(override) && override > 0 ? Math.min(enabledLimit, override) : enabledLimit,
+    contextSource: known?.contextSource ?? 'fallback',
+  }
+}
+
+export function getContextWindowForModel(model: string, _betas?: string[]): number {
+  return getModelContextDetails(model).contextWindow
 }
 
 /**
@@ -73,19 +83,35 @@ export function calculateContextPercentages(
   }
 }
 
-/**
- * Returns the model's default and upper limit for max output tokens.
- */
-export function getModelMaxOutputTokens(model: string): {
-  default: number
-  upperLimit: number
-} {
-  const window = getContextWindowForModel(model)
-  const configuredLimit = getCatalogModel(model)?.maxOutputTokens ?? MAX_OUTPUT_TOKENS_UPPER_LIMIT
-  const upperLimit = Math.min(configuredLimit, Math.max(1, window - 1))
+function outputLimits(window: number, knownOutputLimit?: number) {
+  const upperLimit = Math.min(knownOutputLimit ?? MAX_OUTPUT_TOKENS_UPPER_LIMIT, Math.max(1, window - 1))
   // Keep room for the prompt when a local or relay model advertises a small context.
   const defaultLimit = Math.min(upperLimit, MAX_OUTPUT_TOKENS_DEFAULT, Math.max(1, Math.floor(window / 4)))
   return { default: defaultLimit, upperLimit }
+}
+
+/**
+ * Returns the model's default and upper limit for operations without an explicit turn budget.
+ */
+export function getModelMaxOutputTokens(model: string): { default: number; upperLimit: number } {
+  return outputLimits(getContextWindowForModel(model), getKnownOutputLimit(model))
+}
+
+export function getModelBudgetDetails(model: string): {
+  contextWindow: number
+  contextSource: KnownContextSource | 'fallback'
+  outputBudget: number
+  outputLimit?: number
+} {
+  const context = getModelContextDetails(model)
+  const outputLimit = getKnownOutputLimit(model)
+  const limits = outputLimits(context.contextWindow, outputLimit)
+  const preferred = getCatalogModel(model)?.outputBudget
+  return {
+    ...context,
+    outputBudget: preferred === undefined ? limits.default : Math.min(preferred, limits.upperLimit),
+    ...(outputLimit !== undefined && { outputLimit }),
+  }
 }
 
 /**

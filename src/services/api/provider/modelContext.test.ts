@@ -2,7 +2,12 @@ import { expect, spyOn, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { getContextWindowForModel, getModelMaxOutputTokens, modelSupports1M } from '../../../utils/context.js'
+import { getEmptyToolPermissionContext } from '../../../Tool.js'
+import { enableConfigs } from '../../../utils/config.js'
+import { createUserMessage } from '../../../utils/messages.js'
+import { asSystemPrompt } from '../../../utils/systemPromptType.js'
+import { queryModelWithStreaming } from '../inference.js'
+import { getContextWindowForModel, getModelBudgetDetails, getModelMaxOutputTokens, modelSupports1M } from '../../../utils/context.js'
 import { getAutoCompactThreshold } from '../../compact/autoCompact.js'
 import { parseUserSpecifiedModel } from '../../../utils/model/model.js'
 import { loadAccountContextWindow, getWireContextModelId } from './modelContext.js'
@@ -10,7 +15,8 @@ import type { CatalogConfig, ProviderKind } from './catalog.js'
 
 const envKeys = ['NEXUS_CONFIG_DIR', 'NEXUS_PROVIDER', 'NEXUS_BASE_URL', 'NEXUS_MODEL', 'NEXUS_QUARK_MODEL',
   'NEXUS_AUTH_TOKEN', 'NEXUS_API_KEY', 'NEXUS_DISABLE_1M_CONTEXT', 'NEXUS_MAX_CONTEXT_TOKENS',
-  'NEXUS_AUTO_COMPACT_WINDOW', 'NEXUS_AUTOCOMPACT_PCT_OVERRIDE'] as const
+  'NEXUS_AUTO_COMPACT_WINDOW', 'NEXUS_AUTOCOMPACT_PCT_OVERRIDE', 'NEXUS_MAX_OUTPUT_TOKENS',
+  'NEXUS_DISABLE_NONESSENTIAL_TRAFFIC', 'NODE_ENV', 'FORCE_VCR'] as const
 
 async function withProfile(config: CatalogConfig | undefined, run: () => void | Promise<void>) {
   const directory = mkdtempSync(join(tmpdir(), 'nexus-context-'))
@@ -89,6 +95,36 @@ test('same model names on a relay keep the configured cap and preserve literal w
   })
 })
 
+test('model budget details identify the source and bound output without modifying the declared maximum', async () => {
+  await withProfile({
+    roles: { quark: 'local::manual', atom: 'local::discovered', electron: 'official::deepseek-flash' },
+    channels: {
+      official: { protocol: 'messages', baseURL: 'https://api.deepseek.com/anthropic', models: [{ id: 'deepseek-flash' }] },
+      local: { protocol: 'openai-compatible', baseURL: 'https://work.test/v1', models: [
+        { id: 'manual', contextWindow: 12_000, outputBudget: 20_000, maxOutputTokens: 7_000,
+          discoveredContextWindow: 50_000, discoveredMaxOutputTokens: 5_000 },
+        { id: 'discovered', discoveredContextWindow: 24_000, discoveredMaxOutputTokens: 4_096 },
+        { id: 'unknown' },
+      ] },
+    },
+  }, () => {
+    expect(getModelBudgetDetails('local::manual')).toEqual({
+      contextWindow: 12_000, contextSource: 'manual', outputBudget: 7_000, outputLimit: 7_000,
+    })
+    expect(getModelBudgetDetails('local::discovered')).toEqual({
+      contextWindow: 24_000, contextSource: 'channel', outputBudget: 4_096, outputLimit: 4_096,
+    })
+    expect(getModelBudgetDetails('official::deepseek-flash')).toEqual({
+      contextWindow: 1_000_000, contextSource: 'official', outputBudget: 32_000,
+    })
+    expect(getModelBudgetDetails('local::unknown')).toEqual({
+      contextWindow: 200_000, contextSource: 'fallback', outputBudget: 32_000,
+    })
+    process.env.NEXUS_MAX_CONTEXT_TOKENS = '4096'
+    expect(getModelBudgetDetails('local::manual')).toMatchObject({ contextWindow: 4_096, outputBudget: 4_095 })
+  })
+})
+
 test('Kimi Code resolves account-specific limits once per credential without switching models', async () => {
   await withProfile(undefined, async () => {
     process.env.NEXUS_BASE_URL = 'https://api.kimi.com/coding'
@@ -145,4 +181,82 @@ test('a Kimi Code account lookup failure cannot revive a prior account window', 
       mock.mockRestore()
     }
   })
+})
+
+
+test('a normal model request obeys the output budget and its estimated prompt headroom', async () => {
+  const requested: { model: string; maxTokens: number }[] = []
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
+    expect(new URL(request.url).pathname).toBe('/v1/messages')
+    const body = await request.json() as { model: string; max_tokens: number }
+    requested.push({ model: body.model, maxTokens: body.max_tokens })
+    const message = { type: 'message', id: 'budget-' + requested.length, role: 'assistant', model: body.model,
+      content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 20, output_tokens: 1 } }
+    const events = [
+      { type: 'message_start', message },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'done' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ]
+    return new Response(events.map(event => 'data: ' + JSON.stringify(event) + '\n\n').join(''), {
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  } })
+  const hadMacro = Object.hasOwn(globalThis, 'MACRO')
+  if (!hadMacro) Object.defineProperty(globalThis, 'MACRO', { configurable: true, value: { VERSION: 'fixture' } })
+  try {
+    await withProfile({
+      roles: { quark: 'local::large', atom: 'local::small', electron: 'local::unconfigured' },
+      channels: {
+        local: { protocol: 'messages', baseURL: server.url.href, apiKeyEnv: 'NEXUS_API_KEY', models: [
+          { id: 'large', contextWindow: 32_000, maxOutputTokens: 4_000, outputBudget: 6_000 },
+          { id: 'small', contextWindow: 32_000, maxOutputTokens: 4_000, outputBudget: 1_200 },
+          { id: 'unconfigured', contextWindow: 32_000, maxOutputTokens: 4_000 },
+        ] },
+      },
+    }, async () => {
+      process.env.NEXUS_API_KEY = 'budget-test-only'
+      process.env.NEXUS_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+      // Exercise the connection directly instead of writing/replaying recordings.
+      process.env.NODE_ENV = 'production'
+      enableConfigs()
+      const run = async (modelId: string, querySource: string, length: number, maxOutputTokensOverride?: number) => {
+        const events = await Array.fromAsync(queryModelWithStreaming({
+          messages: [createUserMessage({ content: 'f'.repeat(length) })],
+          systemPrompt: asSystemPrompt(['s'.repeat(4_000)]),
+          thinkingConfig: { type: 'disabled' },
+          tools: [],
+          signal: new AbortController().signal,
+          options: {
+            model: 'local::' + modelId,
+            querySource,
+            maxOutputTokensOverride,
+            getToolPermissionContext: async () => getEmptyToolPermissionContext(),
+            isNonInteractiveSession: true,
+            agents: [],
+            mcpTools: [],
+            hasAppendSystemPrompt: false,
+          },
+        }))
+        expect(events.some(event => event.type === 'assistant' && !event.isApiErrorMessage)).toBe(true)
+        expect(requested.at(-1)?.model).toBe(modelId)
+        return requested.at(-1)!.maxTokens
+      }
+      expect(await run('large', 'sdk', 20)).toBe(4_000)
+      const nearLimit = await run('large', 'sdk', 122_000, 9_000)
+      expect(nearLimit).toBeGreaterThan(0)
+      expect(nearLimit).toBeLessThanOrEqual(500)
+      expect(await run('small', 'sdk', 20, 6_000)).toBe(1_200)
+      expect(await run('small', 'compact', 20, 3_000)).toBe(3_000)
+      expect(await run('unconfigured', 'sdk', 122_000, 3_800)).toBe(3_800)
+      process.env.NEXUS_MAX_OUTPUT_TOKENS = '900'
+      expect(await run('small', 'sdk', 20)).toBe(900)
+      expect(requested).toHaveLength(6)
+    })
+  } finally {
+    server.stop(true)
+    if (!hadMacro) Reflect.deleteProperty(globalThis, 'MACRO')
+  }
 })
