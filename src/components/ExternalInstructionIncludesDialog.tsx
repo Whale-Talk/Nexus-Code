@@ -2,16 +2,16 @@ import { c as _c } from "react/compiler-runtime";
 import React, { useCallback } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
 import { Box, Link, Text } from '../ink.js';
-import type { ExternalNexusMdInclude } from '../utils/nexusmd.js';
+import type { ExternalInstructionInclude } from '../utils/projectInstructions.js';
 import { saveCurrentProjectConfig } from '../utils/config.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
 type Props = {
   onDone(): void;
   isStandaloneDialog?: boolean;
-  externalIncludes?: ExternalNexusMdInclude[];
+  externalIncludes?: ExternalInstructionInclude[];
 };
-export function NexusMdExternalIncludesDialog(t0) {
+export function ExternalInstructionIncludesDialog(t0) {
   const $ = _c(18);
   const {
     onDone,
@@ -59,7 +59,7 @@ export function NexusMdExternalIncludesDialog(t0) {
   const t5 = !isStandaloneDialog;
   let t6;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Text>This project's NEXUS.md imports files outside the current working directory. Never allow this for third-party repositories.</Text>;
+    t6 = <Text>项目的指令文件引用了工作目录以外的文件。请仅为信任的项目授权，并核对下方路径。</Text>;
     $[5] = t6;
   } else {
     t6 = $[5];
@@ -102,7 +102,7 @@ export function NexusMdExternalIncludesDialog(t0) {
   }
   let t11;
   if ($[12] !== handleEscape || $[13] !== t10 || $[14] !== t4 || $[15] !== t5 || $[16] !== t7) {
-    t11 = <Dialog title="Allow external NEXUS.md file imports?" color="warning" onCancel={handleEscape} hideBorder={t4} hideInputGuide={t5}>{t6}{t7}{t8}{t10}</Dialog>;
+    t11 = <Dialog title="允许指令文件读取目录外的文件？" color="warning" onCancel={handleEscape} hideBorder={t4} hideInputGuide={t5}>{t6}{t7}{t8}{t10}</Dialog>;
     $[12] = handleEscape;
     $[13] = t10;
     $[14] = t4;

@@ -1,4 +1,7 @@
 import { isAutoMemoryEnabled } from '../../memdir/paths.js'
+import { getOriginalCwd } from '../../bootstrap/state.js'
+import { getMemoryPath } from '../../utils/config.js'
+import { getInstructionWritePath, getProjectInstructionFiles } from '../../utils/instructionFiles.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 export function registerRememberSkill(): void {
@@ -6,7 +9,7 @@ export function registerRememberSkill(): void {
     return
   }
 
-  const SKILL_PROMPT = `# Memory Review
+  const memoryReviewPrompt = (projects: string[], localFile: string, projectTarget: string, localTarget: string) => `# Memory Review
 
 ## Goal
 Review the user's memory landscape and produce a clear report of proposed changes, grouped by action type. Do NOT apply changes — present proposals for user approval.
@@ -14,7 +17,7 @@ Review the user's memory landscape and produce a clear report of proposed change
 ## Steps
 
 ### 1. Gather all memory layers
-Read NEXUS.md and NEXUS.local.md from the project root (if they exist). Your auto-memory content is already in your system prompt — review it there. Note which team memory sections exist, if any.
+Review the current project instruction files ${JSON.stringify(projects)} and private local instructions ${JSON.stringify(localFile)} if they exist. Propose future changes in ${JSON.stringify(projectTarget)} for shared instructions or ${JSON.stringify(localTarget)} for private instructions. Your auto-memory content is already in your system prompt — review it there. Note which team memory sections exist, if any.
 
 **Success criteria**: You have the contents of all memory layers and can compare them.
 
@@ -23,13 +26,13 @@ For each substantive entry in auto-memory, determine the best destination:
 
 | Destination | What belongs there | Examples |
 |---|---|---|
-| **NEXUS.md** | Project conventions and instructions for Nexus that all contributors should follow | "use bun not npm", "API routes use kebab-case", "test command is bun test", "prefer functional style" |
-| **NEXUS.local.md** | Personal instructions for Nexus specific to this user, not applicable to other contributors | "I prefer concise responses", "always explain trade-offs", "don't auto-commit", "run tests before committing" |
+| **Project instructions** | Project conventions and instructions for Nexus that all contributors should follow | "use bun not npm", "API routes use kebab-case", "test command is bun test", "prefer functional style" |
+| **Private local instructions** | Personal instructions for Nexus specific to this user, not applicable to other contributors | "I prefer concise responses", "always explain trade-offs", "don't auto-commit", "run tests before committing" |
 | **Team memory** | Org-wide knowledge that applies across repositories (only if team memory is configured) | "deploy PRs go through #deploy-queue", "staging is at staging.internal", "platform team owns infra" |
 | **Stay in auto-memory** | Working notes, temporary context, or entries that don't clearly fit elsewhere | Session-specific observations, uncertain patterns |
 
 **Important distinctions:**
-- NEXUS.md and NEXUS.local.md contain instructions for Nexus, not user preferences for external tools (editor theme, IDE keybindings, etc. don't belong in either)
+- Project and local instruction files describe how Nexus should work on the project. Keep preferences for external tools in their own settings.
 - Workflow practices (PR conventions, merge strategies, branch naming) are ambiguous — ask the user whether they're personal or team-wide
 - When unsure, ask rather than guess
 
@@ -37,8 +40,8 @@ For each substantive entry in auto-memory, determine the best destination:
 
 ### 3. Identify cleanup opportunities
 Scan across all layers for:
-- **Duplicates**: Auto-memory entries already captured in NEXUS.md or NEXUS.local.md → propose removing from auto-memory
-- **Outdated**: NEXUS.md or NEXUS.local.md entries contradicted by newer auto-memory entries → propose updating the older layer
+- **Duplicates**: Auto-memory entries already captured in project or local instructions → propose removing from auto-memory
+- **Outdated**: Project or local instructions contradicted by newer auto-memory entries → propose updating the older layer
 - **Conflicts**: Contradictions between any two layers → propose resolution, noting which is more recent
 
 **Success criteria**: All cross-layer issues identified.
@@ -50,7 +53,7 @@ Output a structured report grouped by action type:
 3. **Ambiguous** — entries where you need the user's input on destination
 4. **No action needed** — brief note on entries that should stay put
 
-If auto-memory is empty, say so and offer to review NEXUS.md for cleanup.
+If auto-memory is empty, say so and offer to review the project instructions for cleanup.
 
 **Success criteria**: User can review and approve/reject each proposal individually.
 
@@ -64,13 +67,17 @@ If auto-memory is empty, say so and offer to review NEXUS.md for cleanup.
   registerBundledSkill({
     name: 'remember',
     description:
-      'Review auto-memory entries and propose promotions to NEXUS.md, NEXUS.local.md, or shared memory. Also detects outdated, conflicting, and duplicate entries across memory layers.',
+      'Review auto-memory and propose moving entries to project instructions, private local instructions, or shared memory. Detects outdated, conflicting, and duplicate entries.',
     whenToUse:
-      'Use when the user wants to review, organize, or promote their auto-memory entries. Also useful for cleaning up outdated or conflicting entries across NEXUS.md, NEXUS.local.md, and auto-memory.',
+      'Use when the user wants to review auto-memory or reconcile it with project and local instructions.',
     userInvocable: true,
     isEnabled: () => isAutoMemoryEnabled(),
     async getPromptForCommand(args) {
-      let prompt = SKILL_PROMPT
+      const cwd = getOriginalCwd()
+      let prompt = memoryReviewPrompt(
+        getProjectInstructionFiles(cwd), getMemoryPath('Local'),
+        getMemoryPath('Project'), getInstructionWritePath(cwd, 'local'),
+      )
 
       if (args) {
         prompt += `\n## Additional context from user\n\n${args}`

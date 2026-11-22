@@ -2,10 +2,9 @@ import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
 import { mkdir } from 'fs/promises';
-import { join } from 'path';
+import { basename } from 'path';
 import * as React from 'react';
 import { use, useEffect, useState } from 'react';
-import { getOriginalCwd } from '../../bootstrap/state.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
@@ -16,8 +15,11 @@ import { readLastConsolidatedAt } from '../../services/autoDream/consolidationLo
 import { useAppState } from '../../state/AppState.js';
 import { getAgentMemoryDir } from '../../tools/AgentTool/agentMemory.js';
 import { openPath } from '../../utils/browser.js';
-import { getMemoryFiles, type MemoryFileInfo } from '../../utils/nexusmd.js';
+import { getMemoryFiles, type MemoryFileInfo } from '../../utils/projectInstructions.js';
+import { getMemoryPath } from '../../utils/config.js';
 import { getNexusConfigHomeDir } from '../../utils/envUtils.js';
+import { getFsImplementation } from '../../utils/fsOperations.js';
+import { getInstructionWritePath } from '../../utils/instructionFiles.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { formatRelativeTimeAgo } from '../../utils/format.js';
 import { updateSettingsForSource } from '../../utils/settings/settings.js';
@@ -47,21 +49,18 @@ export function MemoryFileSelector(t0) {
     onCancel
   } = t0;
   const existingMemoryFiles = use(getMemoryFiles());
-  const userMemoryPath = join(getNexusConfigHomeDir(), "NEXUS.md");
-  const projectMemoryPath = join(getOriginalCwd(), "NEXUS.md");
-  const hasUserMemory = existingMemoryFiles.some(f => f.path === userMemoryPath);
-  const hasProjectMemory = existingMemoryFiles.some(f_0 => f_0.path === projectMemoryPath);
-  const allMemoryFiles = [...existingMemoryFiles.filter(_temp).map(_temp2), ...(hasUserMemory ? [] : [{
-    path: userMemoryPath,
-    type: "User" as const,
-    content: "",
-    exists: false
-  }]), ...(hasProjectMemory ? [] : [{
-    path: projectMemoryPath,
-    type: "Project" as const,
-    content: "",
-    exists: false
-  }])];
+  const userMemoryPath = getInstructionWritePath(getNexusConfigHomeDir());
+  const projectMemoryPath = getMemoryPath("Project");
+  const mainFiles = [
+    { path: projectMemoryPath, type: "Project" as const },
+    ...(userMemoryPath === projectMemoryPath ? [] : [{ path: userMemoryPath, type: "User" as const }]),
+  ];
+  const loaded = existingMemoryFiles.filter(_temp).map(_temp2);
+  const allMemoryFiles = [
+    ...mainFiles.map(file => loaded.find(item => item.path === file.path && item.type === file.type) ??
+      { ...file, content: "", exists: getFsImplementation().existsSync(file.path) }),
+    ...loaded.filter(item => !mainFiles.some(file => item.path === file.path)),
+  ];
   const depths = new Map();
   const memoryOptions = allMemoryFiles.map(file => {
     const displayPath = getDisplayPath(file.path);
@@ -84,11 +83,11 @@ export function MemoryFileSelector(t0) {
       }
     }
     let description;
-    if (file.type === "User" && !file.isNested) {
-      description = "用户配置目录中的 NEXUS.md，适用于各项目";
+    if (file.type === "User" && !file.isNested && file.path === userMemoryPath) {
+      description = `用户配置目录中的 ${basename(file.path)}${existsLabel}，适用于各项目`;
     } else {
       if (file.type === "Project" && !file.isNested && file.path === projectMemoryPath) {
-        description = "项目中的 NEXUS.md，用于记录项目约定";
+        description = `项目中的 ${displayPath}${existsLabel}，用于记录项目约定`;
       } else {
         if (file.parent) {
           description = "通过 @ 引入";
@@ -96,7 +95,7 @@ export function MemoryFileSelector(t0) {
           if (file.isNested) {
             description = "按目录载入";
           } else {
-            description = "";
+            description = file.type === "User" || file.type === "Project" ? "当前加载的指令文件" : "";
           }
         }
       }

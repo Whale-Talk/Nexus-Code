@@ -48,7 +48,7 @@ export type DeepLinkBannerInfo = {
  *
  * When the cwd was resolved from a ?repo= slug, also shows the slug and the
  * clone's last-fetch age so the user knows which local clone was selected
- * and whether its NEXUS.md may be stale relative to upstream.
+ * and whether its project instructions may be stale relative to upstream.
  */
 export function buildDeepLinkBanner(info: DeepLinkBannerInfo): string {
   const lines = [
@@ -60,7 +60,7 @@ export function buildDeepLinkBanner(info: DeepLinkBannerInfo): string {
       !info.lastFetch ||
       Date.now() - info.lastFetch.getTime() > STALE_FETCH_WARN_MS
     lines.push(
-      `Resolved ${info.repo} from local clones · last fetched ${age}${stale ? ' — NEXUS.md may be stale' : ''}`,
+      `Resolved ${info.repo} from local clones · last fetched ${age}${stale ? ' — project instructions may be stale' : ''}`,
     )
   }
   if (info.prefillLength) {

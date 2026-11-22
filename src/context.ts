@@ -1,20 +1,23 @@
 import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
+import { relative } from 'node:path'
 import {
-  getAdditionalDirectoriesForNexusMd,
-  setCachedNexusMdContent,
+  getAdditionalInstructionDirectories,
+  getOriginalCwd,
+  setCachedInstructionContent,
 } from './bootstrap/state.js'
 import { getLocalISODate } from './constants/common.js'
 import {
   filterInjectedMemoryFiles,
-  getNexusMds,
+  renderInstructionContext,
   getMemoryFiles,
-} from './utils/nexusmd.js'
+} from './utils/projectInstructions.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { execFileNoThrow } from './utils/execFileNoThrow.js'
 import { getBranch, getDefaultBranch, getIsGit, gitExe } from './utils/git.js'
 import { shouldIncludeGitInstructions } from './utils/gitSettings.js'
+import { getInstructionFileName, getInstructionStarterContent, getProjectInstructionWritePath } from './utils/instructionFiles.js'
 import { logError } from './utils/log.js'
 
 const MAX_STATUS_CHARS = 2000
@@ -159,30 +162,42 @@ export const getUserContext = memoize(
     const startTime = Date.now()
     logForDiagnosticsNoPII('info', 'user_context_started')
 
-    // NEXUS_DISABLE_NEXUS_MDS: hard off, always.
+    // An explicit instruction disable overrides directory discovery.
     // --bare: skip auto-discovery (cwd walk), BUT honor explicit --add-dir.
     // --bare means "skip what I didn't ask for", not "ignore what I asked for".
-    const shouldDisableNexusMd =
-      isEnvTruthy(process.env.NEXUS_DISABLE_NEXUS_MDS) ||
-      (isBareMode() && getAdditionalDirectoriesForNexusMd().length === 0)
+    const shouldDisableInstructions =
+      isEnvTruthy(process.env.NEXUS_DISABLE_INSTRUCTIONS ?? process.env.NEXUS_DISABLE_NEXUS_MDS) ||
+      (isBareMode() && getAdditionalInstructionDirectories().length === 0)
     // Await the async I/O (readFile/readdir directory walk) so the event
     // loop yields naturally at the first fs.readFile.
-    const nexusMd = shouldDisableNexusMd
+    const loadedInstructions = shouldDisableInstructions
       ? null
-      : getNexusMds(filterInjectedMemoryFiles(await getMemoryFiles()))
+      : renderInstructionContext(filterInjectedMemoryFiles(await getMemoryFiles()))
     // Cache for the auto-mode classifier (yoloClassifier.ts reads this
-    // instead of importing nexusmd.ts directly, which would create a
+    // instead of importing the instruction loader directly, which would create a
     // cycle through permissions/filesystem → permissions → yoloClassifier).
-    setCachedNexusMdContent(nexusMd || null)
+    setCachedInstructionContent(loadedInstructions || null)
+
+    let projectInstructions: string | null = null
+    if (!shouldDisableInstructions) {
+      const cwd = getOriginalCwd()
+      const target = relative(cwd, getProjectInstructionWritePath(cwd)).replaceAll('\\', '/')
+      const importLine = getInstructionStarterContent(cwd, true).trim()
+      const editingGuide = [
+        `When asked to write shared project instructions, use ${JSON.stringify(getInstructionFileName())} in the relevant directory. The workspace write target is ${JSON.stringify(target)}. Keep compatibility sources intact unless the user requests a direct edit.`,
+        importLine ? `When creating that workspace file, retain existing instructions with this Markdown import on its own line: ${importLine}` : '',
+      ].filter(Boolean).join('\n')
+      projectInstructions = loadedInstructions ? `${editingGuide}\n\n${loadedInstructions}` : editingGuide
+    }
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {
       duration_ms: Date.now() - startTime,
-      nexusmd_length: nexusMd?.length ?? 0,
-      nexusmd_disabled: Boolean(shouldDisableNexusMd),
+      nexusmd_length: projectInstructions?.length ?? 0,
+      nexusmd_disabled: Boolean(shouldDisableInstructions),
     })
 
     return {
-      ...(nexusMd && { nexusMd }),
+      ...(projectInstructions && { projectInstructions }),
       currentDate: `Today's date is ${getLocalISODate()}.`,
     }
   },

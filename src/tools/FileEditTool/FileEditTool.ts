@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, sep } from 'path'
+import { dirname, isAbsolute } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getFeatureValue } from '../../services/analytics/featureFlags.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
@@ -17,6 +17,7 @@ import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isInstructionFilePath } from '../../utils/instructionFiles.js'
 import { isENOENT } from '../../utils/errors.js'
 import {
   FILE_NOT_FOUND_CWD_NOTE,
@@ -525,7 +526,7 @@ export const FileEditTool = buildTool({
     })
 
     // 7. Log events
-    if (absoluteFilePath.endsWith(`${sep}NEXUS.md`)) {
+    if (isInstructionFilePath(absoluteFilePath)) {
       logEvent('nexus_write_nexusmd', {})
     }
     countLinesChanged(patch)

@@ -1,6 +1,6 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import * as platformPath from 'path'
-import { getAdditionalDirectoriesForNexusMd } from '../../bootstrap/state.js'
+import { getAdditionalInstructionDirectories } from '../../bootstrap/state.js'
 import {
   clearCommandMemoizationCaches,
   clearCommandsCache,
@@ -221,7 +221,7 @@ async function getWatchablePaths(): Promise<string[]> {
   }
 
   // Additional directories (--add-dir) skills — primary .nexus, legacy .nexus
-  for (const dir of getAdditionalDirectoriesForNexusMd()) {
+  for (const dir of getAdditionalInstructionDirectories()) {
     for (const dirName of ['.nexus']) {
       const additionalSkillsPath = platformPath.join(dir, dirName, 'skills')
       try {

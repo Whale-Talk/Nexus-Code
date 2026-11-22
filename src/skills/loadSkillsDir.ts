@@ -9,7 +9,7 @@ import {
   relative,
 } from 'path'
 import {
-  getAdditionalDirectoriesForNexusMd,
+  getAdditionalInstructionDirectories,
   getSessionId,
 } from '../bootstrap/state.js'
 import {
@@ -637,7 +637,7 @@ export const getSkillDirCommands = memoize(
     )
 
     // Load from additional directories (--add-dir)
-    const additionalDirs = getAdditionalDirectoriesForNexusMd()
+    const additionalDirs = getAdditionalInstructionDirectories()
     const skillsLocked = isRestrictedToPluginOnly('skills')
     const projectSettingsEnabled =
       isSettingSourceEnabled('projectSettings') && !skillsLocked

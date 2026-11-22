@@ -8,7 +8,7 @@
 
 import { join } from 'path'
 import type { z } from 'zod/v4'
-import { getAdditionalDirectoriesForNexusMd } from '../../bootstrap/state.js'
+import { getAdditionalInstructionDirectories } from '../../bootstrap/state.js'
 import { parseSettingsFile } from '../settings/settings.js'
 import type {
   ExtraKnownMarketplaceSchema,
@@ -35,7 +35,7 @@ export function getAddDirEnabledPlugins(): NonNullable<
   SettingsJson['enabledPlugins']
 > {
   const result: NonNullable<SettingsJson['enabledPlugins']> = {}
-  for (const dir of getAdditionalDirectoriesForNexusMd()) {
+  for (const dir of getAdditionalInstructionDirectories()) {
     for (const file of SETTINGS_FILES) {
       const { settings } = parseSettingsFile(join(dir, '.nexus', file))
       if (!settings?.enabledPlugins) {
@@ -58,7 +58,7 @@ export function getAddDirExtraMarketplaces(): Record<
   ExtraKnownMarketplace
 > {
   const result: Record<string, ExtraKnownMarketplace> = {}
-  for (const dir of getAdditionalDirectoriesForNexusMd()) {
+  for (const dir of getAdditionalInstructionDirectories()) {
     for (const file of SETTINGS_FILES) {
       const { settings } = parseSettingsFile(join(dir, '.nexus', file))
       if (!settings?.extraKnownMarketplaces) {

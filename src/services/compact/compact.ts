@@ -39,6 +39,7 @@ import {
   getMcpInstructionsDeltaAttachment,
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config.js'
+import { isInstructionFilePath } from '../../utils/instructionFiles.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import {
   analyzeContext,
@@ -1686,9 +1687,10 @@ function shouldExcludeFromPostCompactRestore(
     // If we can't get plan file path, continue with other checks
   }
 
-  // Exclude all types of nexus.md files
-  // TODO: Refactor to use isMemoryFilePath() from nexusmd.ts for consistency
-  // and to also match child directory memory files (.nexus/rules/*.md, etc.)
+  // Instruction files already have a dedicated discovery and attachment path.
+  if (isInstructionFilePath(normalizedFilename)) return true
+
+  // Auto-memory entrypoints are configured separately from instruction files.
   try {
     const normalizedMemoryPaths = new Set(
       MEMORY_TYPE_VALUES.map(type => expandPath(getMemoryPath(type))),

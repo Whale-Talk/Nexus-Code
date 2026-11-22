@@ -29,7 +29,7 @@ import type {
 } from '../types/logs.js'
 import type { Message } from '../types/message.js'
 import { renameRecordingForSession } from './asciicast.js'
-import { clearMemoryFileCaches } from './nexusmd.js'
+import { clearMemoryFileCaches } from './projectInstructions.js'
 import {
   type AttributionState,
   attributionRestoreStateFromLog,

@@ -1,12 +1,11 @@
 import memoize from 'lodash-es/memoize.js'
-import { join } from 'path'
 import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
 } from './utils/config.js'
 import { getCwd } from './utils/cwd.js'
 import { isDirEmpty } from './utils/file.js'
-import { getFsImplementation } from './utils/fsOperations.js'
+import { getInstructionFileName, getProjectInstructionFiles } from './utils/instructionFiles.js'
 
 export type Step = {
   key: string
@@ -17,9 +16,7 @@ export type Step = {
 }
 
 export function getSteps(): Step[] {
-  const hasNexusMd = getFsImplementation().existsSync(
-    join(getCwd(), 'NEXUS.md'),
-  )
+  const hasInstructions = getProjectInstructionFiles(getCwd()).length > 0
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
 
   return [
@@ -31,9 +28,9 @@ export function getSteps(): Step[] {
       isEnabled: isWorkspaceDirEmpty,
     },
     {
-      key: 'nexusmd',
-      text: '运行 /init 创建 NEXUS.md 文件，获取 Nexus Code 使用说明',
-      isComplete: hasNexusMd,
+      key: 'project-instructions',
+      text: `运行 /init 创建 ${getInstructionFileName()}，记录项目约定`,
+      isComplete: hasInstructions,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
     },
